@@ -20,6 +20,10 @@ import org.springframework.web.multipart.MultipartFile
 class AdminBookController(
     private val bookService: BookService,
 ) {
+    @GetMapping
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','LIBRARIAN')")
+    fun listBooks(): List<AdminBookView> = bookService.listAdminBooks()
+
     @PostMapping("/upload", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
     fun uploadBook(
         @RequestPart("file") file: MultipartFile,
@@ -40,4 +44,3 @@ class AdminBookController(
     @PreAuthorize("hasAnyRole('SUPER_ADMIN','LIBRARIAN')")
     fun listImportJobs(): List<Map<String, Any?>> = bookService.listImportJobs()
 }
-

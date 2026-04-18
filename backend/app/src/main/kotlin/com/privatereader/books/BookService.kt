@@ -31,8 +31,10 @@ class BookService(
         require(!file.isEmpty) { "Uploaded file must not be empty" }
         val uploadsDir = Path.of(appProperties.storageRoot, "uploads")
         Files.createDirectories(uploadsDir)
-        val originalFilename = file.originalFilename ?: "book-${UUID.randomUUID()}"
-        val target = uploadsDir.resolve("${UUID.randomUUID()}-$originalFilename")
+        val originalFilename = Path.of(file.originalFilename ?: "book-${UUID.randomUUID()}").fileName.toString()
+        val targetDir = uploadsDir.resolve(UUID.randomUUID().toString())
+        Files.createDirectories(targetDir)
+        val target = targetDir.resolve(originalFilename)
         file.inputStream.use { input ->
             Files.copy(input, target, StandardCopyOption.REPLACE_EXISTING)
         }
@@ -174,6 +176,34 @@ class BookService(
                     format = rs.getString("format"),
                     sourceType = rs.getString("source_type"),
                     granted = true,
+                    sourceMissing = rs.getBoolean("source_missing"),
+                    updatedAt = rs.getTimestamp("updated_at").toInstant().toString(),
+                )
+            }
+            .list()
+
+    fun listAdminBooks(): List<AdminBookView> =
+        jdbcClient.sql(
+            """
+            select b.id, b.title, b.author, b.description, bf.plugin_id, bf.format, bf.source_type, bf.source_missing, b.updated_at
+            from books b
+            join book_files bf on bf.book_id = b.id
+            where bf.id = (
+                select max(inner_bf.id) from book_files inner_bf
+                where inner_bf.book_id = b.id
+            )
+            order by b.updated_at desc, b.id desc
+            """.trimIndent(),
+        )
+            .query { rs, _ ->
+                AdminBookView(
+                    id = rs.getLong("id"),
+                    title = rs.getString("title"),
+                    author = rs.getString("author"),
+                    description = rs.getString("description"),
+                    pluginId = rs.getString("plugin_id"),
+                    format = rs.getString("format"),
+                    sourceType = rs.getString("source_type"),
                     sourceMissing = rs.getBoolean("source_missing"),
                     updatedAt = rs.getTimestamp("updated_at").toInstant().toString(),
                 )

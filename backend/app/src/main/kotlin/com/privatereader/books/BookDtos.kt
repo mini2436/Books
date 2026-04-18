@@ -29,6 +29,18 @@ data class BookDetailView(
     val sourceMissing: Boolean,
 )
 
+data class AdminBookView(
+    val id: Long,
+    val title: String,
+    val author: String?,
+    val description: String?,
+    val pluginId: String,
+    val format: String,
+    val sourceType: String,
+    val sourceMissing: Boolean,
+    val updatedAt: String,
+)
+
 data class CreateGrantRequest(
     @field:NotNull
     val userId: Long,
@@ -70,4 +82,3 @@ data class UserView(
     val role: String,
     val enabled: Boolean,
 )
-

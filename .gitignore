@@ -18,3 +18,5 @@ mobile/android/
 mobile/ios/
 storage/
 tmp/
+.playwright-cli/
+output/

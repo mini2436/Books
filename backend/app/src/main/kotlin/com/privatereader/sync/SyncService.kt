@@ -1,5 +1,6 @@
 package com.privatereader.sync
 
+import com.privatereader.common.toSqlTimestamp
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Service
 import java.sql.ResultSet
@@ -17,6 +18,8 @@ class SyncService(
         request.annotations.forEach { mutation ->
             when (mutation.action.uppercase()) {
                 "CREATE" -> {
+                    // Offline-created annotations arrive with a client temp id; the response maps
+                    // that temp id to the server id so the client can reconcile local state.
                     val annotationId = jdbcClient.sql(
                         """
                         insert into annotations (
@@ -33,7 +36,7 @@ class SyncService(
                         .param("noteText", mutation.noteText)
                         .param("color", mutation.color)
                         .param("anchor", mutation.anchor)
-                        .param("updatedAt", Instant.parse(mutation.updatedAt))
+                        .param("updatedAt", Instant.parse(mutation.updatedAt).toSqlTimestamp())
                         .query(Long::class.java)
                         .single()
                     mutation.clientTempId?.let { mappings[it] = annotationId }
@@ -42,6 +45,8 @@ class SyncService(
                 "UPDATE", "DELETE" -> {
                     val existing = getAnnotationRecord(userId, mutation.annotationId ?: -1)
                         ?: throw IllegalArgumentException("Annotation not found")
+                    // Annotation edits are version-checked so two offline devices do not silently
+                    // overwrite each other. Conflicts are returned for the client to resolve.
                     if (existing.version != mutation.baseVersion) {
                         conflicts += SyncConflict(
                             entityType = "annotation",
@@ -69,7 +74,7 @@ class SyncService(
                             .param("anchor", mutation.anchor)
                             .param("version", existing.version + 1)
                             .param("deleted", mutation.action.uppercase() == "DELETE")
-                            .param("updatedAt", Instant.parse(mutation.updatedAt))
+                            .param("updatedAt", Instant.parse(mutation.updatedAt).toSqlTimestamp())
                             .param("annotationId", existing.id)
                             .param("userId", userId)
                             .update()
@@ -92,7 +97,7 @@ class SyncService(
                     .param("location", mutation.location)
                     .param("label", mutation.label)
                     .param("deleted", deleted)
-                    .param("updatedAt", Instant.parse(mutation.updatedAt))
+                    .param("updatedAt", Instant.parse(mutation.updatedAt).toSqlTimestamp())
                     .update()
             } else {
                 jdbcClient.sql(
@@ -105,7 +110,7 @@ class SyncService(
                     .param("location", mutation.location)
                     .param("label", mutation.label)
                     .param("deleted", deleted)
-                    .param("updatedAt", Instant.parse(mutation.updatedAt))
+                    .param("updatedAt", Instant.parse(mutation.updatedAt).toSqlTimestamp())
                     .param("bookmarkId", mutation.bookmarkId)
                     .param("userId", userId)
                     .update()
@@ -118,7 +123,7 @@ class SyncService(
             )
                 .param("userId", userId)
                 .param("bookId", mutation.bookId)
-                .query(Instant::class.java)
+                .query { rs, _ -> rs.getTimestamp("updated_at")?.toInstant() }
                 .optional()
                 .orElse(null)
             val incomingUpdatedAt = Instant.parse(mutation.updatedAt)
@@ -137,7 +142,7 @@ class SyncService(
                     .param("bookId", mutation.bookId)
                     .param("location", mutation.location)
                     .param("progressPercent", mutation.progressPercent)
-                    .param("updatedAt", incomingUpdatedAt)
+                    .param("updatedAt", incomingUpdatedAt.toSqlTimestamp())
                     .update()
             }
         }
@@ -186,6 +191,8 @@ class SyncService(
             .query { rs, _ -> rs.toProgressView() }
             .list()
 
+        // The cursor is just the latest updated timestamp the client has observed across
+        // annotations, bookmarks, and reading progress.
         val nextCursor = listOf(
             annotations.maxOfOrNull { Instant.parse(it.updatedAt).toEpochMilli() } ?: 0L,
             bookmarks.maxOfOrNull { Instant.parse(it.updatedAt).toEpochMilli() } ?: 0L,
@@ -317,4 +324,3 @@ class SyncService(
         val updatedAt: Instant,
     )
 }
-

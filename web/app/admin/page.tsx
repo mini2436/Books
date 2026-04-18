@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { ApiClient, type PluginSummary } from "../../lib/api";
+import { useI18n } from "../../lib/i18n";
 
 const api = new ApiClient(process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080");
 
 export default function AdminPage() {
+  const { t } = useI18n();
   const [plugins, setPlugins] = useState<PluginSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -13,34 +15,31 @@ export default function AdminPage() {
     api
       .listPlugins()
       .then(setPlugins)
-      .catch((reason) => setError(reason instanceof Error ? reason.message : "Failed to load plugins"));
-  }, []);
+      .catch((reason) => setError(reason instanceof Error ? reason.message : t("admin.loadPluginsFailed")));
+  }, [t]);
 
   return (
     <main className="grid">
       <section className="hero">
-        <h1>Admin Console</h1>
-        <p className="muted">
-          Manage library sources, upload books, assign permissions, and inspect
-          the compile-time plugin registry.
-        </p>
+        <h1>{t("admin.title")}</h1>
+        <p className="muted">{t("admin.subtitle")}</p>
       </section>
 
       <section className="card">
-        <h2>Scanner Plugins</h2>
+        <h2>{t("admin.pluginsTitle")}</h2>
         {error ? <p>{error}</p> : null}
         <table className="table">
           <thead>
             <tr>
-              <th>Plugin</th>
-              <th>Extensions</th>
-              <th>Capabilities</th>
+              <th>{t("admin.tablePlugin")}</th>
+              <th>{t("admin.tableExtensions")}</th>
+              <th>{t("admin.tableCapabilities")}</th>
             </tr>
           </thead>
           <tbody>
             {plugins.length === 0 ? (
               <tr>
-                <td colSpan={3}>No plugins loaded.</td>
+                <td colSpan={3}>{t("admin.noPlugins")}</td>
               </tr>
             ) : (
               plugins.map((plugin) => (
@@ -57,4 +56,3 @@ export default function AdminPage() {
     </main>
   );
 }
-

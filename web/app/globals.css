@@ -25,6 +25,32 @@ a {
   color: inherit;
 }
 
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  backdrop-filter: blur(12px);
+  background: rgba(247, 239, 228, 0.82);
+  border-bottom: 1px solid rgba(138, 90, 47, 0.14);
+}
+
+.topbar-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.topbar-brand {
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
 main {
   max-width: 1100px;
   margin: 0 auto;
@@ -74,6 +100,40 @@ main {
   margin-top: 18px;
 }
 
+.language-switcher {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.language-label {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.language-buttons {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.language-button {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 250, 242, 0.95);
+  color: var(--ink);
+  padding: 7px 12px;
+  cursor: pointer;
+  transition: all 160ms ease;
+}
+
+.language-button.active {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
 .button {
   border: none;
   border-radius: 999px;
@@ -113,3 +173,13 @@ main {
   font-family: "Courier New", monospace;
 }
 
+@media (max-width: 640px) {
+  .topbar-inner {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .language-switcher {
+    justify-content: flex-start;
+  }
+}

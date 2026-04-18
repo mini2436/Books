@@ -4,6 +4,7 @@ import com.privatereader.auth.AuthRepository
 import com.privatereader.books.CreateUserRequest
 import com.privatereader.books.UpdateUserRequest
 import com.privatereader.books.UserView
+import com.privatereader.common.toSqlTimestamp
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
@@ -38,7 +39,7 @@ class UserAdminService(
         )
             .param("role", newRole)
             .param("enabled", newEnabled)
-            .param("updatedAt", Instant.now())
+            .param("updatedAt", Instant.now().toSqlTimestamp())
             .param("userId", userId)
             .update()
         return UserView(id = existing.id, username = existing.username, role = newRole, enabled = newEnabled)
@@ -62,4 +63,3 @@ class UserAdminService(
         return normalized
     }
 }
-

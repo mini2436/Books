@@ -1,5 +1,6 @@
 package com.privatereader.auth
 
+import com.privatereader.common.toSqlTimestamp
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Repository
 import java.sql.ResultSet
@@ -84,9 +85,9 @@ class AuthRepository(
             .param("userId", userId)
             .param("accessTokenHash", accessTokenHash)
             .param("refreshTokenHash", refreshTokenHash)
-            .param("expiresAt", expiresAt)
-            .param("refreshExpiresAt", refreshExpiresAt)
-            .param("createdAt", Instant.now())
+            .param("expiresAt", expiresAt.toSqlTimestamp())
+            .param("refreshExpiresAt", refreshExpiresAt.toSqlTimestamp())
+            .param("createdAt", Instant.now().toSqlTimestamp())
             .update()
     }
 
@@ -146,7 +147,7 @@ class AuthRepository(
             .param("passwordHash", passwordHash)
             .param("role", role)
             .param("enabled", enabled)
-            .param("now", Instant.now())
+            .param("now", Instant.now().toSqlTimestamp())
             .query(Long::class.java)
             .single()
 
@@ -168,4 +169,3 @@ class AuthRepository(
         revoked = getBoolean("revoked"),
     )
 }
-

@@ -3,6 +3,7 @@ package com.privatereader.books
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.privatereader.auth.UserPrincipal
+import com.privatereader.common.toSqlTimestamp
 import com.privatereader.config.AppProperties
 import com.privatereader.pluginruntime.PluginRegistryService
 import org.springframework.core.io.FileSystemResource
@@ -39,11 +40,14 @@ class BookService(
     }
 
     fun importDiscoveredFile(filePath: Path, sourceType: String, sourceId: Long?, actorId: Long?): BookDetailView {
+        // Import flow is format-driven: detect the compile-time plugin first, then persist
+        // the canonical book record, file source metadata, and the reader manifest/index excerpt.
         val plugin = pluginRegistryService.findPluginFor(filePath.fileName.toString())
             ?: throw IllegalArgumentException("No plugin available for file ${filePath.fileName}")
         val fileHash = sha256(filePath)
         val existing = findBookByHash(fileHash)
         if (existing != null) {
+            // A repeated NAS scan should revive an existing source path instead of creating duplicates.
             if (sourceId != null) {
                 jdbcClient.sql(
                     """
@@ -57,7 +61,7 @@ class BookService(
                 )
                     .param("sourceId", sourceId)
                     .param("sourcePath", filePath.toAbsolutePath().toString())
-                    .param("updatedAt", Instant.now())
+                    .param("updatedAt", Instant.now().toSqlTimestamp())
                     .param("fileId", existing.fileId)
                     .update()
             }
@@ -78,7 +82,7 @@ class BookService(
             .param("title", metadata.title)
             .param("author", metadata.author)
             .param("description", metadata.description)
-            .param("now", now)
+            .param("now", now.toSqlTimestamp())
             .query(Long::class.java)
             .single()
 
@@ -103,7 +107,7 @@ class BookService(
             .param("sourcePath", filePath.toAbsolutePath().toString())
             .param("format", filePath.fileName.toString().substringAfterLast('.', "bin").lowercase())
             .param("fileSize", Files.size(filePath))
-            .param("now", now)
+            .param("now", now.toSqlTimestamp())
             .query(Long::class.java)
             .single()
 
@@ -123,7 +127,7 @@ class BookService(
             .param("manifestJson", manifestJson)
             .param("onlineReadable", plugin.capabilities.any { it.name == "READ_ONLINE" })
             .param("indexExcerpt", plugin.extractIndexableContent(filePath)?.text?.take(10_000))
-            .param("now", now)
+            .param("now", now.toSqlTimestamp())
             .update()
 
         jdbcClient.sql(
@@ -139,7 +143,7 @@ class BookService(
             .param("sourceId", sourceId)
             .param("fileId", fileId)
             .param("message", "Imported by ${plugin.pluginId}")
-            .param("now", now)
+            .param("now", now.toSqlTimestamp())
             .update()
 
         if (actorId != null) {
@@ -228,7 +232,7 @@ class BookService(
             .param("userId", userId)
             .param("bookId", bookId)
             .param("grantedBy", grantedBy)
-            .param("grantedAt", Instant.now())
+            .param("grantedAt", Instant.now().toSqlTimestamp())
             .update()
     }
 
@@ -253,7 +257,7 @@ class BookService(
         )
             .param("sourceId", sourceId)
             .param("sourcePath", sourcePath)
-            .param("updatedAt", Instant.now())
+            .param("updatedAt", Instant.now().toSqlTimestamp())
             .update()
     }
 
@@ -311,6 +315,8 @@ class BookService(
 
     private fun ResultSet.toBookDetailView(): BookDetailView {
         val manifestJson = getString("manifest_json")
+        // The manifest stays JSON in storage so every plugin can emit its own reader-specific
+        // navigation structure without forcing a rigid relational schema.
         val manifest = manifestJson?.let {
             objectMapper.readValue(it, object : TypeReference<Map<String, Any>>() {})
         }
@@ -360,4 +366,3 @@ class BookService(
         val fileId: Long,
     )
 }
-

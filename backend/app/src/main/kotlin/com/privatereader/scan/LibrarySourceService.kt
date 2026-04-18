@@ -3,6 +3,7 @@ package com.privatereader.scan
 import com.privatereader.books.BookService
 import com.privatereader.books.CreateLibrarySourceRequest
 import com.privatereader.books.LibrarySourceView
+import com.privatereader.common.toSqlTimestamp
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service
@@ -26,7 +27,7 @@ class LibrarySourceService(
             .param("name", request.name)
             .param("rootPath", request.rootPath)
             .param("enabled", request.enabled)
-            .param("now", Instant.now())
+            .param("now", Instant.now().toSqlTimestamp())
             .query(Long::class.java)
             .single()
         return LibrarySourceView(id = id, name = request.name, rootPath = request.rootPath, enabled = request.enabled, lastScanAt = null)
@@ -63,6 +64,8 @@ class LibrarySourceService(
 
         val seenPaths = mutableSetOf<String>()
         var imported = 0
+        // The watcher is intentionally simple and native-friendly: periodic filesystem walking,
+        // plugin-based import, and missing-file marking without runtime plugin loading.
         Files.walk(rootPath).use { paths ->
             paths.filter { Files.isRegularFile(it) }
                 .forEach { path ->
@@ -82,8 +85,8 @@ class LibrarySourceService(
         }
 
         jdbcClient.sql("update library_sources set last_scan_at = :lastScanAt, updated_at = :updatedAt where id = :sourceId")
-            .param("lastScanAt", Instant.now())
-            .param("updatedAt", Instant.now())
+            .param("lastScanAt", Instant.now().toSqlTimestamp())
+            .param("updatedAt", Instant.now().toSqlTimestamp())
             .param("sourceId", sourceId)
             .update()
         return mapOf("sourceId" to source.id, "imported" to imported, "missingMarked" to (tracked - seenPaths).size)
@@ -103,4 +106,3 @@ class LibrarySourceService(
         val enabled: Boolean,
     )
 }
-

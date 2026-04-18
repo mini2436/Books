@@ -1,6 +1,7 @@
 package com.privatereader.pluginruntime
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.privatereader.common.toSqlTimestamp
 import com.privatereader.plugin.BookFormatPlugin
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Service
@@ -32,6 +33,8 @@ class PluginRegistryService(
         plugins.firstOrNull { plugin -> plugin.supportedExtensions.any { filename.endsWith(".$it", ignoreCase = true) } }
 
     fun syncRegistry() {
+        // Persist the compile-time plugin registry so the admin UI can expose the active scanner
+        // capabilities without relying on runtime classpath scanning.
         plugins.forEach { plugin ->
             jdbcClient.sql(
                 """
@@ -48,9 +51,8 @@ class PluginRegistryService(
                 .param("displayName", plugin.displayName)
                 .param("extensions", objectMapper.writeValueAsString(plugin.supportedExtensions))
                 .param("capabilities", objectMapper.writeValueAsString(plugin.capabilities.map { it.name }))
-                .param("updatedAt", Instant.now())
+                .param("updatedAt", Instant.now().toSqlTimestamp())
                 .update()
         }
     }
 }
-

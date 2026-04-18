@@ -23,6 +23,12 @@ Private Reader is a self-hosted multi-user ebook platform with:
 3. Start the web client with Node.js 20+.
 4. Point the mobile shell at the web build or a hosted frontend.
 
+## Documentation
+
+- [运行文档](/C:/Users/mini2436/Project/Ai/Private/docs/运行文档.md)
+- [接口文档](/C:/Users/mini2436/Project/Ai/Private/docs/接口文档.md)
+- [基础设施说明](/C:/Users/mini2436/Project/Ai/Private/infra/README.md)
+
 Frontend helper script:
 
 - [infra/scripts/build-web.ps1](/C:/Users/mini2436/Project/Ai/Private/infra/scripts/build-web.ps1)

@@ -1,0 +1,35 @@
+spring:
+  application:
+    name: private-reader
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/private_reader}
+    username: ${SPRING_DATASOURCE_USERNAME:reader}
+    password: ${SPRING_DATASOURCE_PASSWORD:reader}
+  sql:
+    init:
+      mode: always
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+  rabbitmq:
+    host: ${SPRING_RABBITMQ_HOST:localhost}
+    port: ${SPRING_RABBITMQ_PORT:5672}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+app:
+  storage-root: ${APP_STORAGE_ROOT:storage}
+  scan-root: ${APP_SCAN_ROOT:storage/nas}
+  bootstrap-admin-username: ${APP_BOOTSTRAP_ADMIN_USERNAME:admin}
+  bootstrap-admin-password: ${APP_BOOTSTRAP_ADMIN_PASSWORD:admin12345}
+  access-token-ttl-minutes: 120
+  refresh-token-ttl-days: 30
+

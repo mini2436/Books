@@ -1,0 +1,17 @@
+{
+  "name": "private-reader-mobile",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "echo \"Run the web build first, then sync with Capacitor.\"",
+    "sync": "npx cap sync"
+  },
+  "dependencies": {
+    "@capacitor/android": "7.1.0",
+    "@capacitor/app": "7.0.1",
+    "@capacitor/cli": "7.1.0",
+    "@capacitor/core": "7.1.0",
+    "@capacitor/ios": "7.1.0"
+  }
+}
+

@@ -1,0 +1,63 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: private_reader
+      POSTGRES_USER: reader
+      POSTGRES_PASSWORD: reader
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: app/Dockerfile
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      APP_STORAGE_ROOT: /workspace/storage
+      APP_SCAN_ROOT: /workspace/storage/nas
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/private_reader
+      SPRING_DATASOURCE_USERNAME: reader
+      SPRING_DATASOURCE_PASSWORD: reader
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_RABBITMQ_HOST: rabbitmq
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+    volumes:
+      - ./:/workspace
+    ports:
+      - "8080:8080"
+
+  web:
+    image: node:20-alpine
+    working_dir: /workspace/web
+    command: sh -lc "npm install && npm run dev"
+    volumes:
+      - ./:/workspace
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8080
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+
+volumes:
+  postgres-data:
+

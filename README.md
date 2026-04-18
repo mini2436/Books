@@ -13,6 +13,7 @@ Private Reader is a self-hosted multi-user ebook platform with:
 - `backend/` Spring Boot multi-module project
 - `web/` Next.js app shell
 - `mobile/` Capacitor shell
+- `infra/` infrastructure notes, SQL scripts, and helper scripts
 - `docker-compose.yml` local development stack
 
 ## Quick start
@@ -22,6 +23,19 @@ Private Reader is a self-hosted multi-user ebook platform with:
 3. Start the web client with Node.js 20+.
 4. Point the mobile shell at the web build or a hosted frontend.
 
+Frontend helper script:
+
+- [infra/scripts/build-web.ps1](/C:/Users/mini2436/Project/Ai/Private/infra/scripts/build-web.ps1)
+
+## Middleware and database setup
+
+Local development middleware is already defined in [docker-compose.yml](/C:/Users/mini2436/Project/Ai/Private/docker-compose.yml), so PostgreSQL, Redis, and RabbitMQ do not need separate manual installation if Docker is available.
+
+Operator-facing SQL scripts live in:
+
+- [infra/database/001_schema.sql](/C:/Users/mini2436/Project/Ai/Private/infra/database/001_schema.sql)
+- [infra/database/010_seed_dev.sql](/C:/Users/mini2436/Project/Ai/Private/infra/database/010_seed_dev.sql)
+
 ## Native-ready backend notes
 
 The backend is built with Spring Boot 3 and follows AOT-friendly constraints:
@@ -30,4 +44,3 @@ The backend is built with Spring Boot 3 and follows AOT-friendly constraints:
 - Compile-time module registration for format plugins
 - Explicit DTOs and SQL-backed repositories
 - Dual build pipeline for JVM and native image outputs
-

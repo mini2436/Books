@@ -1,0 +1,1127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>EPUB 阅读器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/epub.js/0.3.93/epub.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #1a1a1a;
+            --text-color: #e5e5e5;
+            --secondary-text: #a3a3a3;
+            --accent-color: #f59e0b;
+            --sidebar-bg: #262626;
+            --border-color: #404040;
+            --highlight-bg: rgba(245, 158, 11, 0.3);
+            --selection-bg: rgba(245, 158, 11, 0.5);
+        }
+
+        .theme-light {
+            --bg-color: #faf9f6;
+            --text-color: #2d2d2d;
+            --secondary-text: #6b7280;
+            --accent-color: #d97706;
+            --sidebar-bg: #ffffff;
+            --border-color: #e5e7eb;
+            --highlight-bg: rgba(217, 119, 6, 0.2);
+            --selection-bg: rgba(217, 119, 6, 0.4);
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Noto Serif SC', serif;
+            transition: background-color 0.3s, color 0.3s;
+            overflow: hidden;
+        }
+
+        /* 阅读区域样式 */
+        #reader-container {
+            height: 100vh;
+            width: 100vw;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #book-view {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+
+        iframe {
+            border: none;
+            background: transparent !important;
+        }
+
+        /* 自定义滚动条 */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--secondary-text);
+        }
+
+        /* 工具栏动画 */
+        .toolbar {
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+
+        .toolbar.hidden {
+            transform: translateY(-100%);
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .bottom-toolbar.hidden {
+            transform: translateY(100%);
+        }
+
+        /* 侧边栏动画 */
+        .sidebar {
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            background-color: var(--sidebar-bg);
+        }
+
+        .sidebar.closed {
+            transform: translateX(-100%);
+        }
+
+        .sidebar-right {
+            transform: translateX(100%);
+        }
+        .sidebar-right.open {
+            transform: translateX(0);
+        }
+
+        /* 目录项样式 */
+        .toc-item {
+            transition: all 0.2s;
+            border-left: 3px solid transparent;
+        }
+        .toc-item:hover {
+            background-color: rgba(245, 158, 11, 0.1);
+            border-left-color: var(--accent-color);
+            padding-left: 1.25rem;
+        }
+        .toc-item.active {
+            background-color: rgba(245, 158, 11, 0.15);
+            border-left-color: var(--accent-color);
+            color: var(--accent-color);
+        }
+
+        /* 批注高亮 */
+        .annotation-highlight {
+            background-color: var(--highlight-bg);
+            border-bottom: 2px solid var(--accent-color);
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .annotation-highlight:hover {
+            background-color: var(--selection-bg);
+        }
+
+        /* 批注卡片 */
+        .annotation-card {
+            transition: all 0.2s;
+            border-left: 3px solid var(--accent-color);
+        }
+        .annotation-card:hover {
+            transform: translateX(4px);
+            background-color: rgba(245, 158, 11, 0.05);
+        }
+
+        /* 选中工具栏 */
+        .selection-toolbar {
+            position: absolute;
+            background: var(--sidebar-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            display: none;
+            z-index: 1000;
+            padding: 8px;
+            gap: 8px;
+            animation: popIn 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        @keyframes popIn {
+            from { transform: scale(0.9); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+
+        /* 进度条 */
+        .progress-bar {
+            background: linear-gradient(to right, var(--accent-color) 0%, var(--accent-color) var(--progress), transparent var(--progress));
+            height: 2px;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 50;
+        }
+
+        /* 加载动画 */
+        .loader {
+            border: 3px solid var(--border-color);
+            border-top: 3px solid var(--accent-color);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* 翻页区域 */
+        .tap-zone {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 33%;
+            z-index: 10;
+            cursor: pointer;
+        }
+        .tap-zone-left { left: 0; }
+        .tap-zone-center { 
+            left: 33%; 
+            right: 33%; 
+            width: auto;
+            cursor: default;
+        }
+        .tap-zone-right { right: 0; }
+
+        /* 字体大小调节 */
+        .font-size-btn {
+            transition: all 0.2s;
+        }
+        .font-size-btn:hover {
+            background-color: var(--accent-color);
+            color: white;
+        }
+
+        /* 主题切换按钮 */
+        .theme-btn {
+            transition: all 0.2s;
+        }
+        .theme-btn.active {
+            background-color: var(--accent-color);
+            color: white;
+            border-color: var(--accent-color);
+        }
+
+        /* 响应式调整 */
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 85vw;
+            }
+            .toc-item {
+                padding: 0.875rem 1rem;
+            }
+        }
+
+        /* 批注输入框 */
+        .annotation-input {
+            background: var(--bg-color);
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            resize: none;
+            font-family: 'Inter', sans-serif;
+        }
+        .annotation-input:focus {
+            outline: none;
+            border-color: var(--accent-color);
+        }
+
+        /* 书籍封面占位 */
+        .book-cover {
+            background: linear-gradient(135deg, #2d2d2d 0%, #1a1a1a 100%);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+        }
+        .theme-light .book-cover {
+            background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <!-- 初始上传界面 -->
+    <div id="upload-screen" class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[var(--bg-color)] transition-opacity duration-500">
+        <div class="text-center space-y-8 p-8 max-w-md w-full">
+            <div class="book-cover w-48 h-64 mx-auto rounded-lg flex items-center justify-center mb-8 relative overflow-hidden group cursor-pointer">
+                <div class="absolute inset-0 bg-gradient-to-br from-amber-500/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                <svg class="w-16 h-16 text-[var(--secondary-text)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
+                </svg>
+            </div>
+            <h1 class="text-3xl font-bold text-[var(--text-color)] mb-2">EPUB 阅读器</h1>
+            <p class="text-[var(--secondary-text)] mb-8">支持批注、目录导航、多设备适配</p>
+            
+            <label class="relative group cursor-pointer block">
+                <input type="file" id="file-input" accept=".epub" class="hidden">
+                <div class="border-2 border-dashed border-[var(--border-color)] rounded-xl p-8 transition-all group-hover:border-[var(--accent-color)] group-hover:bg-[var(--accent-color)]/5">
+                    <svg class="w-12 h-12 mx-auto text-[var(--secondary-text)] mb-4 group-hover:text-[var(--accent-color)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                    </svg>
+                    <p class="text-[var(--text-color)] font-medium">点击或拖拽上传 EPUB 文件</p>
+                    <p class="text-sm text-[var(--secondary-text)] mt-2">支持 .epub 格式</p>
+                </div>
+            </label>
+
+            <button onclick="loadDemoBook()" class="mt-6 text-[var(--accent-color)] hover:underline text-sm">
+                加载示例书籍（明朝那些事儿）
+            </button>
+        </div>
+    </div>
+
+    <!-- 主阅读器界面 -->
+    <div id="reader-ui" class="hidden opacity-0 transition-opacity duration-500">
+        
+        <!-- 顶部工具栏 -->
+        <header class="toolbar fixed top-0 left-0 right-0 z-40 bg-[var(--bg-color)]/90 border-b border-[var(--border-color)] px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-4">
+                <button onclick="toggleSidebar()" class="p-2 hover:bg-[var(--border-color)] rounded-lg transition-colors" title="目录">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                    </svg>
+                </button>
+                <h2 id="book-title" class="font-semibold text-lg truncate max-w-[200px] md:max-w-md">未加载书籍</h2>
+            </div>
+            
+            <div class="flex items-center gap-2">
+                <button onclick="toggleAnnotations()" class="p-2 hover:bg-[var(--border-color)] rounded-lg transition-colors relative" title="批注">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"></path>
+                    </svg>
+                    <span id="annotation-badge" class="absolute top-1 right-1 w-2 h-2 bg-[var(--accent-color)] rounded-full hidden"></span>
+                </button>
+                <button onclick="toggleSettings()" class="p-2 hover:bg-[var(--border-color)] rounded-lg transition-colors" title="设置">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path>
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- 左侧目录栏 -->
+        <aside id="sidebar-left" class="sidebar closed fixed left-0 top-0 bottom-0 w-80 z-30 border-r border-[var(--border-color)] pt-16 flex flex-col shadow-2xl">
+            <div class="p-4 border-b border-[var(--border-color)]">
+                <h3 class="font-semibold text-lg">目录</h3>
+            </div>
+            <div id="toc-container" class="flex-1 overflow-y-auto p-2 space-y-1">
+                <!-- 动态生成目录 -->
+            </div>
+        </aside>
+
+        <!-- 右侧批注栏 -->
+        <aside id="sidebar-right" class="sidebar sidebar-right fixed right-0 top-0 bottom-0 w-96 z-30 border-l border-[var(--border-color)] pt-16 flex flex-col shadow-2xl bg-[var(--sidebar-bg)]">
+            <div class="p-4 border-b border-[var(--border-color)] flex justify-between items-center">
+                <h3 class="font-semibold text-lg">我的批注</h3>
+                <button onclick="exportAnnotations()" class="text-sm text-[var(--accent-color)] hover:underline">导出</button>
+            </div>
+            <div id="annotations-container" class="flex-1 overflow-y-auto p-4 space-y-3">
+                <div class="text-center text-[var(--secondary-text)] mt-8">
+                    <svg class="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path>
+                    </svg>
+                    <p>选中文本即可添加批注</p>
+                </div>
+            </div>
+        </aside>
+
+        <!-- 设置面板 -->
+        <div id="settings-panel" class="hidden fixed top-16 right-4 z-50 bg-[var(--sidebar-bg)] border border-[var(--border-color)] rounded-xl shadow-2xl p-6 w-80">
+            <h4 class="font-semibold mb-4 text-sm uppercase tracking-wider text-[var(--secondary-text)]">阅读设置</h4>
+            
+            <div class="space-y-6">
+                <!-- 主题 -->
+                <div>
+                    <label class="text-sm text-[var(--secondary-text)] mb-2 block">主题</label>
+                    <div class="flex gap-2">
+                        <button onclick="setTheme('dark')" class="theme-btn flex-1 py-2 px-3 rounded-lg border border-[var(--border-color)] text-sm active" data-theme="dark">深色</button>
+                        <button onclick="setTheme('light')" class="theme-btn flex-1 py-2 px-3 rounded-lg border border-[var(--border-color)] text-sm" data-theme="light">浅色</button>
+                        <button onclick="setTheme('sepia')" class="theme-btn flex-1 py-2 px-3 rounded-lg border border-[var(--border-color)] text-sm" data-theme="sepia"> sepia</button>
+                    </div>
+                </div>
+
+                <!-- 字体大小 -->
+                <div>
+                    <label class="text-sm text-[var(--secondary-text)] mb-2 block">字号 <span id="font-size-display" class="ml-2 text-[var(--text-color)]">18px</span></label>
+                    <div class="flex items-center gap-3">
+                        <button onclick="changeFontSize(-2)" class="font-size-btn w-10 h-10 rounded-lg border border-[var(--border-color)] flex items-center justify-center text-lg">A-</button>
+                        <div class="flex-1 h-2 bg-[var(--border-color)] rounded-full relative">
+                            <div id="font-size-bar" class="absolute left-0 top-0 h-full bg-[var(--accent-color)] rounded-full transition-all" style="width: 50%"></div>
+                        </div>
+                        <button onclick="changeFontSize(2)" class="font-size-btn w-10 h-10 rounded-lg border border-[var(--border-color)] flex items-center justify-center text-lg font-bold">A+</button>
+                    </div>
+                </div>
+
+                <!-- 字体 -->
+                <div>
+                    <label class="text-sm text-[var(--secondary-text)] mb-2 block">字体</label>
+                    <select onchange="changeFont(this.value)" class="w-full bg-[var(--bg-color)] border border-[var(--border-color)] rounded-lg px-3 py-2 text-[var(--text-color)] focus:border-[var(--accent-color)] outline-none">
+                        <option value="'Noto Serif SC', serif">思源宋体</option>
+                        <option value="'Inter', sans-serif">无衬线体</option>
+                        <option value="Georgia, serif">Georgia</option>
+                        <option value="monospace">等宽字体</option>
+                    </select>
+                </div>
+
+                <!-- 行间距 -->
+                <div>
+                    <label class="text-sm text-[var(--secondary-text)] mb-2 block">行间距</label>
+                    <div class="flex gap-2">
+                        <button onclick="setLineHeight(1.4)" class="flex-1 py-2 rounded-lg border border-[var(--border-color)] text-sm hover:border-[var(--accent-color)]">紧凑</button>
+                        <button onclick="setLineHeight(1.8)" class="flex-1 py-2 rounded-lg border border-[var(--border-color)] text-sm hover:border-[var(--accent-color)] border-[var(--accent-color)]">适中</button>
+                        <button onclick="setLineHeight(2.2)" class="flex-1 py-2 rounded-lg border border-[var(--border-color)] text-sm hover:border-[var(--accent-color)]">宽松</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 阅读区域 -->
+        <main class="relative h-screen w-full pt-14 pb-12">
+            <div id="book-view" class="w-full h-full px-4 md:px-8 lg:px-16 overflow-hidden"></div>
+            
+            <!-- 点击区域 -->
+            <div class="tap-zone tap-zone-left" onclick="prevPage()"></div>
+            <div class="tap-zone tap-zone-center" onclick="toggleToolbar()"></div>
+            <div class="tap-zone tap-zone-right" onclick="nextPage()"></div>
+
+            <!-- 选中工具栏 -->
+            <div id="selection-toolbar" class="selection-toolbar flex items-center">
+                <button onclick="highlightSelection()" class="p-2 hover:bg-[var(--border-color)] rounded-lg text-[var(--accent-color)]" title="高亮">
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                    </svg>
+                </button>
+                <button onclick="addAnnotation()" class="p-2 hover:bg-[var(--border-color)] rounded-lg text-[var(--accent-color)]" title="批注">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                    </svg>
+                </button>
+                <button onclick="copySelection()" class="p-2 hover:bg-[var(--border-color)] rounded-lg" title="复制">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                    </svg>
+                </button>
+                <div class="w-px h-6 bg-[var(--border-color)] mx-1"></div>
+                <button onclick="clearSelection()" class="p-2 hover:bg-[var(--border-color)] rounded-lg text-[var(--secondary-text)]">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- 批注输入框 -->
+            <div id="annotation-input-box" class="hidden fixed z-50 bg-[var(--sidebar-bg)] border border-[var(--border-color)] rounded-xl shadow-2xl p-4 w-80">
+                <div class="text-sm text-[var(--secondary-text)] mb-2">添加批注</div>
+                <textarea id="annotation-text" class="annotation-input w-full h-24 rounded-lg p-3 text-sm mb-3" placeholder="写下你的想法..."></textarea>
+                <div class="flex justify-end gap-2">
+                    <button onclick="cancelAnnotation()" class="px-4 py-2 text-sm text-[var(--secondary-text)] hover:text-[var(--text-color)]">取消</button>
+                    <button onclick="saveAnnotation()" class="px-4 py-2 text-sm bg-[var(--accent-color)] text-white rounded-lg hover:bg-amber-600">保存</button>
+                </div>
+            </div>
+        </main>
+
+        <!-- 底部工具栏 -->
+        <footer class="bottom-toolbar toolbar fixed bottom-0 left-0 right-0 z-40 bg-[var(--bg-color)]/90 border-t border-[var(--border-color)] px-6 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-4 text-sm text-[var(--secondary-text)]">
+                <span id="current-location">第 1 页</span>
+                <span class="text-[var(--border-color)]">|</span>
+                <span id="progress-percent">0%</span>
+            </div>
+            
+            <div class="flex items-center gap-4">
+                <button onclick="prevPage()" class="p-2 hover:bg-[var(--border-color)] rounded-lg transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+                    </svg>
+                </button>
+                <button onclick="nextPage()" class="p-2 hover:bg-[var(--border-color)] rounded-lg transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                    </svg>
+                </button>
+            </div>
+        </footer>
+
+        <!-- 进度条 -->
+        <div class="progress-bar" style="--progress: 0%"></div>
+
+        <!-- 加载指示器 -->
+        <div id="loading" class="hidden fixed inset-0 z-50 bg-[var(--bg-color)]/90 flex items-center justify-center">
+            <div class="loader"></div>
+        </div>
+    </div>
+
+    <script>
+        // 全局变量
+        let book = null;
+        let rendition = null;
+        let currentLocation = null;
+        let annotations = [];
+        let selectedRange = null;
+        let currentTheme = 'dark';
+        let fontSize = 18;
+        let isToolbarVisible = true;
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            initFileUpload();
+            initKeyboardShortcuts();
+            initSelectionHandler();
+        });
+
+        // 文件上传处理
+        function initFileUpload() {
+            const fileInput = document.getElementById('file-input');
+            const uploadScreen = document.getElementById('upload-screen');
+            
+            fileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) loadBook(file);
+            });
+
+            // 拖拽支持
+            uploadScreen.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                uploadScreen.querySelector('.border-dashed').classList.add('border-[var(--accent-color)]', 'bg-[var(--accent-color)]/5');
+            });
+
+            uploadScreen.addEventListener('dragleave', () => {
+                uploadScreen.querySelector('.border-dashed').classList.remove('border-[var(--accent-color)]', 'bg-[var(--accent-color)]/5');
+            });
+
+            uploadScreen.addEventListener('drop', (e) => {
+                e.preventDefault();
+                const file = e.dataTransfer.files[0];
+                if (file && file.name.endsWith('.epub')) {
+                    loadBook(file);
+                }
+            });
+        }
+
+        // 加载示例书籍（使用 Blob 模拟）
+        async function loadDemoBook() {
+            showLoading(true);
+            // 模拟加载延迟
+            setTimeout(() => {
+                // 创建一个简单的内嵌 EPUB 结构用于演示
+                const demoHtml = `
+                    <html xmlns="http://www.w3.org/1999/xhtml">
+                    <head><title>明朝那些事儿</title></head>
+                    <body style="padding: 40px; line-height: 1.8;">
+                        <h1 style="font-size: 2em; margin-bottom: 1em;">第一章 童年</h1>
+                        <p style="margin-bottom: 1em; text-indent: 2em;">
+                            我们从一份档案开始。
+                        </p>
+                        <p style="margin-bottom: 1em; text-indent: 2em;">
+                            <strong>姓名：</strong>朱元璋<br/>
+                            <strong>别名（外号）：</strong>朱重八、朱国瑞<br/>
+                            <strong>性别：</strong>男<br/>
+                            <strong>民族：</strong>汉<br/>
+                            <strong>血型：</strong>？<br/>
+                            <strong>学历：</strong>无文凭，秀才举人进士统统的不是，后曾自学过<br/>
+                            <strong>职业：</strong>皇帝<br/>
+                            <strong>家庭出身：</strong>贫农（至少三代）<br/>
+                            <strong>生卒年：</strong>1328—1398<br/>
+                            <strong>最喜欢的颜色：</strong>黄色（这个好像没得选）
+                        </p>
+                        <p style="margin-bottom: 1em; text-indent: 2em;">
+                            <strong>社会关系：</strong><br/>
+                            父亲：朱五四 农民<br/>
+                            母亲：陈氏 农民（不好意思，史书中好像没有她的名字）
+                        </p>
+                        <p style="margin-bottom: 1em; text-indent: 2em;">
+                            <strong>座右铭：</strong>你的就是我的，我的还是我的
+                        </p>
+                        <p style="margin-bottom: 1em; text-indent: 2em;">
+                            <strong>主要经历：</strong><br/>
+                            1328年—1344年 放牛<br/>
+                            1344年—1347年 做和尚，主要工作是出去讨饭（这个……）<br/>
+                            1347年—1352年 做和尚，主要工作是撞钟<br/>
+                            1352年—1368年 造反（这个猛）<br/>
+                            1368年—1398年 主要工作是做皇帝
+                        </p>
+                        <p style="margin-bottom: 1em; text-indent: 2em;">
+                            一切的事情都从1328年的那个夜晚开始。农民朱五四的妻子陈氏生下了一个男婴，大家都知道了，这个男婴就是后来的朱元璋。
+                        </p>
+                        <p style="margin-bottom: 1em; text-indent: 2em;">
+                            大凡皇帝出世，后来的史书上都会有一些类似的怪象记载，比如刮风啊，下暴雨啊，冒香气啊，天上星星闪啊，到处放红光啊，反正就是要告诉你，这个人和别人不一样。朱元璋先生也不例外，他出生时，红光满地，夜间房屋中出现异光，以致于邻居以为失火了，跑来相救。
+                        </p>
+                        <p style="margin-bottom: 1em; text-indent: 2em;">
+                            然而当时农民朱五四的心情并不像今天我们在医院产房外看到的那些焦急中带着喜悦的父亲们，作为已经有了三个儿子、两个女儿的父亲而言，首先要考虑的是吃饭问题。
+                        </p>
+                        <p style="margin-bottom: 1em; text-indent: 2em;">
+                            农民朱五四的工作由两部分构成。他有一个豆腐店，但主要还是要靠种地主家的土地讨生活，这就决定了作为这个劳动家庭的一员，要活下去只能不停的干活。
+                        </p>
+                        <p style="margin-bottom: 1em; text-indent: 2em;">
+                            在朱五四的儿子出生一个月后，为他取了一个名字：朱重八。
+                        </p>
+                        <p style="margin-bottom: 1em; text-indent: 2em;">
+                            这个名字也可以叫做朱八八，我们这里再介绍一下，朱重八家族的名字，都很有特点。
+                        </p>
+                        <p style="margin-bottom: 1em; text-indent: 2em;">
+                            朱重八高祖名字：朱百六；<br/>
+                            朱重八曾祖名字：朱四九；<br/>
+                            朱重八祖父名字：朱初一；<br/>
+                            他的父亲我们介绍过了，叫朱五四。
+                        </p>
+                        <p style="margin-bottom: 1em; text-indent: 2em;">
+                            取这样的名字不是因为朱家是搞数学的，而是因为在元朝，老百姓如果不能上学和当官就没有名字，只能以父母年龄相加或者出生的日期命名。（登记户口的人一定会眼花）
+                        </p>
+                        <p style="margin-bottom: 1em; text-indent: 2em;">
+                            朱重八的童年在一间冬凉夏暖、四面通风、采光良好的破茅草屋里度过，他的主要工作是为地主刘德家放牛。他曾经很想读书，可是朱五四是付不起学费的，他没有李密牛角挂书那样的情操，自然也没有杨素那样的大官来赏识他，于是，他很老实的帮刘德放了十二年的牛。
+                        </p>
+                        <p style="margin-bottom: 1em; text-indent: 2em;">
+                            因为，他要吃饭。
+                        </p>
+                        <p style="margin-bottom: 1em; text-indent: 2em;">
+                            在此时，朱重八的梦想是好好的活下去，到十六岁的时候，托村口的吴老太作媒，找一个手脚勤快、能干活的姑娘当媳妇，然后生下自己的儿女，儿女的名字可能是朱三二、或者朱四零，等到朱三二当了爹，再取个媳妇，生个儿子叫朱五六，这就叫传宗接代。
+                        </p>
+                        <p style="margin-bottom: 1em; text-indent: 2em;">
+                            按照当时的标准，朱重八的梦想是实现不了的，他本来也要在这间破茅草屋里度过自己的一生，但历史就偏偏选中了他。
+                        </p>
+                        <p style="margin-bottom: 1em; text-indent: 2em;">
+                            至正四年（1344）到来了，这一年刚开始，元帝国的头头脑脑们就收到了两个消息。首先是黄河泛滥了，沿岸山东河南几十万人沦为难民。其次是淮河沿岸遭遇严重瘟疫和旱灾，死人无数。
+                        </p>
+                        <p style="margin-bottom: 1em; text-indent: 2em;">
+                            朱重八的四个亲人（父亲、母亲、大哥、大哥的儿子）在这场灾难中死去了，只剩下了一个二哥。由于家里没钱，他甚至连买棺材的钱都没有，更谈不上买坟地埋葬亲人了。
+                        </p>
+                        <p style="margin-bottom: 1em; text-indent: 2em;">
+                            朱重八没有办法，只能和他的二哥用草席盖着亲人的尸体，然后拿门板抬着到处走，希望能够找到一个地方埋葬父母。可是天下虽大，到处都是土地，却没有一块是属于他们的。
+                        </p>
+                        <p style="margin-bottom: 1em; text-indent: 2em;">
+                            幸好有好心人给了他们一块坟地，他们终于埋葬了父母。在痛哭一场后，朱重八和他的二哥分别了，二哥守着父母的坟地，朱重八开始了他的流浪生涯。
+                        </p>
+                        <p style="margin-bottom: 1em; text-indent: 2em;">
+                            朱重八去的地方是皇觉寺，这里是他的第一个工作场所，但很快，由于饥荒过于严重，所有的和尚都要出去化缘，其实也就是讨饭。寺院的人给每个和尚发了一个钵，一只木鱼，然后叫他们出去要饭。
+                        </p>
+                        <p style="margin-bottom: 1em; text-indent: 2em;">
+                            朱重八被指派的地点是在淮西和河南，这里也是饥荒的主要地带，谁能化给他呢？
+                        </p>
+                        <p style="margin-bottom: 1em; text-indent: 2em;">
+                            然而，就是从这样一个开始，从那个破钵开始，从那个连家都没有、父母双亡的孤儿开始，朱重八开始了他传奇的一生。
+                        </p>
+                    </body>
+                    </html>
+                `;
+
+                // 创建模拟书籍
+                const blob = new Blob([demoHtml], { type: 'text/html' });
+                const url = URL.createObjectURL(blob);
+                
+                // 使用简单的 iframe 渲染模拟书籍
+                initSimpleReader(url, '明朝那些事儿（示例）');
+                showLoading(false);
+            }, 1000);
+        }
+
+        // 简单阅读器（用于演示）
+        function initSimpleReader(url, title) {
+            document.getElementById('upload-screen').classList.add('opacity-0', 'pointer-events-none');
+            document.getElementById('reader-ui').classList.remove('hidden');
+            setTimeout(() => document.getElementById('reader-ui').classList.remove('opacity-0'), 100);
+            
+            document.getElementById('book-title').textContent = title;
+            
+            const view = document.getElementById('book-view');
+            view.innerHTML = `<iframe src="${url}" style="width:100%;height:100%;border:none;background:transparent;"></iframe>`;
+            
+            // 生成模拟目录
+            const tocContainer = document.getElementById('toc-container');
+            tocContainer.innerHTML = `
+                <div class="toc-item active p-3 rounded-lg cursor-pointer text-sm" onclick="scrollToChapter(0)">
+                    第一章 童年
+                </div>
+                <div class="toc-item p-3 rounded-lg cursor-pointer text-sm text-[var(--secondary-text)]" onclick="alert('这是演示版本，仅展示第一章内容')">
+                    第二章 灾难
+                </div>
+                <div class="toc-item p-3 rounded-lg cursor-pointer text-sm text-[var(--secondary-text)]" onclick="alert('这是演示版本，仅展示第一章内容')">
+                    第三章 踏上征途
+                </div>
+                <div class="toc-item p-3 rounded-lg cursor-pointer text-sm text-[var(--secondary-text)]" onclick="alert('这是演示版本，仅展示第一章内容')">
+                    第四章 就从这里起步
+                </div>
+            `;
+
+            // 设置样式
+            applyReaderStyles();
+        }
+
+        // 加载真实 EPUB
+        function loadBook(file) {
+            showLoading(true);
+            
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const bookData = e.target.result;
+                
+                try {
+                    book = ePub(bookData);
+                    
+                    book.loaded.metadata.then((meta) => {
+                        document.getElementById('book-title').textContent = meta.title || '未知书籍';
+                    });
+
+                    book.loaded.navigation.then((nav) => {
+                        renderToc(nav.toc);
+                    });
+
+                    // 渲染书籍
+                    rendition = book.renderTo('book-view', {
+                        width: '100%',
+                        height: '100%',
+                        spread: 'auto',
+                        flow: 'paginated'
+                    });
+
+                    rendition.display();
+                    
+                    // 事件监听
+                    rendition.on('relocated', (location) => {
+                        currentLocation = location;
+                        updateProgress(location);
+                    });
+
+                    rendition.on('selected', (cfiRange, contents) => {
+                        handleSelection(cfiRange, contents);
+                    });
+
+                    // 切换界面
+                    document.getElementById('upload-screen').classList.add('opacity-0', 'pointer-events-none');
+                    document.getElementById('reader-ui').classList.remove('hidden');
+                    setTimeout(() => document.getElementById('reader-ui').classList.remove('opacity-0'), 100);
+                    
+                    showLoading(false);
+                    applyReaderStyles();
+
+                } catch (err) {
+                    alert('加载书籍失败：' + err.message);
+                    showLoading(false);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        // 渲染目录
+        function renderToc(toc) {
+            const container = document.getElementById('toc-container');
+            container.innerHTML = '';
+            
+            function createTocItem(item, level = 0) {
+                const div = document.createElement('div');
+                div.className = `toc-item p-3 rounded-lg cursor-pointer text-sm ${level > 0 ? 'pl-' + (4 + level * 4) : ''}`;
+                div.style.paddingLeft = `${1 + level * 0.5}rem`;
+                div.textContent = item.label;
+                div.onclick = () => {
+                    if (rendition) {
+                        rendition.display(item.href);
+                        toggleSidebar(false);
+                    }
+                };
+                container.appendChild(div);
+                
+                if (item.subitems) {
+                    item.subitems.forEach(sub => createTocItem(sub, level + 1));
+                }
+            }
+            
+            toc.forEach(item => createTocItem(item));
+        }
+
+        // 工具栏控制
+        function toggleToolbar() {
+            const header = document.querySelector('header');
+            const footer = document.querySelector('footer');
+            isToolbarVisible = !isToolbarVisible;
+            
+            if (isToolbarVisible) {
+                header.classList.remove('hidden');
+                footer.classList.remove('hidden');
+            } else {
+                header.classList.add('hidden');
+                footer.classList.add('hidden');
+            }
+        }
+
+        function toggleSidebar(force) {
+            const sidebar = document.getElementById('sidebar-left');
+            const isClosed = sidebar.classList.contains('closed');
+            const shouldClose = force !== undefined ? !force : !isClosed;
+            
+            if (shouldClose) {
+                sidebar.classList.add('closed');
+            } else {
+                sidebar.classList.remove('closed');
+            }
+        }
+
+        function toggleAnnotations() {
+            const sidebar = document.getElementById('sidebar-right');
+            sidebar.classList.toggle('open');
+        }
+
+        function toggleSettings() {
+            const panel = document.getElementById('settings-panel');
+            panel.classList.toggle('hidden');
+        }
+
+        // 翻页控制
+        function prevPage() {
+            if (rendition) rendition.prev();
+            else {
+                const iframe = document.querySelector('#book-view iframe');
+                if (iframe) iframe.contentWindow.scrollBy(0, -window.innerHeight + 100);
+            }
+        }
+
+        function nextPage() {
+            if (rendition) rendition.next();
+            else {
+                const iframe = document.querySelector('#book-view iframe');
+                if (iframe) iframe.contentWindow.scrollBy(0, window.innerHeight - 100);
+            }
+        }
+
+        // 进度更新
+        function updateProgress(location) {
+            const percent = Math.floor(location.percentage * 100);
+            document.getElementById('progress-percent').textContent = percent + '%';
+            document.querySelector('.progress-bar').style.setProperty('--progress', percent + '%');
+            document.getElementById('current-location').textContent = 
+                `第 ${location.location.current} / ${location.location.total} 页`;
+        }
+
+        // 选中文本处理
+        function initSelectionHandler() {
+            document.addEventListener('selectionchange', () => {
+                const selection = window.getSelection();
+                if (selection.toString().trim().length > 0) {
+                    showSelectionToolbar(selection);
+                } else {
+                    hideSelectionToolbar();
+                }
+            });
+
+            // 点击其他地方关闭工具栏
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('.selection-toolbar') && !e.target.closest('#annotation-input-box')) {
+                    // 延迟检查，确保不是选中文本的操作
+                    setTimeout(() => {
+                        const selection = window.getSelection();
+                        if (selection.toString().trim().length === 0) {
+                            hideSelectionToolbar();
+                            document.getElementById('annotation-input-box').classList.add('hidden');
+                        }
+                    }, 100);
+                }
+            });
+        }
+
+        function showSelectionToolbar(selection) {
+            const toolbar = document.getElementById('selection-toolbar');
+            const range = selection.getRangeAt(0);
+            const rect = range.getBoundingClientRect();
+            
+            // 保存选中范围
+            selectedRange = range.cloneRange();
+            
+            // 定位工具栏
+            const toolbarWidth = 200;
+            let left = rect.left + (rect.width / 2) - (toolbarWidth / 2);
+            let top = rect.top - 50;
+            
+            // 边界检查
+            if (left < 10) left = 10;
+            if (left + toolbarWidth > window.innerWidth - 10) left = window.innerWidth - toolbarWidth - 10;
+            if (top < 60) top = rect.bottom + 10;
+            
+            toolbar.style.left = left + 'px';
+            toolbar.style.top = top + 'px';
+            toolbar.style.display = 'flex';
+        }
+
+        function hideSelectionToolbar() {
+            document.getElementById('selection-toolbar').style.display = 'none';
+        }
+
+        function clearSelection() {
+            window.getSelection().removeAllRanges();
+            hideSelectionToolbar();
+        }
+
+        // 批注功能
+        function highlightSelection() {
+            if (!selectedRange) return;
+            
+            const span = document.createElement('span');
+            span.className = 'annotation-highlight';
+            span.dataset.id = Date.now();
+            
+            try {
+                selectedRange.surroundContents(span);
+                saveAnnotationToStorage({
+                    id: span.dataset.id,
+                    type: 'highlight',
+                    text: selectedRange.toString(),
+                    cfi: selectedRange.toString(),
+                    timestamp: new Date().toISOString()
+                });
+                updateAnnotationList();
+                clearSelection();
+            } catch (e) {
+                alert('无法高亮此选区，请尝试选择更简单的文本');
+            }
+        }
+
+        function addAnnotation() {
+            const inputBox = document.getElementById('annotation-input-box');
+            const toolbar = document.getElementById('selection-toolbar');
+            const rect = toolbar.getBoundingClientRect();
+            
+            inputBox.style.left = rect.left + 'px';
+            inputBox.style.top = (rect.top + 60) + 'px';
+            inputBox.classList.remove('hidden');
+            
+            document.getElementById('annotation-text').focus();
+            hideSelectionToolbar();
+        }
+
+        function cancelAnnotation() {
+            document.getElementById('annotation-input-box').classList.add('hidden');
+            document.getElementById('annotation-text').value = '';
+            clearSelection();
+        }
+
+        function saveAnnotation() {
+            const text = document.getElementById('annotation-text').value.trim();
+            if (!text) return;
+            
+            const annotation = {
+                id: Date.now(),
+                type: 'note',
+                selectedText: selectedRange ? selectedRange.toString() : '',
+                note: text,
+                cfi: selectedRange ? selectedRange.toString() : '',
+                timestamp: new Date().toISOString(),
+                chapter: document.getElementById('book-title').textContent
+            };
+            
+            // 添加高亮
+            if (selectedRange) {
+                const span = document.createElement('span');
+                span.className = 'annotation-highlight';
+                span.dataset.annotationId = annotation.id;
+                span.title = text;
+                
+                try {
+                    selectedRange.surroundContents(span);
+                } catch (e) {
+                    console.log('无法包围选区');
+                }
+            }
+            
+            annotations.push(annotation);
+            updateAnnotationList();
+            cancelAnnotation();
+            
+            // 显示徽章
+            document.getElementById('annotation-badge').classList.remove('hidden');
+        }
+
+        function updateAnnotationList() {
+            const container = document.getElementById('annotations-container');
+            
+            if (annotations.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center text-[var(--secondary-text)] mt-8">
+                        <svg class="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path>
+                        </svg>
+                        <p>选中文本即可添加批注</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = annotations.map(ann => `
+                <div class="annotation-card bg-[var(--bg-color)] p-4 rounded-lg cursor-pointer" onclick="jumpToAnnotation('${ann.id}')">
+                    <div class="text-xs text-[var(--accent-color)] mb-2 font-medium">
+                        ${new Date(ann.timestamp).toLocaleDateString()} · ${ann.chapter || '当前章节'}
+                    </div>
+                    ${ann.selectedText ? `<div class="text-sm text-[var(--secondary-text)] mb-2 line-clamp-2">"${ann.selectedText}"</div>` : ''}
+                    <div class="text-sm text-[var(--text-color)]">${ann.note || '高亮标记'}</div>
+                    <button onclick="deleteAnnotation(event, '${ann.id}')" class="mt-2 text-xs text-red-400 hover:text-red-300">删除</button>
+                </div>
+            `).join('');
+        }
+
+        function deleteAnnotation(e, id) {
+            e.stopPropagation();
+            annotations = annotations.filter(a => a.id != id);
+            updateAnnotationList();
+            
+            // 移除高亮
+            const span = document.querySelector(`[data-annotation-id="${id}"]`);
+            if (span) {
+                const parent = span.parentNode;
+                parent.replaceChild(document.createTextNode(span.textContent), span);
+                parent.normalize();
+            }
+        }
+
+        function jumpToAnnotation(id) {
+            // 实际实现中需要根据CFI定位
+            alert('跳转到批注位置（演示功能）');
+        }
+
+        function exportAnnotations() {
+            if (annotations.length === 0) {
+                alert('暂无批注可导出');
+                return;
+            }
+            
+            const data = JSON.stringify(annotations, null, 2);
+            const blob = new Blob([data], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `批注_${document.getElementById('book-title').textContent}_${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+        }
+
+        // 阅读设置
+        function setTheme(theme) {
+            currentTheme = theme;
+            document.body.className = theme === 'light' ? 'theme-light antialiased' : 
+                                     theme === 'sepia' ? 'theme-sepia antialiased' : 'antialiased';
+            
+            // 更新按钮状态
+            document.querySelectorAll('.theme-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.theme === theme);
+            });
+            
+            applyReaderStyles();
+        }
+
+        function changeFontSize(delta) {
+            fontSize = Math.max(12, Math.min(32, fontSize + delta));
+            document.getElementById('font-size-display').textContent = fontSize + 'px';
+            document.getElementById('font-size-bar').style.width = ((fontSize - 12) / 20 * 100) + '%';
+            applyReaderStyles();
+        }
+
+        function changeFont(font) {
+            document.body.style.fontFamily = font;
+            applyReaderStyles();
+        }
+
+        function setLineHeight(height) {
+            if (rendition) {
+                rendition.themes.default({ 'p': { 'line-height': height } });
+            }
+            applyReaderStyles();
+        }
+
+        function applyReaderStyles() {
+            // 应用样式到 iframe 内容
+            const style = `
+                body {
+                    font-size: ${fontSize}px !important;
+                    line-height: 1.8 !important;
+                    font-family: ${document.body.style.fontFamily || "'Noto Serif SC', serif"} !important;
+                    color: ${getComputedStyle(document.body).getPropertyValue('--text-color')} !important;
+                    background: transparent !important;
+                }
+                p {
+                    text-indent: 2em !important;
+                    margin-bottom: 1em !important;
+                }
+                ::selection {
+                    background: ${getComputedStyle(document.body).getPropertyValue('--selection-bg')} !important;
+                }
+            `;
+            
+            // 如果是简单阅读器模式，直接注入样式
+            const iframe = document.querySelector('#book-view iframe');
+            if (iframe && iframe.contentDocument) {
+                let styleEl = iframe.contentDocument.getElementById('reader-style');
+                if (!styleEl) {
+                    styleEl = iframe.contentDocument.createElement('style');
+                    styleEl.id = 'reader-style';
+                    iframe.contentDocument.head.appendChild(styleEl);
+                }
+                styleEl.textContent = style;
+            }
+            
+            if (rendition) {
+                rendition.themes.register('custom', {
+                    'body': {
+                        'font-size': fontSize + 'px',
+                        'font-family': document.body.style.fontFamily || "'Noto Serif SC', serif",
+                        'line-height': '1.8',
+                        'color': getComputedStyle(document.body).getPropertyValue('--text-color')
+                    }
+                });
+                rendition.themes.select('custom');
+            }
+        }
+
+        // 键盘快捷键
+        function initKeyboardShortcuts() {
+            document.addEventListener('keydown', (e) => {
+                if (e.target.tagName === 'TEXTAREA') return;
+                
+                switch(e.key) {
+                    case 'ArrowLeft':
+                    case 'PageUp':
+                        prevPage();
+                        break;
+                    case 'ArrowRight':
+                    case 'PageDown':
+                    case ' ':
+                        nextPage();
+                        break;
+                    case 'Escape':
+                        toggleSidebar(false);
+                        document.getElementById('sidebar-right').classList.remove('open');
+                        document.getElementById('settings-panel').classList.add('hidden');
+                        break;
+                }
+            });
+        }
+
+        function showLoading(show) {
+            document.getElementById('loading').classList.toggle('hidden', !show);
+        }
+
+        // 点击外部关闭设置面板
+        document.addEventListener('click', (e) => {
+            const settings = document.getElementById('settings-panel');
+            const settingsBtn = e.target.closest('button[onclick="toggleSettings()"]');
+            if (!settings.contains(e.target) && !settingsBtn) {
+                settings.classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>

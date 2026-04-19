@@ -77,6 +77,86 @@ export type UserSummary = {
   enabled: boolean;
 };
 
+export type AnnotationView = {
+  id: number;
+  bookId: number;
+  quoteText: string | null;
+  noteText: string | null;
+  color: string | null;
+  anchor: string;
+  version: number;
+  deleted: boolean;
+  updatedAt: string;
+};
+
+export type BookmarkView = {
+  id: number;
+  bookId: number;
+  location: string;
+  label: string | null;
+  deleted: boolean;
+  updatedAt: string;
+};
+
+export type ReadingProgressView = {
+  bookId: number;
+  location: string;
+  progressPercent: number;
+  updatedAt: string;
+};
+
+export type AnnotationMutation = {
+  clientTempId?: string;
+  annotationId?: number;
+  bookId: number;
+  action: "CREATE" | "UPDATE" | "DELETE";
+  quoteText?: string | null;
+  noteText?: string | null;
+  color?: string | null;
+  anchor: string;
+  baseVersion?: number;
+  updatedAt: string;
+};
+
+export type BookmarkMutation = {
+  bookmarkId?: number;
+  bookId: number;
+  action: "CREATE" | "UPDATE" | "DELETE";
+  location: string;
+  label?: string | null;
+  updatedAt: string;
+};
+
+export type ReadingProgressMutation = {
+  bookId: number;
+  location: string;
+  progressPercent: number;
+  updatedAt: string;
+};
+
+export type SyncPushRequest = {
+  annotations?: AnnotationMutation[];
+  bookmarks?: BookmarkMutation[];
+  progresses?: ReadingProgressMutation[];
+};
+
+export type SyncPushResponse = {
+  annotationMappings: Record<string, number>;
+  conflicts: Array<{
+    entityType: string;
+    entityId: number;
+    message: string;
+    serverAnnotation?: AnnotationView | null;
+  }>;
+};
+
+export type SyncPullResponse = {
+  cursor: number;
+  annotations: AnnotationView[];
+  bookmarks: BookmarkView[];
+  progresses: ReadingProgressView[];
+};
+
 export type SourceScanSummary = {
   sourceId: number;
   imported: number;
@@ -147,6 +227,29 @@ export class ApiClient {
     return response.blob();
   }
 
+  async downloadMyBookCover(bookId: number): Promise<Blob | null> {
+    const session = getStoredSession();
+    const headers = new Headers();
+    if (session) {
+      headers.set("Authorization", `Bearer ${session.accessToken}`);
+    }
+
+    const response = await fetch(`${this.baseUrl}/api/me/books/${bookId}/cover`, {
+      headers,
+      cache: "no-store",
+    });
+
+    if (response.status === 204 || response.status === 404) {
+      return null;
+    }
+
+    if (!response.ok) {
+      throw new Error(await readErrorMessage(response));
+    }
+
+    return response.blob();
+  }
+
   async listPlugins(): Promise<PluginSummary[]> {
     return this.request<PluginSummary[]>("/api/admin/plugins");
   }
@@ -193,6 +296,33 @@ export class ApiClient {
     return this.request<{ success: boolean }>(`/api/admin/books/${bookId}/grants`, {
       method: "POST",
       body: JSON.stringify({ userId }),
+    });
+  }
+
+  async listAnnotations(bookId: number): Promise<AnnotationView[]> {
+    return this.request<AnnotationView[]>(`/api/me/books/${bookId}/annotations`);
+  }
+
+  async listBookmarks(bookId: number): Promise<BookmarkView[]> {
+    return this.request<BookmarkView[]>(`/api/me/books/${bookId}/bookmarks`);
+  }
+
+  async putProgress(bookId: number, input: ReadingProgressMutation): Promise<ReadingProgressView> {
+    return this.request<ReadingProgressView>(`/api/me/books/${bookId}/progress`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
+  }
+
+  async pullSync(cursor?: number): Promise<SyncPullResponse> {
+    const suffix = typeof cursor === "number" ? `?cursor=${cursor}` : "";
+    return this.request<SyncPullResponse>(`/api/me/sync/pull${suffix}`);
+  }
+
+  async pushSync(input: SyncPushRequest): Promise<SyncPushResponse> {
+    return this.request<SyncPushResponse>("/api/me/sync/push", {
+      method: "POST",
+      body: JSON.stringify(input),
     });
   }
 }

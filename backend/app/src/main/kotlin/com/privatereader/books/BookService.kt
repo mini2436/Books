@@ -2,14 +2,17 @@ package com.privatereader.books
 
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.privatereader.auth.AuthRepository
 import com.privatereader.auth.UserPrincipal
 import com.privatereader.common.toSqlTimestamp
 import com.privatereader.config.AppProperties
 import com.privatereader.pluginruntime.PluginRegistryService
+import org.springframework.core.io.ByteArrayResource
 import org.springframework.core.io.FileSystemResource
 import org.springframework.http.MediaType
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.multipart.MultipartFile
 import java.nio.file.Files
 import java.nio.file.Path
@@ -26,6 +29,7 @@ class BookService(
     private val pluginRegistryService: PluginRegistryService,
     private val objectMapper: ObjectMapper,
     private val appProperties: AppProperties,
+    private val authRepository: AuthRepository,
 ) {
     fun uploadBook(file: MultipartFile, actor: UserPrincipal): BookDetailView {
         require(!file.isEmpty) { "Uploaded file must not be empty" }
@@ -41,39 +45,27 @@ class BookService(
         return importDiscoveredFile(target, "MANAGED_UPLOAD", null, actor.id)
     }
 
+    @Transactional
     fun importDiscoveredFile(filePath: Path, sourceType: String, sourceId: Long?, actorId: Long?): BookDetailView {
         // Import flow is format-driven: detect the compile-time plugin first, then persist
         // the canonical book record, file source metadata, and the reader manifest/index excerpt.
         val plugin = pluginRegistryService.findPluginFor(filePath.fileName.toString())
             ?: throw IllegalArgumentException("No plugin available for file ${filePath.fileName}")
         val fileHash = sha256(filePath)
+        val preparedImport = prepareImport(filePath, plugin)
         val existing = findBookByHash(fileHash)
         if (existing != null) {
             // A repeated NAS scan should revive an existing source path instead of creating duplicates.
-            if (sourceId != null) {
-                jdbcClient.sql(
-                    """
-                    update book_files
-                    set source_missing = false,
-                        source_id = :sourceId,
-                        source_path = :sourcePath,
-                        updated_at = :updatedAt
-                    where id = :fileId
-                    """.trimIndent(),
-                )
-                    .param("sourceId", sourceId)
-                    .param("sourcePath", filePath.toAbsolutePath().toString())
-                    .param("updatedAt", Instant.now().toSqlTimestamp())
-                    .param("fileId", existing.fileId)
-                    .update()
+            refreshExistingFileReference(existing.fileId, filePath, sourceType, sourceId, preparedImport.format)
+            reconcileExistingImport(existing.bookId, filePath, preparedImport)
+            insertImportJob(existing.bookId, sourceId, existing.fileId, "Reused existing import from ${plugin.pluginId}")
+            if (actorId != null) {
+                grantBook(existing.bookId, actorId, actorId)
             }
             return getBookDetail(existing.bookId)
         }
 
         val now = Instant.now()
-        val metadata = plugin.extractMetadata(filePath)
-        val manifestJson = plugin.buildManifest(filePath)?.let { objectMapper.writeValueAsString(it) }
-        val capabilitiesJson = objectMapper.writeValueAsString(plugin.capabilities.map { it.name })
         val bookId = jdbcClient.sql(
             """
             insert into books (title, author, description, created_at, updated_at)
@@ -81,9 +73,9 @@ class BookService(
             returning id
             """.trimIndent(),
         )
-            .param("title", metadata.title)
-            .param("author", metadata.author)
-            .param("description", metadata.description)
+            .param("title", preparedImport.metadata.title)
+            .param("author", preparedImport.metadata.author)
+            .param("description", preparedImport.metadata.description)
             .param("now", now.toSqlTimestamp())
             .query(Long::class.java)
             .single()
@@ -107,46 +99,14 @@ class BookService(
             .param("sourceType", sourceType)
             .param("sourceId", sourceId)
             .param("sourcePath", filePath.toAbsolutePath().toString())
-            .param("format", filePath.fileName.toString().substringAfterLast('.', "bin").lowercase())
+            .param("format", preparedImport.format)
             .param("fileSize", Files.size(filePath))
             .param("now", now.toSqlTimestamp())
             .query(Long::class.java)
             .single()
 
-        jdbcClient.sql(
-            """
-            insert into book_formats (
-                book_id, plugin_id, format, capabilities_json, manifest_json, online_readable, index_excerpt, created_at, updated_at
-            ) values (
-                :bookId, :pluginId, :format, :capabilitiesJson, :manifestJson, :onlineReadable, :indexExcerpt, :now, :now
-            )
-            """.trimIndent(),
-        )
-            .param("bookId", bookId)
-            .param("pluginId", plugin.pluginId)
-            .param("format", filePath.fileName.toString().substringAfterLast('.', "bin").lowercase())
-            .param("capabilitiesJson", capabilitiesJson)
-            .param("manifestJson", manifestJson)
-            .param("onlineReadable", plugin.capabilities.any { it.name == "READ_ONLINE" })
-            .param("indexExcerpt", plugin.extractIndexableContent(filePath)?.text?.take(10_000))
-            .param("now", now.toSqlTimestamp())
-            .update()
-
-        jdbcClient.sql(
-            """
-            insert into import_jobs (
-                book_id, source_id, file_id, status, message, created_at, updated_at
-            ) values (
-                :bookId, :sourceId, :fileId, 'COMPLETED', :message, :now, :now
-            )
-            """.trimIndent(),
-        )
-            .param("bookId", bookId)
-            .param("sourceId", sourceId)
-            .param("fileId", fileId)
-            .param("message", "Imported by ${plugin.pluginId}")
-            .param("now", now.toSqlTimestamp())
-            .update()
+        upsertBookFormat(bookId, preparedImport)
+        insertImportJob(bookId, sourceId, fileId, "Imported by ${plugin.pluginId}")
 
         if (actorId != null) {
             grantBook(bookId, actorId, actorId)
@@ -155,8 +115,25 @@ class BookService(
         return getBookDetail(bookId)
     }
 
-    fun listAccessibleBooks(userId: Long): List<BookView> =
-        jdbcClient.sql(
+    fun listAccessibleBooks(userId: Long): List<BookView> {
+        if (hasGlobalLibraryAccess(userId)) {
+            return jdbcClient.sql(
+                """
+                select b.id, b.title, b.author, b.description, bf.plugin_id, bf.format, bf.source_type, bf.source_missing, b.updated_at
+                from books b
+                join book_files bf on bf.book_id = b.id
+                where bf.id = (
+                    select max(inner_bf.id) from book_files inner_bf
+                    where inner_bf.book_id = b.id
+                )
+                order by b.updated_at desc, b.id desc
+                """.trimIndent(),
+            )
+                .query { rs, _ -> rs.toBookView(granted = true) }
+                .list()
+        }
+
+        return jdbcClient.sql(
             """
             select b.id, b.title, b.author, b.description, bf.plugin_id, bf.format, bf.source_type, bf.source_missing, b.updated_at
             from books b
@@ -166,21 +143,9 @@ class BookService(
             """.trimIndent(),
         )
             .param("userId", userId)
-            .query { rs, _ ->
-                BookView(
-                    id = rs.getLong("id"),
-                    title = rs.getString("title"),
-                    author = rs.getString("author"),
-                    description = rs.getString("description"),
-                    pluginId = rs.getString("plugin_id"),
-                    format = rs.getString("format"),
-                    sourceType = rs.getString("source_type"),
-                    granted = true,
-                    sourceMissing = rs.getBoolean("source_missing"),
-                    updatedAt = rs.getTimestamp("updated_at").toInstant().toString(),
-                )
-            }
+            .query { rs, _ -> rs.toBookView(granted = true) }
             .list()
+    }
 
     fun listAdminBooks(): List<AdminBookView> =
         jdbcClient.sql(
@@ -222,25 +187,22 @@ class BookService(
 
     fun getBookFile(userId: Long, bookId: Long): FileSystemResource {
         require(hasAccess(userId, bookId)) { "Book access denied" }
-        val path = jdbcClient.sql(
-            """
-            select storage_path from book_files
-            where book_id = :bookId
-            order by id desc
-            limit 1
-            """.trimIndent(),
+        return FileSystemResource(resolveBookFileRef(bookId).storagePath)
+    }
+
+    fun getBookCover(userId: Long, bookId: Long): BookCoverResource? {
+        require(hasAccess(userId, bookId)) { "Book access denied" }
+        val fileRef = resolveBookFileRef(bookId)
+        val plugin = pluginRegistryService.findPluginById(fileRef.pluginId) ?: return null
+        val cover = plugin.extractCover(Path.of(fileRef.storagePath)) ?: return null
+        return BookCoverResource(
+            mimeType = cover.mimeType,
+            resource = ByteArrayResource(cover.bytes),
         )
-            .param("bookId", bookId)
-            .query(String::class.java)
-            .single()
-        return FileSystemResource(path)
     }
 
     fun resolveMediaType(bookId: Long): MediaType {
-        val format = jdbcClient.sql("select format from book_files where book_id = :bookId order by id desc limit 1")
-            .param("bookId", bookId)
-            .query(String::class.java)
-            .single()
+        val format = resolveBookFileRef(bookId).format
         return when (format.lowercase()) {
             "epub" -> MediaType("application", "epub+zip")
             "pdf" -> MediaType.APPLICATION_PDF
@@ -314,8 +276,11 @@ class BookService(
             }
             .list()
 
-    private fun hasAccess(userId: Long, bookId: Long): Boolean =
-        jdbcClient.sql(
+    private fun hasAccess(userId: Long, bookId: Long): Boolean {
+        if (hasGlobalLibraryAccess(userId)) {
+            return true
+        }
+        return jdbcClient.sql(
             """
             select count(*) from user_book_access
             where user_id = :userId and book_id = :bookId
@@ -325,6 +290,24 @@ class BookService(
             .param("bookId", bookId)
             .query(Long::class.java)
             .single() > 0
+    }
+
+    private fun hasGlobalLibraryAccess(userId: Long): Boolean =
+        authRepository.findUserById(userId)?.role in setOf("SUPER_ADMIN", "LIBRARIAN")
+
+    private fun ResultSet.toBookView(granted: Boolean): BookView =
+        BookView(
+            id = getLong("id"),
+            title = getString("title"),
+            author = getString("author"),
+            description = getString("description"),
+            pluginId = getString("plugin_id"),
+            format = getString("format"),
+            sourceType = getString("source_type"),
+            granted = granted,
+            sourceMissing = getBoolean("source_missing"),
+            updatedAt = getTimestamp("updated_at").toInstant().toString(),
+        )
 
     private fun getBookDetail(bookId: Long): BookDetailView =
         jdbcClient.sql(
@@ -365,6 +348,142 @@ class BookService(
         )
     }
 
+    private fun prepareImport(filePath: Path, plugin: com.privatereader.plugin.BookFormatPlugin): PreparedImport {
+        val metadata = plugin.extractMetadata(filePath)
+        val manifestJson = plugin.buildManifest(filePath)?.let { objectMapper.writeValueAsString(it) }
+        val capabilitiesJson = objectMapper.writeValueAsString(plugin.capabilities.map { it.name })
+        return PreparedImport(
+            metadata = metadata,
+            format = filePath.fileName.toString().substringAfterLast('.', "bin").lowercase(),
+            pluginId = plugin.pluginId,
+            capabilitiesJson = capabilitiesJson,
+            manifestJson = manifestJson,
+            onlineReadable = plugin.capabilities.any { it.name == "READ_ONLINE" },
+            indexExcerpt = plugin.extractIndexableContent(filePath)?.text?.take(10_000),
+        )
+    }
+
+    private fun refreshExistingFileReference(
+        fileId: Long,
+        filePath: Path,
+        sourceType: String,
+        sourceId: Long?,
+        format: String,
+    ) {
+        jdbcClient.sql(
+            """
+            update book_files
+            set storage_path = :storagePath,
+                source_type = :sourceType,
+                source_id = :sourceId,
+                source_path = :sourcePath,
+                format = :format,
+                file_size = :fileSize,
+                source_missing = false,
+                updated_at = :updatedAt
+            where id = :fileId
+            """.trimIndent(),
+        )
+            .param("storagePath", filePath.toAbsolutePath().toString())
+            .param("sourceType", sourceType)
+            .param("sourceId", sourceId)
+            .param("sourcePath", filePath.toAbsolutePath().toString())
+            .param("format", format)
+            .param("fileSize", Files.size(filePath))
+            .param("updatedAt", Instant.now().toSqlTimestamp())
+            .param("fileId", fileId)
+            .update()
+    }
+
+    private fun reconcileExistingImport(bookId: Long, filePath: Path, preparedImport: PreparedImport) {
+        jdbcClient.sql(
+            """
+            update books
+            set title = :title,
+                author = :author,
+                description = :description,
+                updated_at = :updatedAt
+            where id = :bookId
+            """.trimIndent(),
+        )
+            .param("title", preparedImport.metadata.title)
+            .param("author", preparedImport.metadata.author)
+            .param("description", preparedImport.metadata.description)
+            .param("updatedAt", Instant.now().toSqlTimestamp())
+            .param("bookId", bookId)
+            .update()
+
+        upsertBookFormat(bookId, preparedImport)
+    }
+
+    private fun upsertBookFormat(bookId: Long, preparedImport: PreparedImport) {
+        val updated = jdbcClient.sql(
+            """
+            update book_formats
+            set plugin_id = :pluginId,
+                format = :format,
+                capabilities_json = :capabilitiesJson,
+                manifest_json = :manifestJson,
+                online_readable = :onlineReadable,
+                index_excerpt = :indexExcerpt,
+                updated_at = :updatedAt
+            where book_id = :bookId
+            """.trimIndent(),
+        )
+            .param("pluginId", preparedImport.pluginId)
+            .param("format", preparedImport.format)
+            .param("capabilitiesJson", preparedImport.capabilitiesJson)
+            .param("manifestJson", preparedImport.manifestJson)
+            .param("onlineReadable", preparedImport.onlineReadable)
+            .param("indexExcerpt", preparedImport.indexExcerpt)
+            .param("updatedAt", Instant.now().toSqlTimestamp())
+            .param("bookId", bookId)
+            .update()
+
+        if (updated > 0) {
+            return
+        }
+
+        val now = Instant.now()
+        jdbcClient.sql(
+            """
+            insert into book_formats (
+                book_id, plugin_id, format, capabilities_json, manifest_json, online_readable, index_excerpt, created_at, updated_at
+            ) values (
+                :bookId, :pluginId, :format, :capabilitiesJson, :manifestJson, :onlineReadable, :indexExcerpt, :now, :now
+            )
+            """.trimIndent(),
+        )
+            .param("bookId", bookId)
+            .param("pluginId", preparedImport.pluginId)
+            .param("format", preparedImport.format)
+            .param("capabilitiesJson", preparedImport.capabilitiesJson)
+            .param("manifestJson", preparedImport.manifestJson)
+            .param("onlineReadable", preparedImport.onlineReadable)
+            .param("indexExcerpt", preparedImport.indexExcerpt)
+            .param("now", now.toSqlTimestamp())
+            .update()
+    }
+
+    private fun insertImportJob(bookId: Long, sourceId: Long?, fileId: Long, message: String) {
+        val now = Instant.now()
+        jdbcClient.sql(
+            """
+            insert into import_jobs (
+                book_id, source_id, file_id, status, message, created_at, updated_at
+            ) values (
+                :bookId, :sourceId, :fileId, 'COMPLETED', :message, :now, :now
+            )
+            """.trimIndent(),
+        )
+            .param("bookId", bookId)
+            .param("sourceId", sourceId)
+            .param("fileId", fileId)
+            .param("message", message)
+            .param("now", now.toSqlTimestamp())
+            .update()
+    }
+
     private fun findBookByHash(hash: String): ExistingBookRef? =
         jdbcClient.sql(
             """
@@ -377,6 +496,25 @@ class BookService(
             .query { rs, _ -> ExistingBookRef(bookId = rs.getLong("book_id"), fileId = rs.getLong("id")) }
             .optional()
             .orElse(null)
+
+    private fun resolveBookFileRef(bookId: Long): BookFileRef =
+        jdbcClient.sql(
+            """
+            select storage_path, plugin_id, format from book_files
+            where book_id = :bookId
+            order by id desc
+            limit 1
+            """.trimIndent(),
+        )
+            .param("bookId", bookId)
+            .query { rs, _ ->
+                BookFileRef(
+                    storagePath = rs.getString("storage_path"),
+                    pluginId = rs.getString("plugin_id"),
+                    format = rs.getString("format"),
+                )
+            }
+            .single()
 
     private fun sha256(path: Path): String {
         val digest = MessageDigest.getInstance("SHA-256")
@@ -394,5 +532,26 @@ class BookService(
     private data class ExistingBookRef(
         val bookId: Long,
         val fileId: Long,
+    )
+
+    data class BookCoverResource(
+        val mimeType: String,
+        val resource: ByteArrayResource,
+    )
+
+    private data class BookFileRef(
+        val storagePath: String,
+        val pluginId: String,
+        val format: String,
+    )
+
+    private data class PreparedImport(
+        val metadata: com.privatereader.plugin.BookMetadata,
+        val format: String,
+        val pluginId: String,
+        val capabilitiesJson: String,
+        val manifestJson: String?,
+        val onlineReadable: Boolean,
+        val indexExcerpt: String?,
     )
 }

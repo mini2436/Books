@@ -22,7 +22,7 @@ class SecurityConfig(
             .cors(Customizer.withDefaults())
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             .authorizeHttpRequests {
-                it.requestMatchers("/actuator/health", "/api/auth/login", "/api/auth/refresh").permitAll()
+                it.requestMatchers("/actuator/health", "/api/auth/login", "/api/auth/refresh", "/error").permitAll()
                     .requestMatchers("/api/admin/**").hasAnyRole("SUPER_ADMIN", "LIBRARIAN")
                     .anyRequest().authenticated()
             }

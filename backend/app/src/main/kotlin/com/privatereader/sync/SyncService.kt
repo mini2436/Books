@@ -161,7 +161,7 @@ class SyncService(
             """.trimIndent(),
         )
             .param("userId", userId)
-            .param("since", since)
+            .param("since", since.toSqlTimestamp())
             .query { rs, _ -> rs.toAnnotationView() }
             .list()
 
@@ -174,7 +174,7 @@ class SyncService(
             """.trimIndent(),
         )
             .param("userId", userId)
-            .param("since", since)
+            .param("since", since.toSqlTimestamp())
             .query { rs, _ -> rs.toBookmarkView() }
             .list()
 
@@ -187,7 +187,7 @@ class SyncService(
             """.trimIndent(),
         )
             .param("userId", userId)
-            .param("since", since)
+            .param("since", since.toSqlTimestamp())
             .query { rs, _ -> rs.toProgressView() }
             .list()
 

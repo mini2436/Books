@@ -32,6 +32,9 @@ class PluginRegistryService(
     fun findPluginFor(filename: String): BookFormatPlugin? =
         plugins.firstOrNull { plugin -> plugin.supportedExtensions.any { filename.endsWith(".$it", ignoreCase = true) } }
 
+    fun findPluginById(pluginId: String): BookFormatPlugin? =
+        plugins.firstOrNull { plugin -> plugin.pluginId == pluginId }
+
     fun syncRegistry() {
         // Persist the compile-time plugin registry so the admin UI can expose the active scanner
         // capabilities without relying on runtime classpath scanning.

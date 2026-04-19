@@ -3,6 +3,7 @@ package com.privatereader.books
 import com.privatereader.auth.UserPrincipal
 import org.springframework.core.io.Resource
 import org.springframework.http.HttpHeaders
+import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.GetMapping
@@ -42,5 +43,16 @@ class ReaderBookController(
             .contentType(bookService.resolveMediaType(bookId))
             .body(resource)
     }
-}
 
+    @GetMapping("/{bookId}/cover")
+    fun downloadCover(
+        @AuthenticationPrincipal principal: UserPrincipal,
+        @PathVariable bookId: Long,
+    ): ResponseEntity<Resource> {
+        val cover = bookService.getBookCover(principal.id, bookId)
+            ?: return ResponseEntity.noContent().build()
+        return ResponseEntity.ok()
+            .contentType(MediaType.parseMediaType(cover.mimeType))
+            .body(cover.resource)
+    }
+}

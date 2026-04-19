@@ -1,40 +1,42 @@
 "use client";
 
 import Link from "next/link";
-import { startTransition, useEffect, useState } from "react";
-import { EpubReader } from "../../components/epub-reader";
-import { ApiClient, type BookDetail, type BookSummary, type ManifestTocItem } from "../../lib/api";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { ApiClient, type BookSummary } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { useI18n } from "../../lib/i18n";
 import { loadOfflineQueueStats } from "../../lib/offline-sync";
 
 const api = new ApiClient(process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080");
 
-function extensionFor(detail: BookDetail | null): string {
-  if (!detail) {
-    return "book";
-  }
-  return detail.format.toLowerCase();
+const shelfPalette = [
+  ["#6b4328", "#8d5a36"],
+  ["#385b6b", "#4d7b8e"],
+  ["#5c3131", "#8a4747"],
+  ["#495b2f", "#67813f"],
+  ["#5a3d6e", "#7f5f9b"],
+  ["#8b5d20", "#b98631"],
+  ["#c7c2ba", "#efe8db"],
+  ["#9c3c34", "#cf6258"],
+];
+
+function coverTitle(title: string): string {
+  return title.replace(/\s+/g, " ").trim();
 }
 
-export default function ReaderAppPage() {
+function coverMonogram(title: string): string {
+  const normalized = title.replace(/[^\p{L}\p{N}]/gu, "");
+  return normalized.slice(0, 2).toUpperCase() || "BK";
+}
+
+export default function BookshelfPage() {
   const { t } = useI18n();
   const { session, status } = useAuth();
   const [books, setBooks] = useState<BookSummary[]>([]);
+  const [coverUrls, setCoverUrls] = useState<Record<number, string | null>>({});
   const [queueSize, setQueueSize] = useState(0);
-  const [shelfError, setShelfError] = useState<string | null>(null);
   const [booksLoading, setBooksLoading] = useState(false);
-  const [selectedBookId, setSelectedBookId] = useState<number | null>(null);
-  const [selectedBookDetail, setSelectedBookDetail] = useState<BookDetail | null>(null);
-  const [readerError, setReaderError] = useState<string | null>(null);
-  const [bookLoading, setBookLoading] = useState(false);
-  const [textContent, setTextContent] = useState<string | null>(null);
-  const [fileBlob, setFileBlob] = useState<Blob | null>(null);
-  const [fileUrl, setFileUrl] = useState<string | null>(null);
-  const [activeLocation, setActiveLocation] = useState<string | null>(null);
-
-  const selectedBook = books.find((book) => book.id === selectedBookId) ?? null;
-  const tocItems = selectedBookDetail?.manifest?.toc ?? [];
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadOfflineQueueStats().then((stats) => setQueueSize(stats.pending));
@@ -43,9 +45,8 @@ export default function ReaderAppPage() {
   useEffect(() => {
     if (!session) {
       setBooks([]);
-      setShelfError(null);
-      setBooksLoading(false);
-      setSelectedBookId(null);
+      setCoverUrls({});
+      setError(null);
       return;
     }
 
@@ -53,30 +54,16 @@ export default function ReaderAppPage() {
 
     async function loadBooks() {
       setBooksLoading(true);
-      setShelfError(null);
-
+      setError(null);
       try {
         const nextBooks = await api.listMyBooks();
-
-        if (cancelled) {
-          return;
+        if (!cancelled) {
+          setBooks(nextBooks);
         }
-
-        setBooks(nextBooks);
-        setSelectedBookId((current) => {
-          if (nextBooks.length === 0) {
-            return null;
-          }
-          if (current && nextBooks.some((book) => book.id === current)) {
-            return current;
-          }
-          return nextBooks[0].id;
-        });
       } catch (reason) {
         if (!cancelled) {
           setBooks([]);
-          setSelectedBookId(null);
-          setShelfError(reason instanceof Error ? reason.message : t("reader.loadBooksFailed"));
+          setError(reason instanceof Error ? reason.message : t("reader.loadBooksFailed"));
         }
       } finally {
         if (!cancelled) {
@@ -86,124 +73,78 @@ export default function ReaderAppPage() {
     }
 
     void loadBooks();
-
     return () => {
       cancelled = true;
     };
   }, [session, t]);
 
   useEffect(() => {
-    if (!session || selectedBookId === null) {
-      setSelectedBookDetail(null);
-      setReaderError(null);
-      setTextContent(null);
-      setFileBlob(null);
-      setFileUrl(null);
-      setActiveLocation(null);
-      setBookLoading(false);
+    if (!session || books.length === 0) {
+      setCoverUrls((current) => {
+        for (const url of Object.values(current)) {
+          if (url) {
+            URL.revokeObjectURL(url);
+          }
+        }
+        return {};
+      });
       return;
     }
 
-    const currentBookId = selectedBookId;
     let cancelled = false;
+    const createdUrls: string[] = [];
 
-    async function loadSelectedBook() {
-      setBookLoading(true);
-      setReaderError(null);
-      setSelectedBookDetail(null);
-      setTextContent(null);
-      setFileBlob(null);
-      setFileUrl(null);
-      setActiveLocation(null);
+    async function loadCovers() {
+      const entries = await Promise.all(
+        books.map(async (book) => {
+          try {
+            const blob = await api.downloadMyBookCover(book.id);
+            if (!blob) {
+              return [book.id, null] as const;
+            }
+            const url = URL.createObjectURL(blob);
+            createdUrls.push(url);
+            return [book.id, url] as const;
+          } catch {
+            return [book.id, null] as const;
+          }
+        }),
+      );
 
-      try {
-        const [detail, blob] = await Promise.all([
-          api.getMyBook(currentBookId),
-          api.downloadMyBookFile(currentBookId),
-        ]);
-
-        if (cancelled) {
-          return;
+      if (cancelled) {
+        for (const url of createdUrls) {
+          URL.revokeObjectURL(url);
         }
-
-        const nextUrl = URL.createObjectURL(blob);
-        const nextText = detail.format.toLowerCase() === "txt" ? await blob.text() : null;
-
-        if (cancelled) {
-          URL.revokeObjectURL(nextUrl);
-          return;
-        }
-
-        setSelectedBookDetail(detail);
-        setFileBlob(blob);
-        setFileUrl(nextUrl);
-        setTextContent(nextText);
-        setActiveLocation(detail.manifest?.primaryLocation ?? null);
-      } catch (reason) {
-        if (!cancelled) {
-          setReaderError(reason instanceof Error ? reason.message : t("reader.loadBookFailed"));
-        }
-      } finally {
-        if (!cancelled) {
-          setBookLoading(false);
-        }
+        return;
       }
+
+      setCoverUrls((current) => {
+        for (const previousUrl of Object.values(current)) {
+          if (previousUrl && !createdUrls.includes(previousUrl)) {
+            URL.revokeObjectURL(previousUrl);
+          }
+        }
+        return Object.fromEntries(entries);
+      });
     }
 
-    void loadSelectedBook();
+    void loadCovers();
 
     return () => {
       cancelled = true;
-    };
-  }, [books, selectedBookId, session, t]);
-
-  useEffect(
-    () => () => {
-      if (fileUrl) {
-        URL.revokeObjectURL(fileUrl);
+      for (const url of createdUrls) {
+        URL.revokeObjectURL(url);
       }
-    },
-    [fileUrl],
-  );
+    };
+  }, [books, session]);
 
-  async function handleRefreshBooks() {
-    if (!session) {
-      return;
+  const shelfRows = useMemo(() => {
+    const rows: BookSummary[][] = [];
+    for (let index = 0; index < books.length; index += 10) {
+      rows.push(books.slice(index, index + 10));
     }
-
-    setBooksLoading(true);
-    setShelfError(null);
-
-    try {
-      const nextBooks = await api.listMyBooks();
-      setBooks(nextBooks);
-      setSelectedBookId((current) => {
-        if (nextBooks.length === 0) {
-          return null;
-        }
-        if (current && nextBooks.some((book) => book.id === current)) {
-          return current;
-        }
-        return nextBooks[0].id;
-      });
-    } catch (reason) {
-      setShelfError(reason instanceof Error ? reason.message : t("reader.loadBooksFailed"));
-    } finally {
-      setBooksLoading(false);
-    }
-  }
-
-  function handleSelectBook(bookId: number) {
-    startTransition(() => {
-      setSelectedBookId(bookId);
-    });
-  }
-
-  function handleJumpToLocation(item: ManifestTocItem) {
-    startTransition(() => {
-      setActiveLocation(item.href);
-    });
-  }
+    return rows;
+  }, [books]);
 
   if (status === "loading") {
     return (
@@ -221,7 +162,7 @@ export default function ReaderAppPage() {
       <main className="grid">
         <section className="hero">
           <h1>{t("reader.title")}</h1>
-          <p className="muted">{t("reader.subtitle")}</p>
+          <p className="muted">{t("reader.bookshelfSubtitle")}</p>
         </section>
         <section className="card auth-card">
           <h2>{t("auth.loginRequired")}</h2>
@@ -237,169 +178,94 @@ export default function ReaderAppPage() {
   }
 
   return (
-    <main className="grid">
-      <section className="hero">
-        <h1>{t("reader.title")}</h1>
-        <p className="muted">{t("reader.subtitle")}</p>
-        <div className="toolbar">
-          <div className="pill">{`${t("reader.queueSize")}: ${queueSize}`}</div>
-          <div className="pill">
-            {selectedBook ? `${t("reader.activeBook")}: ${selectedBook.title}` : t("reader.selectBookPrompt")}
+    <main className="bookshelf-page">
+      <section className="hero bookshelf-hero">
+        <div className="bookshelf-hero-copy">
+          <div className="eyebrow">{t("reader.libraryEyebrow")}</div>
+          <h1>{t("reader.bookshelfTitle")}</h1>
+          <p className="muted">{t("reader.bookshelfSubtitle")}</p>
+        </div>
+        <div className="bookshelf-summary">
+          <div className="admin-summary-card">
+            <span>{t("reader.queueSize")}</span>
+            <strong>{queueSize}</strong>
+          </div>
+          <div className="admin-summary-card">
+            <span>{t("reader.bookshelfCount")}</span>
+            <strong>{books.length}</strong>
           </div>
         </div>
       </section>
 
-      <section className="reader-layout">
-        <aside className="card reader-sidebar">
-          <div className="section-header">
-            <div>
-              <h2>{t("reader.bookshelf")}</h2>
-              <p className="muted compact">{t("reader.bookshelfBody")}</p>
-            </div>
-            <button className="button secondary" type="button" onClick={() => void handleRefreshBooks()} disabled={booksLoading}>
-              {booksLoading ? t("reader.refreshingShelf") : t("reader.refreshShelf")}
-            </button>
+      {error ? <p className="notice error">{error}</p> : null}
+
+      <section className="bookshelf-scene card">
+        <div className="bookshelf-cabinet-top">
+          <button className="bookshelf-cabinet-button" type="button" aria-label={t("reader.refreshShelf")} onClick={() => window.location.reload()} disabled={booksLoading}>
+            {booksLoading ? "..." : "≡"}
+          </button>
+          <div className="bookshelf-cabinet-title">
+            <strong>{t("reader.bookshelf")}</strong>
+            <span>{booksLoading ? t("reader.refreshingShelf") : t("reader.bookshelfBody")}</span>
           </div>
-
-          {shelfError ? <p className="notice error">{shelfError}</p> : null}
-
-          <div className="reader-book-list">
-            {books.length === 0 ? (
-              <div className="reader-empty">{t("reader.noBooks")}</div>
-            ) : (
-              books.map((book) => (
-                <button
-                  key={book.id}
-                  type="button"
-                  className={`reader-book-item${selectedBookId === book.id ? " active" : ""}`}
-                  onClick={() => handleSelectBook(book.id)}
-                >
-                  <div className="reader-book-item-head">
-                    <strong>{book.title}</strong>
-                    <span className="code">{book.format}</span>
-                  </div>
-                  <div className="reader-book-item-meta">
-                    <span>{book.pluginId}</span>
-                    <span>{book.sourceMissing ? t("reader.statusMissing") : t("reader.statusReady")}</span>
-                  </div>
-                </button>
-              ))
-            )}
+          <div className="bookshelf-cabinet-meta">
+            <span>{t("reader.bookshelfCount")}</span>
+            <strong>{books.length}</strong>
           </div>
-        </aside>
+        </div>
 
-        <section className="reader-main">
-          <article className="card reader-detail-card">
-            {selectedBookDetail ? (
-              <>
-                <div className="section-header">
-                  <div>
-                    <h2>{selectedBookDetail.title}</h2>
-                    <p className="muted compact">{selectedBookDetail.author ?? t("common.notAvailable")}</p>
-                  </div>
-                  <div className="toolbar reader-actions">
-                    {fileUrl ? (
-                      <>
-                        <a
-                          className="button secondary"
-                          href={fileUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          {t("reader.openSource")}
-                        </a>
-                        <a
-                          className="button secondary"
-                          href={fileUrl}
-                          download={`${selectedBookDetail.title}.${extensionFor(selectedBookDetail)}`}
-                        >
-                          {t("reader.downloadCopy")}
-                        </a>
-                      </>
-                    ) : null}
-                  </div>
+        {books.length === 0 ? (
+          <div className="bookshelf-empty">{t("reader.noBooks")}</div>
+        ) : (
+          <div className="bookshelf-wood">
+            {shelfRows.map((row, rowIndex) => (
+              <div key={`row-${rowIndex}`} className="shelf-row">
+                <div className="shelf-books">
+                  {row.map((book, index) => {
+                    const [start, end] = shelfPalette[(rowIndex * 8 + index) % shelfPalette.length];
+                    return (
+                      <Link
+                        key={book.id}
+                        className="book-cover"
+                        href={{ pathname: "/app/read", query: { book: String(book.id) } }}
+                        style={
+                          {
+                            "--book-start": start,
+                            "--book-end": end,
+                          } as CSSProperties
+                        }
+                      >
+                        {coverUrls[book.id] ? (
+                          <>
+                            <img className="book-cover-image" src={coverUrls[book.id] ?? undefined} alt={book.title} />
+                            <span className="book-cover-image-fade" />
+                            <span className="book-cover-format floating">{book.format}</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="book-cover-shine" />
+                            <span className="book-cover-format">{book.format}</span>
+                            <span className="book-cover-mark">{coverMonogram(book.title)}</span>
+                            <span className="book-cover-body">
+                              <strong title={book.title}>{coverTitle(book.title)}</strong>
+                              <small>{`${book.pluginId} · #${book.id}`}</small>
+                            </span>
+                          </>
+                        )}
+                      </Link>
+                    );
+                  })}
                 </div>
-                <p className="muted">{selectedBookDetail.description ?? t("reader.descriptionFallback")}</p>
-                <div className="reader-meta-grid">
-                  <div className="reader-meta-pill">{`${t("reader.metaFormat")}: ${selectedBookDetail.format}`}</div>
-                  <div className="reader-meta-pill">{`${t("reader.metaPlugin")}: ${selectedBookDetail.pluginId}`}</div>
-                  <div className="reader-meta-pill">{`${t("reader.metaSource")}: ${selectedBookDetail.sourceType}`}</div>
-                  <div className="reader-meta-pill">{`${t("reader.metaCapabilities")}: ${selectedBookDetail.capabilities.join(", ")}`}</div>
-                </div>
-              </>
-            ) : (
-              <>
-                <h2>{t("reader.readerPanelTitle")}</h2>
-                <p className="muted">{t("reader.selectBookPrompt")}</p>
-              </>
-            )}
-          </article>
-
-          {readerError ? <p className="notice error">{readerError}</p> : null}
-
-          <div className="reader-content-layout">
-            <aside className="card reader-outline-card">
-              <h3>{t("reader.tocTitle")}</h3>
-              {tocItems.length === 0 ? (
-                <p className="muted compact">{t("reader.noToc")}</p>
-              ) : (
-                <div className="reader-outline-list">
-                  {tocItems.map((item) => (
-                    <button
-                      key={item.href}
-                      type="button"
-                      className={`reader-outline-item${activeLocation === item.href ? " active" : ""}`}
-                      onClick={() => handleJumpToLocation(item)}
-                    >
-                      {item.title}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </aside>
-
-            <article className="card reader-stage-card">
-              <div className="section-header">
-                <div>
-                  <h3>{t("reader.readerPanelTitle")}</h3>
-                  <p className="muted compact">
-                    {selectedBookDetail?.format.toLowerCase() === "pdf"
-                      ? t("reader.pdfHint")
-                      : selectedBookDetail?.format.toLowerCase() === "epub"
-                        ? t("reader.epubHint")
-                        : t("reader.textHint")}
-                  </p>
-                </div>
+                <div className="shelf-plank" />
               </div>
-
-              {selectedBook && selectedBook.sourceMissing ? (
-                <div className="reader-empty">{t("reader.bookMissingBody")}</div>
-              ) : bookLoading ? (
-                <div className="reader-loading">{t("reader.loadingBook")}</div>
-              ) : !selectedBookDetail ? (
-                <div className="reader-empty">{t("reader.selectBookPrompt")}</div>
-              ) : selectedBookDetail.format.toLowerCase() === "txt" ? (
-                <article className="text-reader">
-                  {textContent ? <pre>{textContent}</pre> : <p>{t("reader.readerTextEmpty")}</p>}
-                </article>
-              ) : selectedBookDetail.format.toLowerCase() === "pdf" && fileUrl ? (
-                <iframe
-                  className="document-reader-frame"
-                  src={fileUrl}
-                  title={selectedBookDetail.title}
-                />
-              ) : selectedBookDetail.format.toLowerCase() === "epub" && fileBlob ? (
-                <EpubReader
-                  file={fileBlob}
-                  location={activeLocation}
-                  onError={(message) => setReaderError(message)}
-                />
-              ) : (
-                <div className="reader-empty">{t("reader.readerUnavailable")}</div>
-              )}
-            </article>
+            ))}
           </div>
-        </section>
+        )}
+
+        <div className="bookshelf-cabinet-bottom">
+          <span>{t("reader.bookshelfCount")}</span>
+          <strong>{`${books.length} ${t("reader.bookshelf")}`}</strong>
+        </div>
       </section>
     </main>
   );

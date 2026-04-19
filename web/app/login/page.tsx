@@ -1,17 +1,21 @@
 "use client";
 
 import Link from "next/link";
+import type { Route } from "next";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "../../lib/auth";
 import { useI18n } from "../../lib/i18n";
 
-type AppRoute = "/" | "/app" | "/admin";
+function resolveNextPath(nextPath: string | null): string {
+  if (!nextPath) {
+    return "/app";
+  }
 
-function resolveNextPath(nextPath: string | null): AppRoute {
-  if (nextPath === "/" || nextPath === "/app" || nextPath === "/admin") {
+  if (nextPath === "/" || nextPath.startsWith("/app") || nextPath.startsWith("/admin")) {
     return nextPath;
   }
+
   return "/app";
 }
 
@@ -19,7 +23,7 @@ export default function LoginPage() {
   const { session, login, logout } = useAuth();
   const { t } = useI18n();
   const router = useRouter();
-  const [nextPath, setNextPath] = useState<AppRoute>("/app");
+  const [nextPath, setNextPath] = useState("/app");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -37,7 +41,7 @@ export default function LoginPage() {
 
     try {
       await login({ username, password });
-      router.replace(nextPath);
+      router.replace(nextPath as Route);
       router.refresh();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t("auth.loginFailed"));
@@ -58,7 +62,7 @@ export default function LoginPage() {
             {t("auth.role")}: <span className="code">{session.user.role}</span>
           </p>
           <div className="toolbar">
-            <Link className="button" href={nextPath}>
+            <Link className="button" href={nextPath as Route}>
               {t("auth.continueToApp")}
             </Link>
             <button

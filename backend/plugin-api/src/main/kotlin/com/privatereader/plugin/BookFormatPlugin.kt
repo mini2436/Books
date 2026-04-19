@@ -17,5 +17,6 @@ interface BookFormatPlugin {
     fun buildManifest(file: Path): ReadingManifest? = null
 
     fun extractIndexableContent(file: Path): IndexableContent? = null
-}
 
+    fun extractStructuredContent(file: Path): StructuredBookContent? = null
+}

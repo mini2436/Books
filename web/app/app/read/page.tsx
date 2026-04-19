@@ -21,13 +21,18 @@ import {
 } from "../../../lib/api";
 import { useAuth } from "../../../lib/auth";
 import { useI18n } from "../../../lib/i18n";
-import { enqueueOfflineOperation } from "../../../lib/offline-sync";
+import { enqueueOfflineOperation, flushPendingOperations } from "../../../lib/offline-sync";
 
 const api = new ApiClient(process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080");
 
 type FloatingPoint = {
   left: number;
   top: number;
+};
+
+type JumpOptions = {
+  direction?: "forward" | "backward";
+  behavior?: "default" | "section-start";
 };
 
 function extensionFor(detail: BookDetail | null): string {
@@ -125,6 +130,7 @@ function ReaderWorkspaceInner() {
   const searchParams = useSearchParams();
   const selectedBookId = Number(searchParams.get("book"));
   const stageRef = useRef<HTMLDivElement | null>(null);
+  const selectionTimerRef = useRef<number | null>(null);
 
   const [books, setBooks] = useState<BookSummary[]>([]);
   const [selectedBookDetail, setSelectedBookDetail] = useState<BookDetail | null>(null);
@@ -150,6 +156,7 @@ function ReaderWorkspaceInner() {
   const [isNotesOpen, setIsNotesOpen] = useState(true);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAnnotationComposerOpen, setIsAnnotationComposerOpen] = useState(false);
+  const [editingAnnotationId, setEditingAnnotationId] = useState<number | null>(null);
 
   const selectedBook = books.find((book) => book.id === selectedBookId) ?? null;
   const tocItems = selectedBookDetail?.manifest?.toc ?? [];
@@ -186,6 +193,7 @@ function ReaderWorkspaceInner() {
   );
   const selectionToolbarPoint = resolveFloatingPoint(pendingSelection?.rect ?? null, stageRef.current?.getBoundingClientRect() ?? null, 58);
   const selectionComposerPoint = resolveFloatingPoint(pendingSelection?.rect ?? null, stageRef.current?.getBoundingClientRect() ?? null, -12);
+  const editingAnnotation = annotations.find((annotation) => annotation.id === editingAnnotationId) ?? null;
 
   useEffect(() => {
     if (!session) {
@@ -215,6 +223,22 @@ function ReaderWorkspaceInner() {
   }, [session, t]);
 
   useEffect(() => {
+    if (!session) {
+      return;
+    }
+
+    function flushQueuedChanges() {
+      void flushPendingOperations(api).catch(() => {
+        // Keep the queue intact and retry on the next wake-up or online event.
+      });
+    }
+
+    flushQueuedChanges();
+    window.addEventListener("online", flushQueuedChanges);
+    return () => window.removeEventListener("online", flushQueuedChanges);
+  }, [session]);
+
+  useEffect(() => {
     if (!session || !Number.isFinite(selectedBookId)) {
       setSelectedBookDetail(null);
       setTextContent(null);
@@ -235,6 +259,10 @@ function ReaderWorkspaceInner() {
       setIsAnnotationComposerOpen(false);
 
       try {
+        await flushPendingOperations(api).catch(() => {
+          // If the queue cannot be flushed yet, we still fall back to the last server snapshot.
+        });
+
         const [detail, blob, nextAnnotations, nextBookmarks, syncState] = await Promise.all([
           api.getMyBook(selectedBookId),
           api.downloadMyBookFile(selectedBookId),
@@ -290,6 +318,9 @@ function ReaderWorkspaceInner() {
 
   useEffect(
     () => () => {
+      if (selectionTimerRef.current !== null) {
+        window.clearTimeout(selectionTimerRef.current);
+      }
       if (fileUrl) {
         URL.revokeObjectURL(fileUrl);
       }
@@ -374,15 +405,32 @@ function ReaderWorkspaceInner() {
   }
 
   function resetSelectionUi() {
+    if (selectionTimerRef.current !== null) {
+      window.clearTimeout(selectionTimerRef.current);
+      selectionTimerRef.current = null;
+    }
     setAnnotationNote("");
     setPendingSelection(null);
     setIsAnnotationComposerOpen(false);
+    setEditingAnnotationId(null);
+  }
+
+  function scheduleSelection(selection: ReaderSelection) {
+    if (selectionTimerRef.current !== null) {
+      window.clearTimeout(selectionTimerRef.current);
+    }
+
+    selectionTimerRef.current = window.setTimeout(() => {
+      setEditingAnnotationId(null);
+      setAnnotationNote("");
+      setPendingSelection(selection);
+      setIsAnnotationComposerOpen(false);
+      selectionTimerRef.current = null;
+    }, 180);
   }
 
   function handleSelection(selection: ReaderSelection) {
-    setAnnotationNote("");
-    setPendingSelection(selection);
-    setIsAnnotationComposerOpen(false);
+    scheduleSelection(selection);
   }
 
   function handleCaptureSelection() {
@@ -394,8 +442,7 @@ function ReaderWorkspaceInner() {
       return;
     }
 
-    setAnnotationNote("");
-    setPendingSelection({
+    scheduleSelection({
       quoteText,
       anchor: activeLocation,
       rect: rect
@@ -407,7 +454,32 @@ function ReaderWorkspaceInner() {
           }
         : null,
     });
-    setIsAnnotationComposerOpen(false);
+  }
+
+  function openAnnotationEditor(annotation: AnnotationView, rect: ReaderSelection["rect"] = null) {
+    if (selectionTimerRef.current !== null) {
+      window.clearTimeout(selectionTimerRef.current);
+      selectionTimerRef.current = null;
+    }
+
+    setPendingSelection({
+      quoteText: annotation.quoteText ?? t("reader.annotationUntitled"),
+      anchor: annotation.anchor,
+      rect,
+    });
+    setEditingAnnotationId(annotation.id);
+    setAnnotationNote(annotation.noteText ?? "");
+    setAnnotationColor(annotation.color ?? "#c3924a");
+    setIsAnnotationComposerOpen(true);
+    setIsNotesOpen(true);
+  }
+
+  function handleAnnotationActivate(annotationId: number, rect: ReaderSelection["rect"] = null) {
+    const annotation = annotations.find((item) => item.id === annotationId);
+    if (!annotation) {
+      return;
+    }
+    openAnnotationEditor(annotation, rect);
   }
 
   async function handleCreateBookmark() {
@@ -436,21 +508,35 @@ function ReaderWorkspaceInner() {
     }
   }
 
-  async function handleCreateAnnotation(noteText: string) {
+  async function handleSaveAnnotation() {
     if (!selectedBookDetail || !pendingSelection) {
       return;
     }
 
-    const mutation = {
-      clientTempId: crypto.randomUUID(),
-      bookId: selectedBookDetail.id,
-      action: "CREATE" as const,
-      quoteText: pendingSelection.quoteText,
-      noteText,
-      color: annotationColor,
-      anchor: pendingSelection.anchor,
-      updatedAt: isoNow(),
-    };
+    const updatedAt = isoNow();
+    const isEditing = editingAnnotation !== null;
+    const mutation = isEditing
+      ? {
+          annotationId: editingAnnotation.id,
+          bookId: selectedBookDetail.id,
+          action: "UPDATE" as const,
+          quoteText: pendingSelection.quoteText,
+          noteText: annotationNote,
+          color: annotationColor,
+          anchor: pendingSelection.anchor,
+          baseVersion: editingAnnotation.version,
+          updatedAt,
+        }
+      : {
+          clientTempId: crypto.randomUUID(),
+          bookId: selectedBookDetail.id,
+          action: "CREATE" as const,
+          quoteText: pendingSelection.quoteText,
+          noteText: annotationNote,
+          color: annotationColor,
+          anchor: pendingSelection.anchor,
+          updatedAt,
+        };
 
     try {
       await api.pushSync({ annotations: [mutation] });
@@ -458,16 +544,53 @@ function ReaderWorkspaceInner() {
       await refreshNotesAndBookmarks();
     } catch {
       await enqueueOfflineOperation({
-        id: mutation.clientTempId,
+        id: "clientTempId" in mutation ? (mutation.clientTempId ?? crypto.randomUUID()) : crypto.randomUUID(),
         entityType: "annotation",
         payload: mutation,
-        createdAt: mutation.updatedAt,
+        createdAt: updatedAt,
       });
+      resetSelectionUi();
     }
   }
 
   async function handleQuickHighlight() {
-    await handleCreateAnnotation("");
+    await handleSaveAnnotation();
+  }
+
+  async function handleDeleteAnnotation(annotation: AnnotationView) {
+    if (!selectedBookDetail || !window.confirm("删除这条批注？")) {
+      return;
+    }
+
+    const mutation = {
+      annotationId: annotation.id,
+      bookId: selectedBookDetail.id,
+      action: "DELETE" as const,
+      quoteText: annotation.quoteText,
+      noteText: annotation.noteText,
+      color: annotation.color,
+      anchor: annotation.anchor,
+      baseVersion: annotation.version,
+      updatedAt: isoNow(),
+    };
+
+    try {
+      await api.pushSync({ annotations: [mutation] });
+      if (editingAnnotationId === annotation.id) {
+        resetSelectionUi();
+      }
+      await refreshNotesAndBookmarks();
+    } catch {
+      await enqueueOfflineOperation({
+        id: crypto.randomUUID(),
+        entityType: "annotation",
+        payload: mutation,
+        createdAt: mutation.updatedAt,
+      });
+      if (editingAnnotationId === annotation.id) {
+        resetSelectionUi();
+      }
+    }
   }
 
   async function handleCopySelection() {
@@ -482,7 +605,8 @@ function ReaderWorkspaceInner() {
     }
   }
 
-  function jumpToLocation(location: string, direction: "forward" | "backward" = "forward") {
+  function jumpToLocation(location: string, options: JumpOptions = {}) {
+    const direction = options.direction ?? "forward";
     setStageMotion(direction);
     resetSelectionUi();
 
@@ -498,6 +622,11 @@ function ReaderWorkspaceInner() {
       if (pageIndex !== null) {
         setPdfPage(pageIndex + 1);
       }
+      return;
+    }
+
+    if (options.behavior === "section-start") {
+      setNavigationRequest({ id: Date.now(), target: location, behavior: "section-start" });
       return;
     }
 
@@ -595,7 +724,7 @@ function ReaderWorkspaceInner() {
                     key={item.href}
                     className={`reader-outline-item ${item.href === activeLocation ? "active" : ""}`}
                     type="button"
-                    onClick={() => jumpToLocation(item.href)}
+                    onClick={() => jumpToLocation(item.href, { behavior: "section-start" })}
                   >
                     {item.title}
                   </button>
@@ -709,6 +838,7 @@ function ReaderWorkspaceInner() {
                   highlights={epubHighlights}
                   navigationRequest={navigationRequest}
                   onLocationChange={handleLocationChange}
+                  onAnnotationActivate={handleAnnotationActivate}
                   onSelection={handleSelection}
                   onError={setReaderError}
                 />
@@ -746,7 +876,12 @@ function ReaderWorkspaceInner() {
                       : { right: "24px", bottom: "24px" }
                   }
                 >
-                  <div className="reader-floating-annotation-title">{t("reader.annotationsTitle")}</div>
+                  <div className="reader-floating-annotation-head">
+                    <div className="reader-floating-annotation-title">
+                      {editingAnnotation ? "编辑批注" : t("reader.annotationsTitle")}
+                    </div>
+                    {editingAnnotation ? <span className="reader-prototype-annotation-tag">已存在批注</span> : null}
+                  </div>
                   <p className="reader-selection-quote">{pendingSelection.quoteText}</p>
                   <textarea
                     className="input reader-note-input"
@@ -761,11 +896,16 @@ function ReaderWorkspaceInner() {
                       value={annotationColor}
                       onChange={(event) => setAnnotationColor(event.target.value)}
                     />
+                    {editingAnnotation ? (
+                      <button className="button secondary" type="button" onClick={() => void handleDeleteAnnotation(editingAnnotation)}>
+                        删除
+                      </button>
+                    ) : null}
                     <button className="button secondary" type="button" onClick={resetSelectionUi}>
                       {t("common.cancel")}
                     </button>
-                    <button className="button" type="button" onClick={() => void handleCreateAnnotation(annotationNote)}>
-                      {t("reader.saveAnnotation")}
+                    <button className="button" type="button" onClick={() => void handleSaveAnnotation()}>
+                      {editingAnnotation ? "更新批注" : t("reader.saveAnnotation")}
                     </button>
                   </div>
                 </div>
@@ -801,19 +941,37 @@ function ReaderWorkspaceInner() {
 
           <div className="reader-prototype-panel-body">
             {annotations.length === 0 ? <p className="muted compact">{t("reader.annotationHint")}</p> : null}
+            <div className="reader-prototype-panel-summary">
+              <span className="reader-prototype-count-badge">{annotations.length}</span>
+              <span>{t("reader.annotationsTitle")}</span>
+            </div>
             <div className="reader-annotation-list">
               {annotations.map((annotation) => (
                 <article
                   key={annotation.id}
                   className="reader-annotation-card reader-prototype-annotation-card"
-                  onClick={() => jumpToLocation(annotation.anchor)}
+                  style={annotation.color ? { borderLeftColor: annotation.color } : undefined}
+                  title={annotation.noteText ?? annotation.quoteText ?? t("reader.annotationUntitled")}
                 >
-                  <div className="reader-prototype-annotation-meta">
-                    <span>{new Date(annotation.updatedAt).toLocaleDateString()}</span>
-                    <span>{currentChapterTitle ?? locationLabel}</span>
+                  <button className="reader-prototype-annotation-content" type="button" onClick={() => jumpToLocation(annotation.anchor)}>
+                    <div className="reader-prototype-annotation-meta">
+                      <span>{new Date(annotation.updatedAt).toLocaleDateString()}</span>
+                      <span>{annotation.noteText ? "批注" : "高亮"}</span>
+                    </div>
+                    <strong>{annotation.quoteText ?? t("reader.annotationUntitled")}</strong>
+                    {annotation.noteText ? <p>{annotation.noteText}</p> : <span className="reader-prototype-annotation-tag">高亮标记</span>}
+                  </button>
+                  <div className="reader-prototype-annotation-actions">
+                    <button className="reader-prototype-icon-button small" type="button" onClick={() => jumpToLocation(annotation.anchor)}>
+                      定位
+                    </button>
+                    <button className="reader-prototype-icon-button small" type="button" onClick={() => openAnnotationEditor(annotation)}>
+                      编辑
+                    </button>
+                    <button className="reader-prototype-icon-button small" type="button" onClick={() => void handleDeleteAnnotation(annotation)}>
+                      删除
+                    </button>
                   </div>
-                  <strong>{annotation.quoteText ?? t("reader.annotationUntitled")}</strong>
-                  {annotation.noteText ? <p>{annotation.noteText}</p> : <span className="reader-prototype-annotation-tag">高亮标记</span>}
                 </article>
               ))}
             </div>

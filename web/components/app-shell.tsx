@@ -37,7 +37,10 @@ export function AppShell({ children }: { children: ReactNode }) {
       <header className="topbar">
         <div className="topbar-inner">
           <div className="topbar-brand-row">
-            <div className="topbar-brand">Private Reader</div>
+            <div className="topbar-brand-lockup">
+              <div className="topbar-brand-mark">PR</div>
+              <div className="topbar-brand">Private Reader</div>
+            </div>
             <nav className="topbar-nav">
               <Link className={`topbar-link${pathname === "/" ? " active" : ""}`} href="/">
                 {t("shell.home")}

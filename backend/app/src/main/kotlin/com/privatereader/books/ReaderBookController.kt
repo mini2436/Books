@@ -32,6 +32,19 @@ class ReaderBookController(
         @PathVariable bookId: Long,
     ): Map<String, Any>? = bookService.getContentManifest(principal.id, bookId)
 
+    @GetMapping("/{bookId}/content")
+    fun getStructuredContent(
+        @AuthenticationPrincipal principal: UserPrincipal,
+        @PathVariable bookId: Long,
+    ): BookContentView = bookService.getStructuredContent(principal.id, bookId)
+
+    @GetMapping("/{bookId}/content/chapters/{chapterIndex}")
+    fun getStructuredContentChapter(
+        @AuthenticationPrincipal principal: UserPrincipal,
+        @PathVariable bookId: Long,
+        @PathVariable chapterIndex: Int,
+    ): BookContentChapterView = bookService.getStructuredContentChapter(principal.id, bookId, chapterIndex)
+
     @GetMapping("/{bookId}/file")
     fun downloadFile(
         @AuthenticationPrincipal principal: UserPrincipal,

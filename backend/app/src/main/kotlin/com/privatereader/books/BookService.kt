@@ -6,6 +6,8 @@ import com.privatereader.auth.AuthRepository
 import com.privatereader.auth.UserPrincipal
 import com.privatereader.common.toSqlTimestamp
 import com.privatereader.config.AppProperties
+import com.privatereader.plugin.StructuredBlockType
+import com.privatereader.plugin.StructuredBookContent
 import com.privatereader.pluginruntime.PluginRegistryService
 import org.springframework.core.io.ByteArrayResource
 import org.springframework.core.io.FileSystemResource
@@ -58,6 +60,7 @@ class BookService(
             // A repeated NAS scan should revive an existing source path instead of creating duplicates.
             refreshExistingFileReference(existing.fileId, filePath, sourceType, sourceId, preparedImport.format)
             reconcileExistingImport(existing.bookId, filePath, preparedImport)
+            refreshStructuredContent(existing.bookId, existing.fileId, fileHash, plugin.pluginId, filePath)
             insertImportJob(existing.bookId, sourceId, existing.fileId, "Reused existing import from ${plugin.pluginId}")
             if (actorId != null) {
                 grantBook(existing.bookId, actorId, actorId)
@@ -106,6 +109,7 @@ class BookService(
             .single()
 
         upsertBookFormat(bookId, preparedImport)
+        refreshStructuredContent(bookId, fileId, fileHash, plugin.pluginId, filePath)
         insertImportJob(bookId, sourceId, fileId, "Imported by ${plugin.pluginId}")
 
         if (actorId != null) {
@@ -183,6 +187,102 @@ class BookService(
     fun getContentManifest(userId: Long, bookId: Long): Map<String, Any>? {
         require(hasAccess(userId, bookId)) { "Book access denied" }
         return getBookDetail(bookId).manifest
+    }
+
+    fun getStructuredContent(userId: Long, bookId: Long): BookContentView {
+        require(hasAccess(userId, bookId)) { "Book access denied" }
+        val version = resolveLatestStructuredContentVersion(bookId)
+            ?: return BookContentView(
+                bookId = bookId,
+                contentModel = null,
+                contentVersionId = null,
+                hasStructuredContent = false,
+                chapters = emptyList(),
+            )
+        val chapters = jdbcClient.sql(
+            """
+            select chapter_index, anchor, text
+            from book_content_blocks
+            where content_version_id = :contentVersionId
+            and block_index = 0
+            order by chapter_index asc
+            """.trimIndent(),
+        )
+            .param("contentVersionId", version.id)
+            .query { rs, _ ->
+                BookContentChapterSummary(
+                    chapterIndex = rs.getInt("chapter_index"),
+                    title = rs.getString("text"),
+                    anchor = rs.getString("anchor"),
+                )
+            }
+            .list()
+        return BookContentView(
+            bookId = bookId,
+            contentModel = version.contentModel,
+            contentVersionId = version.id,
+            hasStructuredContent = true,
+            chapters = chapters,
+        )
+    }
+
+    fun getStructuredContentChapter(userId: Long, bookId: Long, chapterIndex: Int): BookContentChapterView {
+        require(hasAccess(userId, bookId)) { "Book access denied" }
+        val version = resolveLatestStructuredContentVersion(bookId)
+            ?: throw IllegalArgumentException("Structured content is not available for this book")
+        val chapter = jdbcClient.sql(
+            """
+            select anchor, text
+            from book_content_blocks
+            where content_version_id = :contentVersionId
+            and chapter_index = :chapterIndex
+            and block_index = 0
+            limit 1
+            """.trimIndent(),
+        )
+            .param("contentVersionId", version.id)
+            .param("chapterIndex", chapterIndex)
+            .query { rs, _ ->
+                StructuredChapterHeader(
+                    anchor = rs.getString("anchor"),
+                    title = rs.getString("text"),
+                )
+            }
+            .optional()
+            .orElseThrow { IllegalArgumentException("Structured content chapter $chapterIndex was not found") }
+        val blocks = jdbcClient.sql(
+            """
+            select block_index, block_type, anchor, text, plain_text, meta_json
+            from book_content_blocks
+            where content_version_id = :contentVersionId
+            and chapter_index = :chapterIndex
+            and block_index > 0
+            order by block_index asc
+            """.trimIndent(),
+        )
+            .param("contentVersionId", version.id)
+            .param("chapterIndex", chapterIndex)
+            .query { rs, _ ->
+                BookContentBlockView(
+                    blockIndex = rs.getInt("block_index") - 1,
+                    type = rs.getString("block_type"),
+                    anchor = rs.getString("anchor"),
+                    text = rs.getString("text"),
+                    plainText = rs.getString("plain_text"),
+                    meta = parseMetaJson(rs.getString("meta_json")),
+                )
+            }
+            .list()
+        return BookContentChapterView(
+            bookId = bookId,
+            contentModel = version.contentModel,
+            contentVersionId = version.id,
+            hasStructuredContent = true,
+            chapterIndex = chapterIndex,
+            title = chapter.title,
+            anchor = chapter.anchor,
+            blocks = blocks,
+        )
     }
 
     fun getBookFile(userId: Long, bookId: Long): FileSystemResource {
@@ -313,7 +413,23 @@ class BookService(
         jdbcClient.sql(
             """
             select b.id, b.title, b.author, b.description, bf.plugin_id, bf.format, f.source_type, f.source_missing,
-                   bf.manifest_json, bf.capabilities_json
+                   bf.manifest_json, bf.capabilities_json,
+                   exists(
+                       select 1 from book_content_versions bcv
+                       where bcv.book_id = b.id and bcv.status = 'READY'
+                   ) as has_structured_content,
+                   (
+                       select bcv.content_model from book_content_versions bcv
+                       where bcv.book_id = b.id and bcv.status = 'READY'
+                       order by bcv.id desc
+                       limit 1
+                   ) as content_model,
+                   (
+                       select bcv.id from book_content_versions bcv
+                       where bcv.book_id = b.id and bcv.status = 'READY'
+                       order by bcv.id desc
+                       limit 1
+                   ) as latest_content_version_id
             from books b
             join book_files f on f.book_id = b.id
             join book_formats bf on bf.book_id = b.id
@@ -345,6 +461,9 @@ class BookService(
             manifest = manifest,
             capabilities = capabilities.toSet(),
             sourceMissing = getBoolean("source_missing"),
+            hasStructuredContent = getBoolean("has_structured_content"),
+            contentModel = getString("content_model"),
+            latestContentVersionId = getObject("latest_content_version_id")?.let { (it as Number).toLong() },
         )
     }
 
@@ -465,6 +584,150 @@ class BookService(
             .update()
     }
 
+    private fun refreshStructuredContent(
+        bookId: Long,
+        sourceFileId: Long,
+        checksum: String,
+        pluginId: String,
+        filePath: Path,
+    ) {
+        val plugin = pluginRegistryService.findPluginById(pluginId) ?: return
+        val structuredContent = try {
+            plugin.extractStructuredContent(filePath)
+        } catch (exception: Exception) {
+            insertFailedStructuredContentVersion(bookId, sourceFileId, checksum)
+            return
+        }
+
+        if (structuredContent == null || structuredContent.chapters.isEmpty()) {
+            return
+        }
+
+        val now = Instant.now()
+        val versionId = jdbcClient.sql(
+            """
+            insert into book_content_versions (
+                book_id, source_file_id, content_model, status, checksum, created_at, updated_at
+            ) values (
+                :bookId, :sourceFileId, :contentModel, :status, :checksum, :now, :now
+            )
+            returning id
+            """.trimIndent(),
+        )
+            .param("bookId", bookId)
+            .param("sourceFileId", sourceFileId)
+            .param("contentModel", STRUCTURED_CONTENT_MODEL)
+            .param("status", CONTENT_STATUS_READY)
+            .param("checksum", checksum)
+            .param("now", now.toSqlTimestamp())
+            .query(Long::class.java)
+            .single()
+
+        insertStructuredBlocks(versionId, structuredContent, now)
+        markPreviousContentVersionsStale(bookId, versionId, now)
+    }
+
+    private fun insertFailedStructuredContentVersion(bookId: Long, sourceFileId: Long, checksum: String) {
+        val now = Instant.now()
+        jdbcClient.sql(
+            """
+            insert into book_content_versions (
+                book_id, source_file_id, content_model, status, checksum, created_at, updated_at
+            ) values (
+                :bookId, :sourceFileId, :contentModel, :status, :checksum, :now, :now
+            )
+            """.trimIndent(),
+        )
+            .param("bookId", bookId)
+            .param("sourceFileId", sourceFileId)
+            .param("contentModel", STRUCTURED_CONTENT_MODEL)
+            .param("status", CONTENT_STATUS_FAILED)
+            .param("checksum", checksum)
+            .param("now", now.toSqlTimestamp())
+            .update()
+    }
+
+    private fun insertStructuredBlocks(versionId: Long, content: StructuredBookContent, now: Instant) {
+        content.chapters.forEachIndexed { chapterIndex, chapter ->
+            insertStructuredBlock(
+                contentVersionId = versionId,
+                chapterIndex = chapterIndex,
+                blockIndex = 0,
+                blockType = StructuredBlockType.HEADING.storageName,
+                anchor = chapter.anchor,
+                text = chapter.title,
+                plainText = chapter.title,
+                metaJson = SYNTHETIC_CHAPTER_META_JSON,
+                now = now,
+            )
+
+            chapter.blocks.forEachIndexed { visibleBlockIndex, block ->
+                insertStructuredBlock(
+                    contentVersionId = versionId,
+                    chapterIndex = chapterIndex,
+                    blockIndex = visibleBlockIndex + 1,
+                    blockType = block.type.storageName,
+                    anchor = block.anchor,
+                    text = block.text,
+                    plainText = block.plainText,
+                    metaJson = block.meta.takeIf { it.isNotEmpty() }?.let(objectMapper::writeValueAsString),
+                    now = now,
+                )
+            }
+        }
+    }
+
+    private fun insertStructuredBlock(
+        contentVersionId: Long,
+        chapterIndex: Int,
+        blockIndex: Int,
+        blockType: String,
+        anchor: String,
+        text: String,
+        plainText: String,
+        metaJson: String?,
+        now: Instant,
+    ) {
+        jdbcClient.sql(
+            """
+            insert into book_content_blocks (
+                content_version_id, chapter_index, block_index, block_type, anchor, text, plain_text, meta_json, created_at
+            ) values (
+                :contentVersionId, :chapterIndex, :blockIndex, :blockType, :anchor, :text, :plainText, :metaJson, :createdAt
+            )
+            """.trimIndent(),
+        )
+            .param("contentVersionId", contentVersionId)
+            .param("chapterIndex", chapterIndex)
+            .param("blockIndex", blockIndex)
+            .param("blockType", blockType)
+            .param("anchor", anchor)
+            .param("text", text)
+            .param("plainText", plainText)
+            .param("metaJson", metaJson)
+            .param("createdAt", now.toSqlTimestamp())
+            .update()
+    }
+
+    private fun markPreviousContentVersionsStale(bookId: Long, latestVersionId: Long, now: Instant) {
+        jdbcClient.sql(
+            """
+            update book_content_versions
+            set status = :staleStatus,
+                updated_at = :updatedAt
+            where book_id = :bookId
+            and status = :readyStatus
+            and id <> :latestVersionId
+            """.trimIndent(),
+        )
+            .param("staleStatus", CONTENT_STATUS_STALE)
+            .param("updatedAt", now.toSqlTimestamp())
+            .param("bookId", bookId)
+            .param("readyStatus", CONTENT_STATUS_READY)
+            .param("latestVersionId", latestVersionId)
+            .update()
+    }
+
     private fun insertImportJob(bookId: Long, sourceId: Long?, fileId: Long, message: String) {
         val now = Instant.now()
         jdbcClient.sql(
@@ -516,6 +779,32 @@ class BookService(
             }
             .single()
 
+    private fun resolveLatestStructuredContentVersion(bookId: Long): StructuredContentVersionRef? =
+        jdbcClient.sql(
+            """
+            select id, content_model
+            from book_content_versions
+            where book_id = :bookId and status = :status
+            order by id desc
+            limit 1
+            """.trimIndent(),
+        )
+            .param("bookId", bookId)
+            .param("status", CONTENT_STATUS_READY)
+            .query { rs, _ ->
+                StructuredContentVersionRef(
+                    id = rs.getLong("id"),
+                    contentModel = rs.getString("content_model"),
+                )
+            }
+            .optional()
+            .orElse(null)
+
+    private fun parseMetaJson(metaJson: String?): Map<String, Any?> =
+        metaJson?.takeIf { it.isNotBlank() }?.let {
+            objectMapper.readValue(it, object : TypeReference<Map<String, Any?>>() {})
+        } ?: emptyMap()
+
     private fun sha256(path: Path): String {
         val digest = MessageDigest.getInstance("SHA-256")
         Files.newInputStream(path).use { input ->
@@ -554,4 +843,22 @@ class BookService(
         val onlineReadable: Boolean,
         val indexExcerpt: String?,
     )
+
+    private data class StructuredContentVersionRef(
+        val id: Long,
+        val contentModel: String,
+    )
+
+    private data class StructuredChapterHeader(
+        val anchor: String,
+        val title: String,
+    )
+
+    companion object {
+        private const val STRUCTURED_CONTENT_MODEL = "UNIFIED_V1"
+        private const val CONTENT_STATUS_READY = "READY"
+        private const val CONTENT_STATUS_FAILED = "FAILED"
+        private const val CONTENT_STATUS_STALE = "STALE"
+        private const val SYNTHETIC_CHAPTER_META_JSON = """{"syntheticChapterTitle":true}"""
+    }
 }

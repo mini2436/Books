@@ -7,9 +7,15 @@ import com.privatereader.plugin.IndexableContent
 import com.privatereader.plugin.ManifestTocItem
 import com.privatereader.plugin.PluginCapability
 import com.privatereader.plugin.ReadingManifest
+import com.privatereader.plugin.StructuredBlockType
+import com.privatereader.plugin.StructuredBookBlock
+import com.privatereader.plugin.StructuredBookChapter
+import com.privatereader.plugin.StructuredBookContent
 import org.springframework.stereotype.Component
 import org.w3c.dom.Document
 import org.w3c.dom.Element
+import org.w3c.dom.Node
+import org.w3c.dom.NodeList
 import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
 import java.nio.file.Path
@@ -56,6 +62,48 @@ class EpubBookFormatPlugin : BookFormatPlugin {
 
     override fun extractIndexableContent(file: Path): IndexableContent? =
         parse(file).indexExcerpt.takeIf { it.isNotBlank() }?.let { IndexableContent(text = it) }
+
+    override fun extractStructuredContent(file: Path): StructuredBookContent = ZipFile(file.toFile()).use { zip ->
+        val packagePath = readPackagePath(zip)
+        val packageDocument = readXml(zip, packagePath)
+        val packageDir = packagePath.substringBeforeLast('/', "")
+        val manifestItems = extractManifestItems(packageDocument, packageDir)
+        val spineItems = extractSpineItems(packageDocument, manifestItems)
+        val tocByPath = extractToc(zip, packageDocument, manifestItems)
+            .associateBy { it.href.substringBefore('#') }
+
+        val chapters = spineItems.mapIndexed { chapterIndex, spineItem ->
+            val document = readXml(zip, spineItem.fullPath)
+            val visibleBlocks = extractStructuredBlocks(document, chapterIndex)
+            val fallbackText = document.documentElement?.textContent.normalizeWhitespace()
+            val chapterTitle = tocByPath[spineItem.fullPath]?.title
+                ?: visibleBlocks.firstOrNull { it.type == StructuredBlockType.HEADING }?.plainText
+                ?: "Section ${chapterIndex + 1}"
+            StructuredBookChapter(
+                title = chapterTitle,
+                anchor = chapterAnchor(chapterIndex),
+                blocks = visibleBlocks
+                    .dropWhile { block ->
+                        block.type == StructuredBlockType.HEADING &&
+                            block.plainText.equals(chapterTitle, ignoreCase = true)
+                    }
+                    .ifEmpty {
+                        fallbackText.takeIf { !it.isNullOrBlank() }?.let {
+                            listOf(
+                                StructuredBookBlock(
+                                    type = StructuredBlockType.PARAGRAPH,
+                                    anchor = blockAnchor(chapterIndex, 1),
+                                    text = it,
+                                    plainText = it,
+                                ),
+                            )
+                        } ?: emptyList()
+                    },
+            )
+        }
+
+        StructuredBookContent(chapters = chapters)
+    }
 
     private fun parse(file: Path): ParsedEpub = ZipFile(file.toFile()).use { zip ->
         val packagePath = readPackagePath(zip)
@@ -166,16 +214,19 @@ class EpubBookFormatPlugin : BookFormatPlugin {
         return items
     }
 
-    private fun extractSpineHrefs(document: Document, manifestItems: Map<String, EpubManifestItem>): List<String> {
+    private fun extractSpineHrefs(document: Document, manifestItems: Map<String, EpubManifestItem>): List<String> =
+        extractSpineItems(document, manifestItems).map { it.fullPath }
+
+    private fun extractSpineItems(document: Document, manifestItems: Map<String, EpubManifestItem>): List<EpubManifestItem> {
         val spineNodes = document.getElementsByTagNameNS("*", "itemref")
-        val hrefs = mutableListOf<String>()
+        val items = mutableListOf<EpubManifestItem>()
         for (index in 0 until spineNodes.length) {
             val element = spineNodes.item(index) as? Element ?: continue
             val idRef = element.getAttribute("idref").trim()
             val item = manifestItems[idRef] ?: continue
-            hrefs += item.fullPath
+            items += item
         }
-        return hrefs
+        return items
     }
 
     private fun extractToc(
@@ -307,6 +358,88 @@ class EpubBookFormatPlugin : BookFormatPlugin {
         }
     }
 
+    private fun extractStructuredBlocks(document: Document, chapterIndex: Int): List<StructuredBookBlock> {
+        val body = document.getElementsByTagNameNS("*", "body").item(0) as? Element
+        val root = body ?: document.documentElement ?: return emptyList()
+        val pendingBlocks = mutableListOf<PendingBlock>()
+        root.childNodes.asSequence().forEach { node ->
+            collectBlocks(node, pendingBlocks)
+        }
+        return pendingBlocks.mapIndexedNotNull { index, block ->
+            when (block.type) {
+                StructuredBlockType.DIVIDER -> StructuredBookBlock(
+                    type = StructuredBlockType.DIVIDER,
+                    anchor = blockAnchor(chapterIndex, index + 1),
+                    text = "",
+                    plainText = "",
+                    meta = block.meta,
+                )
+
+                else -> {
+                    val text = block.text.normalizeWhitespace()
+                    if (text.isBlank()) {
+                        null
+                    } else {
+                        StructuredBookBlock(
+                            type = block.type,
+                            anchor = blockAnchor(chapterIndex, index + 1),
+                            text = text,
+                            plainText = text,
+                            meta = block.meta,
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private fun collectBlocks(node: Node, blocks: MutableList<PendingBlock>) {
+        if (node.nodeType != Node.ELEMENT_NODE) {
+            return
+        }
+        val element = node as Element
+        when (element.localName?.lowercase()) {
+            "h1", "h2", "h3", "h4", "h5", "h6" -> {
+                val text = element.textContent.normalizeWhitespace()
+                if (text.isNotBlank()) {
+                    blocks += PendingBlock(
+                        type = StructuredBlockType.HEADING,
+                        text = text,
+                        meta = mapOf("level" to element.localName.removePrefix("h").toInt()),
+                    )
+                }
+            }
+
+            "p", "li" -> {
+                val text = element.textContent.normalizeWhitespace()
+                if (text.isNotBlank()) {
+                    blocks += PendingBlock(
+                        type = StructuredBlockType.PARAGRAPH,
+                        text = text,
+                    )
+                }
+            }
+
+            "blockquote" -> {
+                val text = element.textContent.normalizeWhitespace()
+                if (text.isNotBlank()) {
+                    blocks += PendingBlock(
+                        type = StructuredBlockType.QUOTE,
+                        text = text,
+                    )
+                }
+            }
+
+            "hr" -> blocks += PendingBlock(type = StructuredBlockType.DIVIDER, text = "")
+
+            "script", "style", "head", "nav" -> return
+
+            else -> element.childNodes.asSequence().forEach { child ->
+                collectBlocks(child, blocks)
+            }
+        }
+    }
+
     private fun resolveEntryPath(baseDir: String, relativePath: String): String {
         val path = relativePath.substringBefore('#')
         if (path.isBlank()) {
@@ -372,6 +505,16 @@ class EpubBookFormatPlugin : BookFormatPlugin {
         .replace(Regex("\\s+"), " ")
         .trim()
 
+    private fun NodeList.asSequence(): Sequence<Node> = sequence {
+        for (index in 0 until length) {
+            yield(item(index))
+        }
+    }
+
+    private fun chapterAnchor(chapterIndex: Int): String = "chapter-$chapterIndex"
+
+    private fun blockAnchor(chapterIndex: Int, blockIndex: Int): String = "chapter-$chapterIndex-block-$blockIndex"
+
     private data class ParsedEpub(
         val metadata: BookMetadata,
         val manifest: ReadingManifest,
@@ -384,5 +527,11 @@ class EpubBookFormatPlugin : BookFormatPlugin {
         val fullPath: String,
         val mediaType: String,
         val properties: Set<String>,
+    )
+
+    private data class PendingBlock(
+        val type: StructuredBlockType,
+        val text: String,
+        val meta: Map<String, Any?> = emptyMap(),
     )
 }

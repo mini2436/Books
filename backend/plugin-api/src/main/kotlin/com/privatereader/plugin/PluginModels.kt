@@ -36,3 +36,36 @@ data class IndexableContent(
     val text: String,
 )
 
+data class StructuredBookContent(
+    val chapters: List<StructuredBookChapter>,
+)
+
+data class StructuredBookChapter(
+    val title: String,
+    val anchor: String,
+    val blocks: List<StructuredBookBlock>,
+)
+
+data class StructuredBookBlock(
+    val type: StructuredBlockType,
+    val anchor: String,
+    val text: String,
+    val plainText: String,
+    val meta: Map<String, Any?> = emptyMap(),
+)
+
+enum class StructuredBlockType(
+    val storageName: String,
+) {
+    HEADING("heading"),
+    PARAGRAPH("paragraph"),
+    QUOTE("quote"),
+    DIVIDER("divider"),
+    ;
+
+    companion object {
+        fun fromStorageName(value: String): StructuredBlockType =
+            entries.firstOrNull { it.storageName == value.lowercase() }
+                ?: throw IllegalArgumentException("Unsupported structured block type: $value")
+    }
+}

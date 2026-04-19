@@ -27,6 +27,43 @@ data class BookDetailView(
     val manifest: Map<String, Any>?,
     val capabilities: Set<String>,
     val sourceMissing: Boolean,
+    val hasStructuredContent: Boolean,
+    val contentModel: String?,
+    val latestContentVersionId: Long?,
+)
+
+data class BookContentView(
+    val bookId: Long,
+    val contentModel: String?,
+    val contentVersionId: Long?,
+    val hasStructuredContent: Boolean,
+    val chapters: List<BookContentChapterSummary>,
+)
+
+data class BookContentChapterSummary(
+    val chapterIndex: Int,
+    val title: String,
+    val anchor: String,
+)
+
+data class BookContentChapterView(
+    val bookId: Long,
+    val contentModel: String,
+    val contentVersionId: Long,
+    val hasStructuredContent: Boolean,
+    val chapterIndex: Int,
+    val title: String,
+    val anchor: String,
+    val blocks: List<BookContentBlockView>,
+)
+
+data class BookContentBlockView(
+    val blockIndex: Int,
+    val type: String,
+    val anchor: String,
+    val text: String,
+    val plainText: String,
+    val meta: Map<String, Any?>,
 )
 
 data class AdminBookView(

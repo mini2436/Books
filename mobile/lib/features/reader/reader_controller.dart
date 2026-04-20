@@ -85,6 +85,15 @@ class ReaderController extends ChangeNotifier {
   bool get isSupported => detail?.supportsStructuredReader == true;
 
   BookContentChapter? get currentChapter => _chapterCache[currentChapterIndex];
+  bool get hasCurrentChapterBookmark {
+    final chapter = currentChapter;
+    if (chapter == null) {
+      return false;
+    }
+    return bookmarks.any(
+      (bookmark) => !bookmark.deleted && bookmark.location == chapter.anchor,
+    );
+  }
 
   double get progressPercent {
     final chapterCount = content?.chapters.length ?? 0;
@@ -205,6 +214,9 @@ class ReaderController extends ChangeNotifier {
     if (chapter == null) {
       return;
     }
+    if (hasCurrentChapterBookmark) {
+      return;
+    }
 
     final mutation = BookmarkMutation(
       bookId: bookId,
@@ -255,6 +267,42 @@ class ReaderController extends ChangeNotifier {
     }
 
     notifyListeners();
+  }
+
+  Future<void> deleteBookmark(BookmarkView bookmark) async {
+    final mutation = BookmarkMutation(
+      bookmarkId: bookmark.id > 0 ? bookmark.id : null,
+      bookId: bookId,
+      action: 'DELETE',
+      location: bookmark.location,
+      label: bookmark.label,
+      updatedAt: DateTime.now().toUtc().toIso8601String(),
+    );
+
+    final previous = bookmarks;
+    bookmarks = bookmarks.where((item) => item.id != bookmark.id).toList();
+    notifyListeners();
+
+    try {
+      await _authController.runAuthorized(
+        (accessToken) => _apiClient.pushSync(
+          accessToken,
+          SyncPushRequest(bookmarks: [mutation]),
+        ),
+      );
+      await _refreshBookmarks();
+    } catch (_) {
+      bookmarks = previous;
+      notifyListeners();
+      await _offlineQueueService.enqueue(
+        PendingOperation(
+          id: _localId('bookmark'),
+          entityType: PendingEntityType.bookmark,
+          payload: mutation.toJson(),
+          createdAt: mutation.updatedAt,
+        ),
+      );
+    }
   }
 
   Future<void> addHighlight({
@@ -365,6 +413,14 @@ class ReaderController extends ChangeNotifier {
 
   void toggleUi() {
     uiVisible = !uiVisible;
+    notifyListeners();
+  }
+
+  void setUiVisible(bool value) {
+    if (uiVisible == value) {
+      return;
+    }
+    uiVisible = value;
     notifyListeners();
   }
 
@@ -562,6 +618,15 @@ class ReaderController extends ChangeNotifier {
 
   String _localId(String prefix) =>
       '$prefix-${DateTime.now().microsecondsSinceEpoch}';
+
+  Future<void> _refreshBookmarks() async {
+    final refreshed = await _authController.runAuthorized(
+      (accessToken) => _apiClient.listBookmarks(accessToken, bookId),
+    );
+    bookmarks = refreshed.where((item) => !item.deleted).toList()
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    notifyListeners();
+  }
 }
 
 extension on AnnotationView {

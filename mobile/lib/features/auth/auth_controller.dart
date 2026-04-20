@@ -8,7 +8,6 @@ import '../../data/services/api_client.dart';
 import '../../data/services/offline_queue_service.dart';
 import '../../data/services/session_storage.dart';
 import '../../data/services/sync_coordinator.dart';
-import '../settings/server_config_controller.dart';
 
 final apiClientProvider = Provider<ApiClient>((ref) => ApiClient());
 final sessionStorageProvider = Provider<SessionStorage>(
@@ -20,10 +19,7 @@ final offlineQueueServiceProvider = Provider<OfflineQueueService>(
 
 final authControllerProvider = ChangeNotifierProvider<AuthController>(
   (ref) => AuthController(
-    apiClient: (() {
-      ref.watch(serverConfigControllerProvider);
-      return ref.watch(apiClientProvider);
-    })(),
+    apiClient: ref.watch(apiClientProvider),
     sessionStorage: ref.watch(sessionStorageProvider),
   ),
 );
@@ -115,7 +111,7 @@ class AuthController extends ChangeNotifier {
     try {
       return await action(current.accessToken);
     } on ApiException catch (error) {
-      if (!error.isUnauthorized) {
+      if (!error.isAuthenticationFailure) {
         rethrow;
       }
 

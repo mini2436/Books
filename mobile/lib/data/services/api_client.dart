@@ -12,6 +12,7 @@ class ApiException implements Exception {
   final int? statusCode;
 
   bool get isUnauthorized => statusCode == 401;
+  bool get isAuthenticationFailure => statusCode == 401 || statusCode == 403;
 
   @override
   String toString() => message;

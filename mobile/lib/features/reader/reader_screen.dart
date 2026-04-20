@@ -12,12 +12,10 @@ import 'reader_controller.dart';
 import 'widgets/reader_html_view.dart';
 import 'widgets/reader_settings_sheet.dart';
 
+enum _TabletReaderPanel { toc, notes, bookmarks, settings }
+
 class ReaderScreen extends ConsumerStatefulWidget {
-  const ReaderScreen({
-    super.key,
-    required this.bookId,
-    this.initialAnchor,
-  });
+  const ReaderScreen({super.key, required this.bookId, this.initialAnchor});
 
   final int? bookId;
   final String? initialAnchor;
@@ -28,6 +26,7 @@ class ReaderScreen extends ConsumerStatefulWidget {
 
 class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  _TabletReaderPanel? _tabletPanel;
 
   @override
   Widget build(BuildContext context) {
@@ -79,6 +78,29 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     }
 
     final chapter = controller.currentChapter;
+    void handleChromeToggle() {
+      if (tablet && controller.uiVisible) {
+        setState(() {
+          _tabletPanel = null;
+        });
+      }
+      controller.toggleUi();
+    }
+
+    void handleTabletMenuRequest() {
+      if (!tablet) {
+        controller.toggleUi();
+        return;
+      }
+      if (!controller.uiVisible) {
+        controller.setUiVisible(true);
+        return;
+      }
+      setState(() {
+        _tabletPanel ??= _TabletReaderPanel.settings;
+      });
+    }
+
     final body = chapter == null
         ? const Center(child: CircularProgressIndicator())
         : ReaderHtmlView(
@@ -87,6 +109,8 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
             preferences: preferences,
             palette: palette,
             uiVisible: controller.uiVisible,
+            pagedMode: tablet,
+            dualColumn: tablet,
             focusedAnchor: controller.focusedAnchor,
             anchorJumpVersion: controller.anchorJumpVersion,
             onHighlight: (selection, existingAnnotation) async {
@@ -118,80 +142,84 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                 ),
             onOpenAnnotations: (annotations) =>
                 _openAnnotationsFromReader(controller, annotations),
-            onToggleUi: controller.toggleUi,
+            onPageBoundaryPrevious: controller.previousChapter,
+            onPageBoundaryNext: controller.nextChapter,
+            onToggleUi: handleChromeToggle,
+            onMenuRequest: handleTabletMenuRequest,
           );
 
     if (tablet) {
       return Scaffold(
         body: SafeArea(
-          child: Row(
+          child: Stack(
             children: [
-              if (controller.tocVisible)
-                SizedBox(
-                  width: Responsive.sidePanelWidth,
-                  child: _ReaderLeftPanel(controller: controller),
-                ),
-              Expanded(
-                child: Column(
-                  children: [
-                    _ReaderTopBar(
-                      detail: detail,
-                      controller: controller,
-                      onSettings: () => controller.setInspectorTab(
-                        ReaderInspectorTab.settings,
-                      ),
-                      onNotes: () =>
-                          controller.setInspectorTab(ReaderInspectorTab.notes),
-                      tablet: true,
-                    ),
-                    Expanded(
-                      child: Center(
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(
-                            maxWidth: Responsive.readerMaxWidth,
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(24, 20, 24, 28),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  chapter?.title ?? detail.title,
-                                  style: Theme.of(
-                                    context,
-                                  ).textTheme.headlineSmall?.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                const SizedBox(height: 20),
-                                if (controller.isCurrentChapterLoading)
-                                  const Padding(
-                                    padding: EdgeInsets.only(bottom: 16),
-                                    child: LinearProgressIndicator(),
-                                  ),
-                                Expanded(child: body),
-                              ],
+              Positioned.fill(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(28, 20, 108, 20),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(28),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(color: palette.background),
+                      child: Stack(
+                        children: [
+                          Positioned.fill(child: body),
+                          if (controller.isCurrentChapterLoading)
+                            const Positioned(
+                              top: 0,
+                              left: 0,
+                              right: 0,
+                              child: LinearProgressIndicator(),
                             ),
-                          ),
-                        ),
+                        ],
                       ),
                     ),
-                    _ReaderFooter(controller: controller),
-                  ],
-                ),
-              ),
-              if (controller.inspectorVisible)
-                SizedBox(
-                  width: Responsive.sidePanelWidth,
-                  child: _ReaderRightPanel(
-                    controller: controller,
-                    onEditAnnotation: (annotation) =>
-                        _openAnnotationComposer(
-                          controller,
-                          annotation: annotation,
-                        ),
                   ),
                 ),
+              ),
+              if (controller.uiVisible) ...[
+                Positioned(
+                  top: 18,
+                  left: 24,
+                  right: 118,
+                  child: _TabletReaderHeader(
+                    detail: detail,
+                    controller: controller,
+                  ),
+                ),
+                Positioned(
+                  right: 20,
+                  top: 112,
+                  child: _TabletReaderDock(
+                    activePanel: _tabletPanel,
+                    onSelectPanel: _toggleTabletPanel,
+                    onAddBookmark: controller.addBookmark,
+                    bookmarkDisabled: controller.hasCurrentChapterBookmark,
+                  ),
+                ),
+                Positioned(
+                  left: 28,
+                  bottom: 24,
+                  child: _TabletReaderProgressChip(controller: controller),
+                ),
+                if (_tabletPanel != null)
+                  Positioned.fill(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => setState(() => _tabletPanel = null),
+                      child: const ColoredBox(color: Color(0x12000000)),
+                    ),
+                  ),
+                if (_tabletPanel != null)
+                  _TabletReaderPanelSheet(
+                    panel: _tabletPanel!,
+                    controller: controller,
+                    onClose: () => setState(() => _tabletPanel = null),
+                    onEditAnnotation: (annotation) => _openAnnotationComposer(
+                      controller,
+                      annotation: annotation,
+                    ),
+                  ),
+              ],
             ],
           ),
         ),
@@ -212,8 +240,8 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
               ),
               actions: [
                 IconButton(
-                  onPressed: () async => controller.addBookmark(),
-                  icon: const Icon(Icons.bookmark_add_outlined),
+                  onPressed: () => _openBookmarksSheet(controller),
+                  icon: const Icon(Icons.bookmarks_outlined),
                 ),
                 IconButton(
                   onPressed: () => _openNotesSheet(controller),
@@ -254,8 +282,8 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                           icon: const Icon(Icons.list_alt_outlined),
                         ),
                         IconButton(
-                          onPressed: () => controller.addBookmark(),
-                          icon: const Icon(Icons.bookmark_add_outlined),
+                          onPressed: () => _openBookmarksSheet(controller),
+                          icon: const Icon(Icons.bookmarks_outlined),
                         ),
                         IconButton(
                           onPressed: () => _openNotesSheet(controller),
@@ -350,6 +378,39 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     );
   }
 
+  Future<void> _openBookmarksSheet(ReaderController controller) {
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => FractionallySizedBox(
+        heightFactor: 0.82,
+        child: AnimatedBuilder(
+          animation: controller,
+          builder: (context, _) {
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 18,
+                bottom: MediaQuery.paddingOf(context).bottom + 20,
+              ),
+              child: _ReaderBookmarksManager(
+                controller: controller,
+                onClose: () => Navigator.of(context).pop(),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  void _toggleTabletPanel(_TabletReaderPanel panel) {
+    setState(() {
+      _tabletPanel = _tabletPanel == panel ? null : panel;
+    });
+  }
+
   Future<void> _openAnnotationComposer(
     ReaderController controller, {
     AnnotationSelection? selection,
@@ -369,31 +430,32 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
         ),
         initialUnderlineStyle:
             existingAnchor?.underlineStyle ?? AnnotationUnderlineStyle.none,
-        onSubmit: ({
-          required noteText,
-          required color,
-          required underlineStyle,
-        }) async {
-          if (annotation == null) {
-            if (selection == null) {
-              return;
-            }
-            await controller.addAnnotation(
-              selection: selection,
-              noteText: noteText,
-              color: color,
-              underlineStyle: underlineStyle,
-            );
-          } else {
-            await controller.updateAnnotation(
-              annotation: annotation,
-              noteText: noteText,
-              color: color,
-              selection: selection,
-              underlineStyle: underlineStyle,
-            );
-          }
-        },
+        onSubmit:
+            ({
+              required noteText,
+              required color,
+              required underlineStyle,
+            }) async {
+              if (annotation == null) {
+                if (selection == null) {
+                  return;
+                }
+                await controller.addAnnotation(
+                  selection: selection,
+                  noteText: noteText,
+                  color: color,
+                  underlineStyle: underlineStyle,
+                );
+              } else {
+                await controller.updateAnnotation(
+                  annotation: annotation,
+                  noteText: noteText,
+                  color: color,
+                  selection: selection,
+                  underlineStyle: underlineStyle,
+                );
+              }
+            },
       ),
     );
   }
@@ -496,7 +558,8 @@ class _AnnotationComposerSheet extends StatefulWidget {
     required String? noteText,
     required String color,
     required AnnotationUnderlineStyle underlineStyle,
-  }) onSubmit;
+  })
+  onSubmit;
 
   @override
   State<_AnnotationComposerSheet> createState() =>
@@ -543,9 +606,9 @@ class _AnnotationComposerSheetState extends State<_AnnotationComposerSheet> {
         children: [
           Text(
             widget.annotation == null ? '新增批注' : '编辑批注',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 14),
           Container(
@@ -570,9 +633,9 @@ class _AnnotationComposerSheetState extends State<_AnnotationComposerSheet> {
           const SizedBox(height: 16),
           Text(
             '颜色',
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 10),
           SizedBox(
@@ -609,9 +672,9 @@ class _AnnotationComposerSheetState extends State<_AnnotationComposerSheet> {
           const SizedBox(height: 16),
           Text(
             '下划线',
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 10),
           SingleChildScrollView(
@@ -643,7 +706,9 @@ class _AnnotationComposerSheetState extends State<_AnnotationComposerSheet> {
             children: [
               Expanded(
                 child: OutlinedButton(
-                  onPressed: _isSaving ? null : () => Navigator.of(context).pop(),
+                  onPressed: _isSaving
+                      ? null
+                      : () => Navigator.of(context).pop(),
                   child: const Text('取消'),
                 ),
               ),
@@ -778,85 +843,201 @@ class _UnsupportedReaderView extends StatelessWidget {
   }
 }
 
-class _ReaderTopBar extends StatelessWidget {
-  const _ReaderTopBar({
-    required this.detail,
-    required this.controller,
-    required this.onSettings,
-    required this.onNotes,
-    required this.tablet,
-  });
+class _TabletReaderHeader extends StatelessWidget {
+  const _TabletReaderHeader({required this.detail, required this.controller});
 
   final BookDetail detail;
   final ReaderController controller;
-  final VoidCallback onSettings;
-  final VoidCallback onNotes;
-  final bool tablet;
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedOpacity(
-      duration: const Duration(milliseconds: 180),
-      opacity: controller.uiVisible ? 1 : 0,
-      child: IgnorePointer(
-        ignoring: !controller.uiVisible,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-          child: Row(
-            children: [
-              IconButton(
-                onPressed: () {
-                  if (Navigator.of(context).canPop()) {
-                    Navigator.of(context).pop();
-                    return;
-                  }
-                  context.go('/shelf');
-                },
-                icon: const Icon(Icons.arrow_back_ios_new),
-              ),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Text(
-                      detail.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
+    final palette = AppReaderPalette.of(context);
+    final chapterTitle = controller.currentChapter?.title ?? detail.title;
+
+    return Material(
+      color: palette.panel.withValues(alpha: 0.94),
+      elevation: 10,
+      shadowColor: Colors.black.withValues(alpha: 0.08),
+      borderRadius: BorderRadius.circular(24),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          children: [
+            IconButton(
+              onPressed: () {
+                if (Navigator.of(context).canPop()) {
+                  Navigator.of(context).pop();
+                  return;
+                }
+                context.go('/shelf');
+              },
+              icon: const Icon(Icons.arrow_back_ios_new),
+            ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    detail.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
                     ),
-                    if (tablet)
-                      Text(
-                        '${controller.progressPercent.toStringAsFixed(1)}%',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    chapterTitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: palette.inkSecondary,
+                    ),
+                  ),
+                ],
               ),
-              IconButton(
-                onPressed: controller.toggleToc,
-                icon: Icon(
-                  controller.tocVisible
-                      ? Icons.menu_open
-                      : Icons.menu_book_outlined,
-                ),
-              ),
-              IconButton(
-                onPressed: () {
-                  controller.toggleInspector();
-                  onNotes();
-                },
-                icon: const Icon(Icons.edit_note),
-              ),
-              IconButton(
-                onPressed: () {
-                  controller.toggleInspector();
-                  onSettings();
-                },
-                icon: const Icon(Icons.tune),
-              ),
-            ],
+            ),
+            const SizedBox(width: 12),
+            _TabletInfoPill(
+              label: controller.progressPercent.toStringAsFixed(1),
+              suffix: '%',
+            ),
+            const SizedBox(width: 8),
+            _TabletInfoPill(
+              label: switch (controller.currentChapter == null) {
+                true => '加载中',
+                false => '双栏分页',
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TabletInfoPill extends StatelessWidget {
+  const _TabletInfoPill({required this.label, this.suffix});
+
+  final String label;
+  final String? suffix;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppReaderPalette.of(context);
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: palette.backgroundSoft,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: palette.line),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Text(
+          suffix == null ? label : '$label$suffix',
+          style: Theme.of(
+            context,
+          ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
+        ),
+      ),
+    );
+  }
+}
+
+class _TabletReaderDock extends StatelessWidget {
+  const _TabletReaderDock({
+    required this.activePanel,
+    required this.onSelectPanel,
+    required this.onAddBookmark,
+    required this.bookmarkDisabled,
+  });
+
+  final _TabletReaderPanel? activePanel;
+  final ValueChanged<_TabletReaderPanel> onSelectPanel;
+  final Future<void> Function() onAddBookmark;
+  final bool bookmarkDisabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppReaderPalette.of(context);
+
+    return Material(
+      color: palette.panel.withValues(alpha: 0.96),
+      elevation: 12,
+      shadowColor: Colors.black.withValues(alpha: 0.1),
+      borderRadius: BorderRadius.circular(24),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _TabletDockButton(
+              icon: Icons.menu_book_outlined,
+              tooltip: '目录',
+              selected: activePanel == _TabletReaderPanel.toc,
+              onPressed: () => onSelectPanel(_TabletReaderPanel.toc),
+            ),
+            _TabletDockButton(
+              icon: Icons.sticky_note_2_outlined,
+              tooltip: '批注',
+              selected: activePanel == _TabletReaderPanel.notes,
+              onPressed: () => onSelectPanel(_TabletReaderPanel.notes),
+            ),
+            _TabletDockButton(
+              icon: Icons.bookmarks_outlined,
+              tooltip: '书签',
+              selected: activePanel == _TabletReaderPanel.bookmarks,
+              onPressed: () => onSelectPanel(_TabletReaderPanel.bookmarks),
+            ),
+            _TabletDockButton(
+              icon: Icons.bookmark_add_outlined,
+              tooltip: bookmarkDisabled ? '当前页已加书签' : '添加当前书签',
+              onPressed: bookmarkDisabled ? null : () => onAddBookmark(),
+            ),
+            _TabletDockButton(
+              icon: Icons.tune,
+              tooltip: '阅读设置',
+              selected: activePanel == _TabletReaderPanel.settings,
+              onPressed: () => onSelectPanel(_TabletReaderPanel.settings),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TabletDockButton extends StatelessWidget {
+  const _TabletDockButton({
+    required this.icon,
+    required this.tooltip,
+    this.selected = false,
+    this.onPressed,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final bool selected;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppReaderPalette.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Tooltip(
+        message: tooltip,
+        child: Material(
+          color: selected
+              ? palette.accent.withValues(alpha: 0.16)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(18),
+          child: IconButton(
+            onPressed: onPressed,
+            icon: Icon(icon),
+            color: selected ? palette.accent : palette.inkSecondary,
           ),
         ),
       ),
@@ -864,38 +1045,127 @@ class _ReaderTopBar extends StatelessWidget {
   }
 }
 
-class _ReaderFooter extends StatelessWidget {
-  const _ReaderFooter({required this.controller});
+class _TabletReaderProgressChip extends StatelessWidget {
+  const _TabletReaderProgressChip({required this.controller});
 
   final ReaderController controller;
 
   @override
   Widget build(BuildContext context) {
     final palette = AppReaderPalette.of(context);
-    return AnimatedOpacity(
-      duration: const Duration(milliseconds: 180),
-      opacity: controller.uiVisible ? 1 : 0,
-      child: IgnorePointer(
-        ignoring: !controller.uiVisible,
-        child: Container(
-          decoration: BoxDecoration(
-            color: palette.panel,
-            border: Border(top: BorderSide(color: palette.line)),
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-          child: Row(
-            children: [
-              Text('${controller.progressPercent.toStringAsFixed(1)}%'),
-              const Spacer(),
-              TextButton(
-                onPressed: controller.previousChapter,
-                child: const Text('上一章'),
-              ),
-              TextButton(
-                onPressed: controller.nextChapter,
-                child: const Text('下一章'),
-              ),
-            ],
+
+    return Material(
+      color: palette.panel.withValues(alpha: 0.96),
+      elevation: 10,
+      borderRadius: BorderRadius.circular(999),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.swipe, size: 16, color: palette.inkSecondary),
+            const SizedBox(width: 8),
+            Text(
+              '${controller.progressPercent.toStringAsFixed(1)}%',
+              style: Theme.of(
+                context,
+              ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              '左上一页 · 中菜单 · 右下一页',
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: palette.inkSecondary),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TabletReaderPanelSheet extends StatelessWidget {
+  const _TabletReaderPanelSheet({
+    required this.panel,
+    required this.controller,
+    required this.onClose,
+    required this.onEditAnnotation,
+  });
+
+  final _TabletReaderPanel panel;
+  final ReaderController controller;
+  final VoidCallback onClose;
+  final ValueChanged<AnnotationView> onEditAnnotation;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppReaderPalette.of(context);
+    final alignLeft = panel == _TabletReaderPanel.toc;
+
+    return Positioned(
+      top: 92,
+      bottom: 24,
+      left: alignLeft ? 28 : null,
+      right: alignLeft ? null : 98,
+      width: alignLeft ? 340 : 380,
+      child: Material(
+        color: palette.panel,
+        elevation: 20,
+        shadowColor: Colors.black.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(28),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(28),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      switch (panel) {
+                        _TabletReaderPanel.toc => '目录与书签',
+                        _TabletReaderPanel.notes => '批注管理',
+                        _TabletReaderPanel.bookmarks => '书签管理',
+                        _TabletReaderPanel.settings => '阅读设置',
+                      },
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      onPressed: onClose,
+                      icon: const Icon(Icons.close),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: switch (panel) {
+                    _TabletReaderPanel.toc => _ReaderLeftPanel(
+                      controller: controller,
+                    ),
+                    _TabletReaderPanel.notes => _ReaderNotesList(
+                      annotations: controller.annotations,
+                      onJump: (anchor) async {
+                        onClose();
+                        await controller.jumpToAnchor(anchor);
+                      },
+                      onDelete: controller.deleteAnnotation,
+                      onEdit: onEditAnnotation,
+                    ),
+                    _TabletReaderPanel.bookmarks => _ReaderBookmarksManager(
+                      controller: controller,
+                      onClose: onClose,
+                    ),
+                    _TabletReaderPanel.settings =>
+                      const ReaderSettingsPanelContent(),
+                  },
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -966,57 +1236,190 @@ class _ReaderLeftPanel extends StatelessWidget {
   }
 }
 
-class _ReaderRightPanel extends StatelessWidget {
-  const _ReaderRightPanel({
+class _ReaderBookmarksManager extends StatelessWidget {
+  const _ReaderBookmarksManager({
     required this.controller,
-    required this.onEditAnnotation,
+    required this.onClose,
   });
 
   final ReaderController controller;
-  final ValueChanged<AnnotationView> onEditAnnotation;
+  final VoidCallback onClose;
 
   @override
   Widget build(BuildContext context) {
     final palette = AppReaderPalette.of(context);
-    return ColoredBox(
-      color: palette.panel,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 18, 16, 20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SegmentedButton<ReaderInspectorTab>(
-              segments: const [
-                ButtonSegment(
-                  value: ReaderInspectorTab.notes,
-                  label: Text('笔记'),
+    final currentChapter = controller.currentChapter;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: palette.backgroundSoft,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: palette.line),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '当前书签',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
                 ),
-                ButtonSegment(
-                  value: ReaderInspectorTab.settings,
-                  label: Text('设置'),
+                const SizedBox(height: 6),
+                Text(
+                  currentChapter?.title ?? '当前章节还在加载中',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: palette.inkSecondary),
+                ),
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed:
+                      currentChapter == null ||
+                          controller.hasCurrentChapterBookmark
+                      ? null
+                      : controller.addBookmark,
+                  icon: const Icon(Icons.bookmark_add_outlined),
+                  label: Text(
+                    controller.hasCurrentChapterBookmark
+                        ? '当前页已加入书签'
+                        : '添加当前书签',
+                  ),
                 ),
               ],
-              selected: {controller.inspectorTab},
-              onSelectionChanged: (selection) =>
-                  controller.setInspectorTab(selection.first),
             ),
-            const SizedBox(height: 18),
-            Expanded(
-              child: switch (controller.inspectorTab) {
-                ReaderInspectorTab.notes => _ReaderNotesList(
-                  annotations: controller.annotations,
-                  onJump: controller.jumpToAnchor,
-                  onDelete: controller.deleteAnnotation,
-                  onEdit: onEditAnnotation,
-                ),
-                ReaderInspectorTab.settings =>
-                  const ReaderSettingsPanelContent(),
-              },
+          ),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Text(
+              '历史书签',
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
             ),
+            const Spacer(),
+            TextButton(onPressed: onClose, child: const Text('收起')),
           ],
         ),
+        const SizedBox(height: 8),
+        if (controller.bookmarks.isEmpty)
+          Expanded(
+            child: Center(
+              child: Text(
+                '还没有书签，先为当前页加一个吧。',
+                textAlign: TextAlign.center,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(color: palette.inkSecondary),
+              ),
+            ),
+          )
+        else
+          Expanded(
+            child: ListView.separated(
+              itemCount: controller.bookmarks.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 12),
+              itemBuilder: (context, index) {
+                final bookmark = controller.bookmarks[index];
+                return DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: palette.backgroundSoft,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: palette.line),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          bookmark.label ?? bookmark.location,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodyLarge
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          bookmark.updatedAt.split('T').first,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: palette.inkTertiary),
+                        ),
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 10,
+                          runSpacing: 10,
+                          children: [
+                            OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                minimumSize: const Size(0, 44),
+                              ),
+                              onPressed: () async {
+                                onClose();
+                                await controller.jumpToAnchor(
+                                  bookmark.location,
+                                );
+                              },
+                              icon: const Icon(Icons.near_me_outlined),
+                              label: const Text('跳转'),
+                            ),
+                            TextButton.icon(
+                              onPressed: () =>
+                                  _confirmDeleteBookmark(context, bookmark),
+                              icon: const Icon(Icons.delete_outline),
+                              label: const Text('删除'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+      ],
+    );
+  }
+
+  Future<void> _confirmDeleteBookmark(
+    BuildContext context,
+    BookmarkView bookmark,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除这条书签？'),
+        content: Text(
+          bookmark.label?.trim().isNotEmpty == true
+              ? '将从书签列表移除“${bookmark.label}”。'
+              : '删除后将从历史书签中移除这条记录。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('删除'),
+          ),
+        ],
       ),
     );
+
+    if (confirmed != true || !context.mounted) {
+      return;
+    }
+
+    await controller.deleteBookmark(bookmark);
   }
 }
 

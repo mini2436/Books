@@ -64,6 +64,12 @@ class BookshelfScreen extends ConsumerWidget {
                                   style: Theme.of(context).textTheme.bodyMedium
                                       ?.copyWith(color: palette.inkSecondary),
                                 ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '服务：${controller.serviceBaseUrl}',
+                                  style: Theme.of(context).textTheme.bodySmall
+                                      ?.copyWith(color: palette.inkTertiary),
+                                ),
                               ],
                             ),
                           ),
@@ -94,11 +100,13 @@ class BookshelfScreen extends ConsumerWidget {
                       ),
                       if (controller.error != null) ...[
                         const SizedBox(height: 14),
-                        Text(
-                          controller.error!,
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.error,
-                          ),
+                        _BookshelfErrorBanner(
+                          message: controller.error!,
+                          onRetry: controller.isLoading
+                              ? null
+                              : () => ref
+                                    .read(bookshelfControllerProvider)
+                                    .refresh(),
                         ),
                       ],
                     ],
@@ -109,6 +117,16 @@ class BookshelfScreen extends ConsumerWidget {
                 const SliverFillRemaining(
                   hasScrollBody: false,
                   child: Center(child: CircularProgressIndicator()),
+                )
+              else if (controller.error != null && controller.books.isEmpty)
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: _BookshelfEmptyState(
+                    message: controller.error!,
+                    onRetry: controller.isLoading
+                        ? null
+                        : () => ref.read(bookshelfControllerProvider).refresh(),
+                  ),
                 )
               else if (controller.books.isEmpty)
                 SliverFillRemaining(
@@ -158,6 +176,100 @@ class BookshelfScreen extends ConsumerWidget {
                     ),
                   ),
                 ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BookshelfErrorBanner extends StatelessWidget {
+  const _BookshelfErrorBanner({required this.message, this.onRetry});
+
+  final String message;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colorScheme.errorContainer.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.wifi_off_rounded, color: colorScheme.onErrorContainer),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                message,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onErrorContainer,
+                  height: 1.45,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            TextButton(onPressed: onRetry, child: const Text('重试')),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BookshelfEmptyState extends StatelessWidget {
+  const _BookshelfEmptyState({required this.message, this.onRetry});
+
+  final String message;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppReaderPalette.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 360),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.cloud_off_rounded,
+                size: 42,
+                color: palette.inkSecondary,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                '书架暂时没加载出来',
+                textAlign: TextAlign.center,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: palette.inkSecondary,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh),
+                label: const Text('重新加载'),
+              ),
             ],
           ),
         ),

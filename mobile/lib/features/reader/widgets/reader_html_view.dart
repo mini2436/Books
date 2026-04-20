@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as developer;
 
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -19,11 +20,16 @@ class ReaderHtmlView extends StatefulWidget {
     required this.preferences,
     required this.palette,
     required this.uiVisible,
+    required this.pagedMode,
+    required this.dualColumn,
     required this.anchorJumpVersion,
     required this.onHighlight,
     required this.onAnnotate,
     required this.onOpenAnnotations,
+    required this.onPageBoundaryPrevious,
+    required this.onPageBoundaryNext,
     required this.onToggleUi,
+    required this.onMenuRequest,
     this.focusedAnchor,
   });
 
@@ -32,6 +38,8 @@ class ReaderHtmlView extends StatefulWidget {
   final ReaderPreferences preferences;
   final AppReaderPalette palette;
   final bool uiVisible;
+  final bool pagedMode;
+  final bool dualColumn;
   final int anchorJumpVersion;
   final String? focusedAnchor;
   final Future<void> Function(
@@ -44,8 +52,12 @@ class ReaderHtmlView extends StatefulWidget {
     AnnotationView? existingAnnotation,
   )
   onAnnotate;
-  final Future<void> Function(List<AnnotationView> annotations) onOpenAnnotations;
+  final Future<void> Function(List<AnnotationView> annotations)
+  onOpenAnnotations;
+  final Future<void> Function() onPageBoundaryPrevious;
+  final Future<void> Function() onPageBoundaryNext;
   final VoidCallback onToggleUi;
+  final VoidCallback onMenuRequest;
 
   @override
   State<ReaderHtmlView> createState() => _ReaderHtmlViewState();
@@ -60,6 +72,8 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
   final Map<String, GlobalKey> _fallbackAnchorKeys = <String, GlobalKey>{};
   Timer? _blankPageGuard;
 
+  bool get _allowFlutterFallback => !widget.pagedMode;
+
   @override
   void initState() {
     super.initState();
@@ -69,16 +83,17 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       ..setBackgroundColor(widget.palette.background)
       ..setNavigationDelegate(
         NavigationDelegate(
-          onWebResourceError: (_) {
-            if (!mounted) {
-              return;
-            }
-            setState(() {
-              _useFlutterFallback = true;
-            });
+          onWebResourceError: (error) {
+            _handleWebViewFailure(
+              reason:
+                  'Web resource error: ${error.errorCode} ${error.description}',
+            );
           },
           onPageFinished: (_) async {
             _pageReady = true;
+            await _controller.runJavaScript(
+              'if (window.readerApplyLayout) { window.readerApplyLayout(); }',
+            );
             await _verifyRenderedContent();
             await _scrollToFocusedAnchor();
           },
@@ -136,7 +151,27 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     }
     return DecoratedBox(
       decoration: BoxDecoration(color: widget.palette.background),
-      child: WebViewWidget(controller: _controller),
+      child: Stack(
+        children: [
+          Positioned.fill(child: WebViewWidget(controller: _controller)),
+          if (widget.pagedMode)
+            Positioned.fill(
+              child: Row(
+                children: [
+                  _PageTapHotspot(
+                    alignment: Alignment.centerLeft,
+                    onTap: () => _handleExternalTapZone('left'),
+                  ),
+                  const Spacer(),
+                  _PageTapHotspot(
+                    alignment: Alignment.centerRight,
+                    onTap: () => _handleExternalTapZone('right'),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -158,6 +193,15 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       case 'toggleUi':
         widget.onToggleUi();
         break;
+      case 'showMenu':
+        widget.onMenuRequest();
+        break;
+      case 'previousChapter':
+        await widget.onPageBoundaryPrevious();
+        break;
+      case 'nextChapter':
+        await widget.onPageBoundaryNext();
+        break;
       case 'highlight':
       case 'annotate':
         final selection = _selectionFromPayload(payload);
@@ -176,10 +220,11 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         final ids = ((payload['annotationIds'] as List<dynamic>?) ?? const [])
             .map((item) => (item as num).toInt())
             .toSet();
-        final tapped = widget.annotations
-            .where((annotation) => ids.contains(annotation.id))
-            .toList()
-          ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+        final tapped =
+            widget.annotations
+                .where((annotation) => ids.contains(annotation.id))
+                .toList()
+              ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
         if (tapped.isNotEmpty) {
           await widget.onOpenAnnotations(tapped);
         }
@@ -194,6 +239,25 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     await _controller.runJavaScript('window.readerClearSelectionUi();');
   }
 
+  Future<void> _handleExternalTapZone(String zone) async {
+    if (!_pageReady) {
+      if (zone == 'left') {
+        await widget.onPageBoundaryPrevious();
+        return;
+      }
+      if (zone == 'right') {
+        await widget.onPageBoundaryNext();
+        return;
+      }
+      widget.onMenuRequest();
+      return;
+    }
+    final escapedZone = jsonEncode(zone);
+    await _controller.runJavaScript(
+      'window.readerHandleTapZone($escapedZone);',
+    );
+  }
+
   Future<void> _verifyRenderedContent() async {
     if (_useFlutterFallback) {
       return;
@@ -206,29 +270,32 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       return;
     }
     try {
-      final result = await _controller.runJavaScriptReturningResult(
-        'document.getElementById("reader-root")?.innerText?.trim().length ?? 0;',
-      );
+      final result = await _controller.runJavaScriptReturningResult('''
+        (function() {
+          var root = document.getElementById("reader-root");
+          if (!root || !root.innerText) {
+            return 0;
+          }
+          return root.innerText.trim().length;
+        })();
+        ''');
       final renderedLength = int.tryParse(
         result.toString().replaceAll('"', ''),
       );
       if (renderedLength == null || renderedLength <= 0) {
-        if (!mounted) {
-          return;
-        }
-        setState(() {
-          _useFlutterFallback = true;
-        });
+        _handleWebViewFailure(
+          reason:
+              'Rendered content verification failed with length=$renderedLength',
+        );
         return;
       }
       _blankPageGuard?.cancel();
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _useFlutterFallback = true;
-      });
+    } catch (error, stackTrace) {
+      _handleWebViewFailure(
+        reason: 'Rendered content verification threw',
+        error: error,
+        stackTrace: stackTrace,
+      );
     }
   }
 
@@ -242,6 +309,32 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     });
   }
 
+  void _handleWebViewFailure({
+    required String reason,
+    Object? error,
+    StackTrace? stackTrace,
+  }) {
+    developer.log(
+      reason,
+      name: 'ReaderHtmlView',
+      error: error,
+      stackTrace: stackTrace,
+    );
+    if (!_allowFlutterFallback) {
+      developer.log(
+        'Paged tablet mode keeps WebView active; suppressing Flutter fallback.',
+        name: 'ReaderHtmlView',
+      );
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _useFlutterFallback = true;
+    });
+  }
+
   Future<void> _scrollToFocusedAnchor() async {
     if (!_pageReady) {
       return;
@@ -250,7 +343,9 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       return;
     }
     _lastAnchorJumpVersion = widget.anchorJumpVersion;
-    final anchor = AnnotationAnchor.parse(widget.focusedAnchor ?? '').blockAnchor;
+    final anchor = AnnotationAnchor.parse(
+      widget.focusedAnchor ?? '',
+    ).blockAnchor;
     if (anchor.isEmpty) {
       return;
     }
@@ -299,19 +394,25 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
           ),
         )
         .whereType<ResolvedAnnotation>()
-        .where((annotation) => annotation.anchor.blockAnchor == selection.blockAnchor)
+        .where(
+          (annotation) =>
+              annotation.anchor.blockAnchor == selection.blockAnchor,
+        )
         .toList();
 
-    final containing = blockAnnotations
-        .where(
-          (annotation) => annotation.anchor.containsRange(
-            start: selection.startOffset,
-            end: selection.endOffset,
-            text: selection.blockText,
-          ),
-        )
-        .toList()
-      ..sort((left, right) => left.range.length.compareTo(right.range.length));
+    final containing =
+        blockAnnotations
+            .where(
+              (annotation) => annotation.anchor.containsRange(
+                start: selection.startOffset,
+                end: selection.endOffset,
+                text: selection.blockText,
+              ),
+            )
+            .toList()
+          ..sort(
+            (left, right) => left.range.length.compareTo(right.range.length),
+          );
     if (containing.isNotEmpty) {
       return _SelectionIntent(
         selection: selection,
@@ -319,16 +420,19 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       );
     }
 
-    final overlapping = blockAnnotations
-        .where(
-          (annotation) => annotation.anchor.overlapsOrTouches(
-            start: selection.startOffset,
-            end: selection.endOffset,
-            text: selection.blockText,
-          ),
-        )
-        .toList()
-      ..sort((left, right) => left.range.start.compareTo(right.range.start));
+    final overlapping =
+        blockAnnotations
+            .where(
+              (annotation) => annotation.anchor.overlapsOrTouches(
+                start: selection.startOffset,
+                end: selection.endOffset,
+                text: selection.blockText,
+              ),
+            )
+            .toList()
+          ..sort(
+            (left, right) => left.range.start.compareTo(right.range.start),
+          );
     if (overlapping.isNotEmpty) {
       final target = overlapping.first;
       final expandedRange = selection.range.union(target.range);
@@ -347,6 +451,11 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
   }
 
   String _buildHtml() {
+    final bodyClasses = <String>[
+      if (widget.pagedMode) 'reader-paged',
+      if (widget.dualColumn) 'reader-dual-column',
+      if (!widget.uiVisible) 'reader-ui-hidden',
+    ].join(' ');
     final paragraphStyle = _fontCss(
       fontSize: 17 * widget.preferences.fontScale,
       lineHeight: widget.preferences.lineHeight / 1.4,
@@ -380,6 +489,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     }
     * { box-sizing: border-box; }
     html, body {
+      height: 100%;
       margin: 0;
       padding: 0;
       background: var(--reader-bg);
@@ -393,11 +503,38 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       user-select: text;
       -webkit-user-select: text;
     }
+    body.reader-paged {
+      padding: 0;
+      overflow: hidden;
+    }
     ::selection {
       background: var(--reader-selection);
     }
+    #reader-stage {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--reader-bg);
+    }
     #reader-root {
       padding: 0;
+      will-change: transform;
+    }
+    body.reader-paged #reader-stage {
+      padding: 24px 28px 28px;
+    }
+    body.reader-paged #reader-root {
+      height: 100%;
+      column-fill: auto;
+      column-gap: 36px;
+      transition: none;
+    }
+    body.reader-paged.reader-dual-column #reader-root {
+      column-width: calc((100vw - 56px - 36px) / 2);
+    }
+    body.reader-paged:not(.reader-dual-column) #reader-root {
+      column-width: calc(100vw - 56px);
     }
     .reader-block {
       position: relative;
@@ -514,8 +651,10 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     }
   </style>
 </head>
-<body${widget.uiVisible ? '' : ' class="reader-ui-hidden"'}> 
-  <div id="reader-root">$htmlBlocks</div>
+<body${bodyClasses.isEmpty ? '' : ' class="$bodyClasses"'}>
+  <div id="reader-stage">
+    <div id="reader-root">$htmlBlocks</div>
+  </div>
   <div id="reader-selection-overlay" class="reader-selection-overlay"></div>
   <div id="reader-toolbar" class="reader-toolbar">
     <button type="button" data-action="highlight">高亮</button>
@@ -524,11 +663,25 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
   <script>
     (function() {
       const bridge = window.ReaderBridge;
+      const stage = document.getElementById('reader-stage');
+      const root = document.getElementById('reader-root');
       const toolbar = document.getElementById('reader-toolbar');
       const overlay = document.getElementById('reader-selection-overlay');
+      const pagedMode = ${widget.pagedMode ? 'true' : 'false'};
+      const pageTurnAxis = ${jsonEncode(widget.preferences.tabletPageTurnAxis.storageValue)};
+      const pageTurnAnimation = ${jsonEncode(widget.preferences.tabletPageTurnAnimation.storageValue)};
       let currentSelection = null;
       let nativeSelectionClearTimer = null;
       let preservingSelectionUi = false;
+      let currentPage = 0;
+      let pageCount = 1;
+      let pageSpan = 0;
+      let currentOffset = 0;
+      let pageAnimationBusy = false;
+      let touchStartX = 0;
+      let touchStartY = 0;
+      let touchMoved = false;
+      let touchTracking = false;
 
       function send(payload) {
         if (!bridge || !bridge.postMessage) return;
@@ -541,8 +694,14 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
           return null;
         }
         const range = selection.getRangeAt(0);
-        const startBlock = range.startContainer.parentElement?.closest('[data-block-anchor]');
-        const endBlock = range.endContainer.parentElement?.closest('[data-block-anchor]');
+        const startParent = range.startContainer && range.startContainer.parentElement
+          ? range.startContainer.parentElement
+          : null;
+        const endParent = range.endContainer && range.endContainer.parentElement
+          ? range.endContainer.parentElement
+          : null;
+        const startBlock = startParent ? startParent.closest('[data-block-anchor]') : null;
+        const endBlock = endParent ? endParent.closest('[data-block-anchor]') : null;
         if (!startBlock || !endBlock || startBlock !== endBlock) {
           return null;
         }
@@ -589,6 +748,123 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
           width: rect.right - rect.left,
           rects
         };
+      }
+
+      function pageBounds() {
+        const viewportWidth = (stage ? stage.clientWidth : 0) || window.innerWidth || 1;
+        const scrollWidth = root ? root.scrollWidth : viewportWidth;
+        const maxOffset = Math.max(0, scrollWidth - viewportWidth);
+        return { viewportWidth, maxOffset };
+      }
+
+      function applyPagedOffset() {
+        if (!pagedMode || !root) {
+          return;
+        }
+        root.style.transform = 'translate3d(' + (-currentOffset) + 'px, 0, 0)';
+      }
+
+      function updatePagedMetrics() {
+        if (!pagedMode || !root || !stage) {
+          pageCount = 1;
+          currentPage = 0;
+          currentOffset = 0;
+          return;
+        }
+        const styles = window.getComputedStyle(root);
+        const gap = Number.parseFloat(styles.columnGap || '0') || 0;
+        const bounds = pageBounds();
+        pageSpan = bounds.viewportWidth + gap;
+        pageCount = Math.max(
+          1,
+          Math.floor((bounds.maxOffset + gap + 1) / Math.max(pageSpan, 1)) + 1,
+        );
+        currentPage = Math.max(0, Math.min(currentPage, pageCount - 1));
+        currentOffset = Math.min(bounds.maxOffset, currentPage * pageSpan);
+        applyPagedOffset();
+      }
+
+      function animatePagedCommit(direction, commit) {
+        if (!stage || pageAnimationBusy) {
+          commit();
+          return;
+        }
+        pageAnimationBusy = true;
+        const distance = pageTurnAxis === 'horizontal' ? 18 : 24;
+        const outShift = direction > 0 ? -distance : distance;
+        const inShift = -outShift;
+        const outTransform = pageTurnAxis === 'horizontal'
+          ? 'translate3d(' + outShift + 'px,0,0)'
+          : 'translate3d(0,' + outShift + 'px,0)';
+        const inTransform = pageTurnAxis === 'horizontal'
+          ? 'translate3d(' + inShift + 'px,0,0)'
+          : 'translate3d(0,' + inShift + 'px,0)';
+        const scaleOut = pageTurnAnimation === 'roll'
+          ? (pageTurnAxis === 'horizontal' ? ' scale(0.986, 0.992)' : ' scale(0.992, 0.968)')
+          : '';
+        const scaleIn = pageTurnAnimation === 'roll'
+          ? (pageTurnAxis === 'horizontal' ? ' scale(1.01, 1)' : ' scale(1, 1.02)')
+          : '';
+
+        stage.style.transformOrigin = pageTurnAxis === 'horizontal'
+          ? (direction > 0 ? 'right center' : 'left center')
+          : (direction > 0 ? 'center top' : 'center bottom');
+        stage.style.transition = 'transform 160ms ease, opacity 160ms ease';
+        stage.style.opacity = pageTurnAnimation === 'roll' ? '0.96' : '0.985';
+        stage.style.transform = outTransform + scaleOut;
+
+        window.setTimeout(function() {
+          stage.style.transition = 'none';
+          commit();
+          stage.style.transform = inTransform + scaleIn;
+          window.requestAnimationFrame(function() {
+            stage.style.transition = 'transform 220ms ease, opacity 220ms ease';
+            stage.style.opacity = '1';
+            stage.style.transform = 'translate3d(0,0,0)';
+            window.setTimeout(function() {
+              pageAnimationBusy = false;
+            }, 220);
+          });
+        }, 140);
+      }
+
+      function goToPage(targetPage, animate) {
+        if (!pagedMode) {
+          return false;
+        }
+        const nextPage = Math.max(0, Math.min(targetPage, pageCount - 1));
+        if (nextPage === currentPage) {
+          return false;
+        }
+        const direction = nextPage > currentPage ? 1 : -1;
+        const commit = function() {
+          currentPage = nextPage;
+          const bounds = pageBounds();
+          currentOffset = Math.min(bounds.maxOffset, currentPage * pageSpan);
+          applyPagedOffset();
+        };
+        if (!animate) {
+          commit();
+          return true;
+        }
+        animatePagedCommit(direction, commit);
+        return true;
+      }
+
+      function handlePageTurn(direction) {
+        if (!pagedMode) {
+          return false;
+        }
+        const targetPage = currentPage + direction;
+        if (targetPage < 0) {
+          send({ type: 'previousChapter' });
+          return true;
+        }
+        if (targetPage >= pageCount) {
+          send({ type: 'nextChapter' });
+          return true;
+        }
+        return goToPage(targetPage, true);
       }
 
       function renderSelectionOverlay(data) {
@@ -670,18 +946,97 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         placeToolbar(data);
       }
 
+      function handleDocumentTap(target, clientX) {
+        const annotationTarget = target && typeof target.closest === 'function'
+          ? target.closest('[data-annotation-ids]')
+          : null;
+        if (annotationTarget) {
+          clearSelectionUi();
+          const ids = (annotationTarget.dataset.annotationIds || '')
+            .split(',')
+            .map(item => Number(item))
+            .filter(item => Number.isFinite(item));
+          send({ type: 'annotationTap', annotationIds: ids });
+          return;
+        }
+
+        const selection = window.getSelection();
+        if (selection && !selection.isCollapsed) {
+          return;
+        }
+        const toolbarTarget = target && typeof target.closest === 'function'
+          ? target.closest('#reader-toolbar')
+          : null;
+        if (toolbarTarget) {
+          return;
+        }
+        if (pagedMode) {
+          const ratio = window.innerWidth <= 0 ? 0.5 : clientX / window.innerWidth;
+          if (ratio <= 0.32) {
+            handlePageTurn(-1);
+            return;
+          }
+          if (ratio >= 0.68) {
+            handlePageTurn(1);
+            return;
+          }
+          send({ type: 'showMenu' });
+          return;
+        }
+        send({ type: 'toggleUi' });
+      }
+
       document.addEventListener('selectionchange', handleSelectionChange);
-      document.addEventListener('touchstart', function() {
+      document.addEventListener('touchstart', function(event) {
         cancelNativeSelectionClear();
+        const touch = event.touches && event.touches.length > 0 ? event.touches[0] : null;
+        if (!touch) {
+          touchTracking = false;
+          touchMoved = false;
+          return;
+        }
+        touchTracking = true;
+        touchMoved = false;
+        touchStartX = touch.clientX;
+        touchStartY = touch.clientY;
       }, { passive: true });
-      document.addEventListener('touchend', function() {
+      document.addEventListener('touchmove', function(event) {
+        if (!touchTracking) {
+          return;
+        }
+        const touch = event.touches && event.touches.length > 0 ? event.touches[0] : null;
+        if (!touch) {
+          return;
+        }
+        if (Math.abs(touch.clientX - touchStartX) > 12 || Math.abs(touch.clientY - touchStartY) > 12) {
+          touchMoved = true;
+        }
+      }, { passive: true });
+      document.addEventListener('touchcancel', function() {
+        touchTracking = false;
+        touchMoved = false;
+      }, { passive: true });
+      document.addEventListener('touchend', function(event) {
+        const touch = event.changedTouches && event.changedTouches.length > 0
+          ? event.changedTouches[0]
+          : null;
         if (!currentSelection) {
+          if (pagedMode && touchTracking && !touchMoved && touch) {
+            handleDocumentTap(event.target, touch.clientX);
+          }
+          touchTracking = false;
+          touchMoved = false;
           return;
         }
         scheduleNativeSelectionClear(260);
+        touchTracking = false;
+        touchMoved = false;
       }, { passive: true });
       document.addEventListener('scroll', clearSelectionUi, true);
-      window.addEventListener('resize', clearSelectionUi);
+      window.addEventListener('resize', function() {
+        clearSelectionUi();
+        updatePagedMetrics();
+      });
       document.addEventListener('contextmenu', function(event) {
         const data = selectionData();
         if (!data) {
@@ -694,42 +1049,28 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         scheduleNativeSelectionClear(120);
       });
 
-      toolbar?.addEventListener('click', function(event) {
-        const button = event.target.closest('button[data-action]');
-        if (!button || !currentSelection) {
-          return;
-        }
-        const action = button.dataset.action;
-        send({
-          type: action,
-          blockAnchor: currentSelection.blockAnchor,
-          startOffset: currentSelection.startOffset,
-          endOffset: currentSelection.endOffset,
-          selectedText: currentSelection.selectedText
+      if (toolbar) {
+        toolbar.addEventListener('click', function(event) {
+          const target = event.target;
+          const button = target && typeof target.closest === 'function'
+            ? target.closest('button[data-action]')
+            : null;
+          if (!button || !currentSelection) {
+            return;
+          }
+          const action = button.dataset.action;
+          send({
+            type: action,
+            blockAnchor: currentSelection.blockAnchor,
+            startOffset: currentSelection.startOffset,
+            endOffset: currentSelection.endOffset,
+            selectedText: currentSelection.selectedText
+          });
         });
-      });
+      }
 
       document.addEventListener('click', function(event) {
-        const annotationTarget = event.target.closest('[data-annotation-ids]');
-        if (annotationTarget) {
-          event.preventDefault();
-          event.stopPropagation();
-          clearSelectionUi();
-          const ids = (annotationTarget.dataset.annotationIds || '')
-            .split(',')
-            .map(item => Number(item))
-            .filter(item => Number.isFinite(item));
-          send({ type: 'annotationTap', annotationIds: ids });
-          return;
-        }
-        const selection = window.getSelection();
-        if (selection && !selection.isCollapsed) {
-          return;
-        }
-        if (event.target.closest('#reader-toolbar')) {
-          return;
-        }
-        send({ type: 'toggleUi' });
+        handleDocumentTap(event.target, event.clientX);
       });
 
       window.readerClearSelectionUi = function() {
@@ -741,15 +1082,46 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         document.body.classList.toggle('reader-ui-hidden', !visible);
       };
 
+      window.readerApplyLayout = function() {
+        updatePagedMetrics();
+      };
+
+      window.readerHandleTapZone = function(zone) {
+        if (zone === 'left') {
+          handlePageTurn(-1);
+          return;
+        }
+        if (zone === 'right') {
+          handlePageTurn(1);
+          return;
+        }
+        send({ type: 'showMenu' });
+      };
+
       window.readerScrollToAnchor = function(anchor) {
         if (!anchor) return;
         const target = Array.from(document.querySelectorAll('[data-anchor], [data-block-anchor]'))
           .find(node => node.dataset.anchor === anchor || node.dataset.blockAnchor === anchor);
         if (!target) return;
+        if (pagedMode && stage) {
+          updatePagedMetrics();
+          const stageRect = stage.getBoundingClientRect();
+          const targetRect = target.getBoundingClientRect();
+          const absoluteX = currentOffset + Math.max(0, targetRect.left - stageRect.left);
+          const targetPage = Math.max(
+            0,
+            Math.min(pageCount - 1, Math.floor(absoluteX / Math.max(pageSpan, 1))),
+          );
+          goToPage(targetPage, false);
+        }
         target.classList.remove('reader-anchor-pulse');
-        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        if (!pagedMode) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
         window.setTimeout(() => target.classList.add('reader-anchor-pulse'), 40);
       };
+
+      updatePagedMetrics();
     })();
   </script>
 </body>
@@ -759,15 +1131,19 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
 
   String _buildBlockHtml(BookContentBlock block) {
     final blockText = block.renderedText;
-    final blockAnnotations = widget.annotations
-        .where(
-          (annotation) => AnnotationAnchor.parse(annotation.anchor).blockAnchor == block.anchor,
-        )
-        .toList()
-      ..sort((left, right) => right.updatedAt.compareTo(left.updatedAt));
+    final blockAnnotations =
+        widget.annotations
+            .where(
+              (annotation) =>
+                  AnnotationAnchor.parse(annotation.anchor).blockAnchor ==
+                  block.anchor,
+            )
+            .toList()
+          ..sort((left, right) => right.updatedAt.compareTo(left.updatedAt));
 
     final legacyHighlight = blockAnnotations.firstWhere(
-      (annotation) => !AnnotationAnchor.parse(annotation.anchor).hasExplicitRange,
+      (annotation) =>
+          !AnnotationAnchor.parse(annotation.anchor).hasExplicitRange,
       orElse: () => const AnnotationView(
         id: -1,
         bookId: -1,
@@ -782,8 +1158,8 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     );
     final legacyStyle =
         legacyHighlight.id > 0 || legacyHighlight.anchor.isNotEmpty
-            ? ' style="background:${_cssColor(_annotationBackgroundColor(legacyHighlight))};"'
-            : '';
+        ? ' style="background:${_cssColor(_annotationBackgroundColor(legacyHighlight))};"'
+        : '';
     final content = switch (block.type) {
       'divider' => _escapeHtml(blockText.isEmpty ? '···' : blockText),
       _ => _buildAnnotatedInlineHtml(block, blockAnnotations),
@@ -797,8 +1173,8 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     };
     final extraClass =
         legacyHighlight.id > 0 || legacyHighlight.anchor.isNotEmpty
-            ? ' legacy-highlight'
-            : '';
+        ? ' legacy-highlight'
+        : '';
     return '<$tag class="reader-block$extraClass" data-type="${_escapeHtml(block.type)}" data-block-anchor="${_escapeHtml(block.anchor)}" data-anchor="${_escapeHtml(block.anchor)}"$legacyStyle>$content</$tag>';
   }
 
@@ -807,17 +1183,23 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     List<AnnotationView> annotations,
   ) {
     final blockText = block.renderedText;
-    final explicit = annotations
-        .map((annotation) {
-          final resolved = ResolvedAnnotation.fromAnnotation(annotation, blockText);
-          if (resolved == null || !resolved.anchor.hasExplicitRange) {
-            return null;
-          }
-          return resolved;
-        })
-        .whereType<ResolvedAnnotation>()
-        .toList()
-      ..sort((left, right) => left.range.start.compareTo(right.range.start));
+    final explicit =
+        annotations
+            .map((annotation) {
+              final resolved = ResolvedAnnotation.fromAnnotation(
+                annotation,
+                blockText,
+              );
+              if (resolved == null || !resolved.anchor.hasExplicitRange) {
+                return null;
+              }
+              return resolved;
+            })
+            .whereType<ResolvedAnnotation>()
+            .toList()
+          ..sort(
+            (left, right) => left.range.start.compareTo(right.range.start),
+          );
 
     if (explicit.isEmpty) {
       return _escapeHtml(blockText);
@@ -918,4 +1300,26 @@ class _SelectionIntent {
 
   final AnnotationSelection selection;
   final AnnotationView? existingAnnotation;
+}
+
+class _PageTapHotspot extends StatelessWidget {
+  const _PageTapHotspot({required this.alignment, required this.onTap});
+
+  final Alignment alignment;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: alignment,
+      child: SizedBox(
+        width: 72,
+        child: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: onTap,
+          child: const SizedBox.expand(),
+        ),
+      ),
+    );
+  }
 }

@@ -7,6 +7,9 @@ class SettingsStorage {
   static const String _fontScaleKey = 'reader.fontScale';
   static const String _lineHeightKey = 'reader.lineHeight';
   static const String _fontFamilyKey = 'reader.fontFamily';
+  static const String _tabletPageTurnAxisKey = 'reader.tabletPageTurnAxis';
+  static const String _tabletPageTurnAnimationKey =
+      'reader.tabletPageTurnAnimation';
 
   Future<ReaderPreferences> read() async {
     final preferences = await SharedPreferences.getInstance();
@@ -19,6 +22,12 @@ class SettingsStorage {
       fontFamily: ReaderFontFamilyPreferenceX.fromStorage(
         preferences.getString(_fontFamilyKey),
       ),
+      tabletPageTurnAxis: TabletPageTurnAxisX.fromStorage(
+        preferences.getString(_tabletPageTurnAxisKey),
+      ),
+      tabletPageTurnAnimation: TabletPageTurnAnimationX.fromStorage(
+        preferences.getString(_tabletPageTurnAnimationKey),
+      ),
     );
   }
 
@@ -28,5 +37,13 @@ class SettingsStorage {
     await preferences.setDouble(_fontScaleKey, value.fontScale);
     await preferences.setDouble(_lineHeightKey, value.lineHeight);
     await preferences.setString(_fontFamilyKey, value.fontFamily.storageValue);
+    await preferences.setString(
+      _tabletPageTurnAxisKey,
+      value.tabletPageTurnAxis.storageValue,
+    );
+    await preferences.setString(
+      _tabletPageTurnAnimationKey,
+      value.tabletPageTurnAnimation.storageValue,
+    );
   }
 }

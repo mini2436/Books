@@ -1,3 +1,5 @@
+import 'dart:developer' as developer;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -41,6 +43,7 @@ class BookshelfController extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
   int get pendingCount => _pendingCount;
+  String get serviceBaseUrl => _apiClient.baseUrl;
 
   Future<void> refresh() async {
     if (!_authController.isAuthenticated) {
@@ -56,15 +59,38 @@ class BookshelfController extends ChangeNotifier {
     notifyListeners();
 
     try {
+      developer.log(
+        'Refreshing bookshelf from ${_apiClient.baseUrl}',
+        name: 'BookshelfController',
+      );
       final nextBooks = await _authController.runAuthorized(
         (accessToken) => _apiClient.listMyBooks(accessToken),
       );
-      final count = await _offlineQueueService.pendingCount();
+      var count = _pendingCount;
+      try {
+        count = await _offlineQueueService.pendingCount();
+      } catch (error, stackTrace) {
+        developer.log(
+          'Failed to read offline queue count',
+          name: 'BookshelfController',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      }
       _books = nextBooks;
       _pendingCount = count;
-    } catch (error) {
-      _error = error.toString();
-      _books = const [];
+      developer.log(
+        'Bookshelf loaded ${nextBooks.length} books from ${_apiClient.baseUrl}',
+        name: 'BookshelfController',
+      );
+    } catch (error, stackTrace) {
+      _error = '书架加载失败，请检查服务地址、登录状态或网络后重试。\n当前服务：${_apiClient.baseUrl}\n$error';
+      developer.log(
+        'Bookshelf refresh failed',
+        name: 'BookshelfController',
+        error: error,
+        stackTrace: stackTrace,
+      );
     } finally {
       _isLoading = false;
       notifyListeners();

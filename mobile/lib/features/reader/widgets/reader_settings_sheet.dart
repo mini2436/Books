@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../settings/reader_preferences_controller.dart';
 import '../../../shared/theme/reader_theme_extension.dart';
+import '../../../shared/utils/responsive.dart';
 
 class ReaderSettingsSheet extends ConsumerWidget {
   const ReaderSettingsSheet({super.key});
@@ -34,6 +35,7 @@ class ReaderSettingsPanelContent extends ConsumerWidget {
     final controller = ref.watch(readerPreferencesControllerProvider);
     final preferences = controller.value;
     final palette = AppReaderPalette.of(context);
+    final tablet = Responsive.isTablet(context);
 
     return ListView(
       children: [
@@ -143,6 +145,83 @@ class ReaderSettingsPanelContent extends ConsumerWidget {
             );
           }).toList(),
         ),
+        if (tablet) ...[
+          const SizedBox(height: 24),
+          _SectionTitle(title: '平板阅读'),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: palette.backgroundSoft,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: palette.line),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '正文默认启用双栏分页',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '点击左侧上一页，右侧下一页，中间呼出阅读工具。手机端继续保留滚动阅读。',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: palette.inkSecondary,
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    '翻页方向',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: palette.inkTertiary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  SegmentedButton<TabletPageTurnAxis>(
+                    segments: TabletPageTurnAxis.values
+                        .map(
+                          (axis) => ButtonSegment(
+                            value: axis,
+                            label: Text(axis.label),
+                          ),
+                        )
+                        .toList(),
+                    selected: {preferences.tabletPageTurnAxis},
+                    onSelectionChanged: (selection) =>
+                        controller.setTabletPageTurnAxis(selection.first),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    '翻页动画',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: palette.inkTertiary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  SegmentedButton<TabletPageTurnAnimation>(
+                    segments: TabletPageTurnAnimation.values
+                        .map(
+                          (animation) => ButtonSegment(
+                            value: animation,
+                            label: Text(animation.label),
+                          ),
+                        )
+                        .toList(),
+                    selected: {preferences.tabletPageTurnAnimation},
+                    onSelectionChanged: (selection) =>
+                        controller.setTabletPageTurnAnimation(selection.first),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }

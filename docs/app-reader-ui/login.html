@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>登录页 - Private Reader APP UI</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Noto Sans SC", sans-serif;
+    background: #F7F7F7;
+    color: #1A1A1A;
+    line-height: 1.5;
+  }
+  .demo-frame {
+    display: flex;
+    gap: 40px;
+    padding: 40px;
+    align-items: flex-start;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .device-label {
+    text-align: center;
+    font-size: 12px;
+    color: #999;
+    margin-bottom: 8px;
+    letter-spacing: 0.1em;
+  }
+  .mobile-shell {
+    width: 375px;
+    height: 812px;
+    background: #FFFFFF;
+    border-radius: 40px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.12);
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+  .mobile-shell::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 50%; transform: translateX(-50%);
+    width: 150px; height: 28px;
+    background: #1A1A1A;
+    border-bottom-left-radius: 18px;
+    border-bottom-right-radius: 18px;
+    z-index: 10;
+  }
+  .pad-shell {
+    width: 820px;
+    height: 1100px;
+    background: #F2F2F2;
+    border-radius: 24px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.12);
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .login-mobile {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 32px;
+  }
+  .login-brand {
+    width: 64px; height: 64px;
+    border-radius: 16px;
+    background: linear-gradient(180deg, #8A5528, #5B3115);
+    display: grid; place-items: center;
+    color: #fff;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    margin-bottom: 16px;
+  }
+  .login-app-name {
+    font-size: 20px;
+    font-weight: 600;
+    margin-bottom: 48px;
+    color: #1A1A1A;
+  }
+  .login-form {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .login-input {
+    width: 100%;
+    height: 48px;
+    padding: 0 16px;
+    border: 1px solid #E5E5E5;
+    border-radius: 12px;
+    background: #F7F7F7;
+    font-size: 15px;
+    font-family: inherit;
+    outline: none;
+    color: #1A1A1A;
+    transition: border-color 150ms ease, background 150ms ease;
+  }
+  .login-input:focus {
+    border-color: #7A4A24;
+    background: #FFFFFF;
+  }
+  .login-btn {
+    width: 100%;
+    height: 48px;
+    border: none;
+    border-radius: 12px;
+    background: #7A4A24;
+    color: #fff;
+    font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: transform 100ms ease, opacity 100ms ease;
+  }
+  .login-btn:active { transform: scale(0.98); opacity: 0.9; }
+  .login-hint {
+    margin-top: 24px;
+    font-size: 13px;
+    color: #999;
+    text-align: center;
+  }
+
+  .login-card {
+    width: 420px;
+    background: #FFFFFF;
+    border-radius: 20px;
+    padding: 48px 40px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.08);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+</style>
+</head>
+<body>
+<div class="demo-frame">
+  <!-- Mobile -->
+  <div>
+    <div class="device-label">MOBILE 登录页</div>
+    <div class="mobile-shell">
+      <div class="login-mobile">
+        <div class="login-brand">PR</div>
+        <div class="login-app-name">Private Reader</div>
+        <div class="login-form">
+          <input class="login-input" type="text" placeholder="用户名" value="admin">
+          <input class="login-input" type="password" placeholder="密码" value="password">
+          <button class="login-btn" onclick="location.href='bookshelf.html'">登录</button>
+        </div>
+        <div class="login-hint">登录即表示您同意服务条款</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pad -->
+  <div>
+    <div class="device-label">PAD 登录页</div>
+    <div class="pad-shell">
+      <div class="login-card">
+        <div class="login-brand">PR</div>
+        <div class="login-app-name">Private Reader</div>
+        <div class="login-form">
+          <input class="login-input" type="text" placeholder="用户名" value="admin">
+          <input class="login-input" type="password" placeholder="密码" value="password">
+          <button class="login-btn" onclick="location.href='bookshelf.html'">登录</button>
+        </div>
+        <div class="login-hint">登录即表示您同意服务条款</div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

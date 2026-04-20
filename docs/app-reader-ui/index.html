@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Private Reader APP UI 原型导航</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Noto Sans SC", sans-serif;
+    background: #F7F7F7;
+    color: #1A1A1A;
+    line-height: 1.6;
+    padding: 40px 20px;
+    max-width: 900px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 28px; margin-bottom: 8px; }
+  .subtitle { color: #999; margin-bottom: 32px; }
+  .nav-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 16px;
+  }
+  .nav-card {
+    background: #fff;
+    border-radius: 16px;
+    padding: 20px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+    text-decoration: none;
+    color: inherit;
+    transition: transform 180ms ease, box-shadow 180ms ease;
+    border: 1px solid rgba(0,0,0,0.06);
+  }
+  .nav-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.10);
+  }
+  .nav-card h3 { font-size: 16px; margin-bottom: 6px; color: #7A4A24; }
+  .nav-card p { font-size: 13px; color: #999; }
+  .nav-card .tag {
+    display: inline-block;
+    margin-top: 10px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: #F2F2F2;
+    font-size: 12px;
+    color: #666;
+  }
+  .nav-card .tag.interactive { background: rgba(122,74,36,0.08); color: #7A4A24; }
+  footer {
+    margin-top: 48px;
+    padding-top: 24px;
+    border-top: 1px solid #E5E5E5;
+    font-size: 13px;
+    color: #999;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+  <h1>Private Reader APP UI 原型</h1>
+  <p class="subtitle">点击下列卡片即可打开对应场景的交互原型或静态示意图</p>
+
+  <div class="nav-grid">
+    <a class="nav-card" href="bookshelf.html">
+      <h3>📚 书架页</h3>
+      <p>Mobile 3列 / Pad 5列封面网格，底部 Tab Bar</p>
+      <span class="tag">静态示意图</span>
+    </a>
+
+    <a class="nav-card" href="reader-light.html">
+      <h3>📖 阅读器（交互原型）</h3>
+      <p>点击正文显隐工具栏 · 主题切换 · 设置Sheet · 目录/笔记Drawer · 选中文字工具条</p>
+      <span class="tag interactive">可交互原型</span>
+    </a>
+
+    <a class="nav-card" href="reader-night.html">
+      <h3>🌙 阅读器 - 夜间主题</h3>
+      <p>深色沉浸式阅读界面静态示意图</p>
+      <span class="tag">静态示意图</span>
+    </a>
+
+    <a class="nav-card" href="reader-kraft.html">
+      <h3>📜 阅读器 - 牛皮纸主题</h3>
+      <p>纸质书感阅读界面静态示意图</p>
+      <span class="tag">静态示意图</span>
+    </a>
+
+    <a class="nav-card" href="reader-settings.html">
+      <h3>⚙️ 阅读设置面板</h3>
+      <p>字号滑块 · 字体网格 · 行高分段器 · 主题色块</p>
+      <span class="tag">静态示意图</span>
+    </a>
+
+    <a class="nav-card" href="reader-toc.html">
+      <h3>📑 目录侧边栏</h3>
+      <p>目录树 · 书签列表 · 层级缩进</p>
+      <span class="tag">静态示意图</span>
+    </a>
+
+    <a class="nav-card" href="reader-annotations.html">
+      <h3>📝 批注管理</h3>
+      <p>批注列表Drawer · 编辑输入面板 · 颜色选择</p>
+      <span class="tag">静态示意图</span>
+    </a>
+
+    <a class="nav-card" href="login.html">
+      <h3>🔐 登录页</h3>
+      <p>Mobile 全屏 / Pad 居中卡片</p>
+      <span class="tag">静态示意图</span>
+    </a>
+
+    <a class="nav-card" href="profile.html">
+      <h3>👤 账号页</h3>
+      <p>头像 · 统计 · 设置列表 · 退出登录</p>
+      <span class="tag">静态示意图</span>
+    </a>
+  </div>
+
+  <footer>
+    设计规范文档：<a href="../app-reader-ui-spec.md" style="color:#7A4A24">app-reader-ui-spec.md</a>
+  </footer>
+</body>
+</html>

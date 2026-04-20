@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>阅读器 - 夜间模式 - Private Reader APP UI</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Noto Sans SC", sans-serif;
+    background: #0D0D0F;
+    color: #C8C8C8;
+    line-height: 1.5;
+  }
+  .demo-frame {
+    display: flex;
+    gap: 40px;
+    padding: 40px;
+    align-items: flex-start;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .device-label {
+    text-align: center;
+    font-size: 12px;
+    color: #666;
+    margin-bottom: 8px;
+    letter-spacing: 0.1em;
+  }
+  .mobile-shell {
+    width: 375px;
+    height: 812px;
+    background: #17171A;
+    border-radius: 40px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+  .mobile-shell::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 50%; transform: translateX(-50%);
+    width: 150px; height: 28px;
+    background: #000;
+    border-bottom-left-radius: 18px;
+    border-bottom-right-radius: 18px;
+    z-index: 10;
+  }
+
+  .reader-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 52px 16px 12px;
+    background: #17171A;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    font-size: 15px;
+    color: #C8C8C8;
+  }
+  .reader-topbar .back { font-size: 18px; color: #888; width: 32px; }
+  .reader-topbar .title {
+    flex: 1;
+    text-align: center;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding: 0 8px;
+    color: #C8C8C8;
+  }
+  .reader-topbar .more { font-size: 18px; color: #888; width: 32px; text-align: right; }
+
+  .reader-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px 20px;
+    background: #17171A;
+  }
+  .chapter-title {
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: 28px;
+    line-height: 1.4;
+    color: #E0E0E0;
+  }
+  .paragraph {
+    font-size: 17px;
+    line-height: 1.8;
+    margin-bottom: 1em;
+    text-indent: 2em;
+    color: #C8C8C8;
+    text-align: justify;
+  }
+  .paragraph a { color: #C3924A; }
+
+  .reader-bottombar {
+    padding: 8px 16px;
+    background: #17171A;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 13px;
+    color: #888;
+  }
+  .reader-bottombar .progress-track {
+    flex: 1;
+    height: 2px;
+    background: #333;
+    border-radius: 1px;
+    margin: 0 16px;
+    position: relative;
+  }
+  .reader-bottombar .progress-fill {
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 32%;
+    background: #C3924A;
+    border-radius: 1px;
+  }
+
+  .reader-actions {
+    height: 56px;
+    background: rgba(30,30,34,0.95);
+    backdrop-filter: blur(12px);
+    border-top: 1px solid rgba(255,255,255,0.06);
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+  }
+  .action-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    color: #888;
+  }
+  .action-icon {
+    width: 22px; height: 22px;
+    border-radius: 4px;
+    background: currentColor;
+    opacity: 0.25;
+  }
+
+  .anno-toolbar {
+    position: absolute;
+    top: 260px; left: 50%; transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 0;
+    background: #3A3A3E;
+    border-radius: 24px;
+    padding: 6px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  }
+  .anno-btn {
+    padding: 6px 16px;
+    color: #fff;
+    font-size: 13px;
+    border-radius: 18px;
+  }
+</style>
+</head>
+<body>
+<div class="demo-frame">
+  <div>
+    <div class="device-label">MOBILE 阅读器 - 夜间模式</div>
+    <div class="mobile-shell">
+      <div class="reader-topbar">
+        <div class="back">←</div>
+        <div class="title">Kubernetes进阶实战（第2版）</div>
+        <div class="more">⋮</div>
+      </div>
+      <div class="reader-content">
+        <div class="chapter-title">前言</div>
+        <div class="paragraph">为什么要写这本书</div>
+        <div class="paragraph">异构的IT基础设施环境导致开发和部署的系统应用纷繁复杂，作为IT技术领域多年的应用者和实践者，我们曾期盼这种局面迎来“终结者”。</div>
+        <div class="paragraph">该“终结者”不仅可以让开发人员从长期饱受困扰的程序移植问题中解脱出来，也可以让运维人员无须再手动解决运行环境中组件间的依赖关系等问题，从而让他们的核心职责分别回归到业务开发和保证系统稳定运行上。</div>
+        <div class="paragraph">终于，以Docker为代表的应用容器技术为该难题的解决带来了一缕曙光，冉冉升起的容器编排之星Kubernetes则让该难题的解决几近尘埃落定，甚至连IT管理者心心念念多年的DevOps文化运动也借此找到了易于落地的实现方案。</div>
+        <div class="paragraph">于是，系统运行割据多年的局面被打破，开始步入天下一统的时代。</div>
+
+        <div class="anno-toolbar">
+          <div class="anno-btn">高亮</div>
+          <div class="anno-btn">批注</div>
+          <div class="anno-btn">复制</div>
+        </div>
+      </div>
+      <div class="reader-bottombar">
+        <span>上一章</span>
+        <div class="progress-track"><div class="progress-fill"></div></div>
+        <span>32.4%</span>
+        <span>下一章</span>
+      </div>
+      <div class="reader-actions">
+        <div class="action-item"><div class="action-icon"></div><span>目录</span></div>
+        <div class="action-item"><div class="action-icon"></div><span>笔记</span></div>
+        <div class="action-item"><div class="action-icon"></div><span>亮度</span></div>
+        <div class="action-item"><div class="action-icon"></div><span>设置</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

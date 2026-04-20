@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>目录侧边栏 - Private Reader APP UI</title>
+<style>
+  :root {
+    --bg: #FFFFFF;
+    --ink: #1A1A1A;
+    --ink-secondary: #666666;
+    --ink-tertiary: #999999;
+    --accent: #7A4A24;
+    --line: rgba(0,0,0,0.08);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Noto Sans SC", sans-serif;
+    background: #F7F7F7;
+    color: var(--ink);
+    line-height: 1.5;
+  }
+  .demo-frame {
+    display: flex;
+    gap: 40px;
+    padding: 40px;
+    align-items: flex-start;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .device-label {
+    text-align: center;
+    font-size: 12px;
+    color: #999;
+    margin-bottom: 8px;
+    letter-spacing: 0.1em;
+  }
+  .mobile-shell {
+    width: 375px;
+    height: 812px;
+    background: var(--bg);
+    border-radius: 40px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.12);
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+  .mobile-shell::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 50%; transform: translateX(-50%);
+    width: 150px; height: 28px;
+    background: var(--ink);
+    border-bottom-left-radius: 18px;
+    border-bottom-right-radius: 18px;
+    z-index: 10;
+  }
+
+  .drawer {
+    width: 100%; height: 100%;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+  }
+  .drawer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 52px 16px 12px;
+    border-bottom: 1px solid var(--line);
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .drawer-close { font-size: 20px; color: var(--ink-tertiary); cursor: pointer; width: 32px; text-align: right; }
+
+  .drawer-tabs {
+    display: flex;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--line);
+  }
+  .drawer-tab {
+    padding: 12px 16px;
+    font-size: 15px;
+    color: var(--ink-tertiary);
+    position: relative;
+    cursor: pointer;
+    border: none;
+    background: transparent;
+  }
+  .drawer-tab.active {
+    color: var(--ink);
+    font-weight: 500;
+  }
+  .drawer-tab.active::after {
+    content: "";
+    position: absolute;
+    bottom: 0; left: 12px; right: 12px;
+    height: 3px;
+    background: var(--accent);
+    border-radius: 2px;
+  }
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 0;
+  }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  .toc-item {
+    display: flex;
+    align-items: center;
+    padding: 14px 16px;
+    font-size: 15px;
+    color: var(--ink);
+    cursor: pointer;
+    position: relative;
+    border: none;
+    background: transparent;
+    width: 100%;
+    text-align: left;
+    transition: background 100ms ease;
+  }
+  .toc-item:active { background: rgba(0,0,0,0.04); }
+  .toc-item.active { color: var(--accent); font-weight: 500; }
+  .toc-item.active::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 10px; bottom: 10px;
+    width: 3px;
+    background: var(--accent);
+    border-radius: 0 2px 2px 0;
+  }
+  .toc-item.level-1 { padding-left: 16px; }
+  .toc-item.level-2 { padding-left: 32px; font-size: 14px; color: var(--ink-secondary); }
+  .toc-item.level-3 { padding-left: 48px; font-size: 13px; color: var(--ink-tertiary); }
+
+  .bookmark-item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--line);
+    cursor: pointer;
+    transition: background 100ms ease;
+  }
+  .bookmark-item:active { background: rgba(0,0,0,0.04); }
+  .bookmark-quote {
+    font-size: 14px;
+    color: var(--ink);
+    line-height: 1.6;
+    padding-left: 10px;
+    border-left: 3px solid var(--accent);
+  }
+  .bookmark-meta {
+    font-size: 12px;
+    color: var(--ink-tertiary);
+    padding-left: 13px;
+  }
+</style>
+</head>
+<body>
+<div class="demo-frame">
+  <div>
+    <div class="device-label">MOBILE 目录 Drawer</div>
+    <div class="mobile-shell">
+      <div class="drawer">
+        <div class="drawer-header">
+          <span>目录</span>
+          <span class="drawer-close">×</span>
+        </div>
+        <div class="drawer-tabs">
+          <button class="drawer-tab active" onclick="switchTab(0)">目录</button>
+          <button class="drawer-tab" onclick="switchTab(1)">书签</button>
+          <button class="drawer-tab" onclick="switchTab(2)">笔记</button>
+        </div>
+        <div class="drawer-body">
+          <div class="tab-panel active" id="panel-0">
+            <button class="toc-item level-1 active">前言</button>
+            <button class="toc-item level-1">第一部分 系统基础</button>
+            <button class="toc-item level-2">第1章 Kubernetes系统基础</button>
+            <button class="toc-item level-3">1.1 容器与容器编排系统</button>
+            <button class="toc-item level-3">1.2 Kubernetes基础</button>
+            <button class="toc-item level-3">1.3 应用的运行与互联互通</button>
+            <button class="toc-item level-3">1.4 简析Kubernetes生态系统</button>
+            <button class="toc-item level-3">1.5 本章小结</button>
+            <button class="toc-item level-2">第2章 Kubernetes快速入门</button>
+            <button class="toc-item level-3">2.1 利用kubeadm部署Kubernetes集群</button>
+            <button class="toc-item level-3">2.2 部署分布式Kubernetes集群</button>
+            <button class="toc-item level-3">2.3 kubectl命令与资源管理</button>
+          </div>
+          <div class="tab-panel" id="panel-1">
+            <div class="bookmark-item">
+              <div class="bookmark-quote">异构的IT基础设施环境导致开发和部署的系统应用纷繁复杂……</div>
+              <div class="bookmark-meta">前言 · 2026-04-19</div>
+            </div>
+            <div class="bookmark-item">
+              <div class="bookmark-quote">Kubernetes是CNCF旗下的第一个“毕业”项目……</div>
+              <div class="bookmark-meta">前言 · 2026-04-19</div>
+            </div>
+            <div class="bookmark-item">
+              <div class="bookmark-quote">以Docker为代表的应用容器技术为该难题的解决带来了一缕曙光……</div>
+              <div class="bookmark-meta">前言 · 2026-04-19</div>
+            </div>
+          </div>
+          <div class="tab-panel" id="panel-2">
+            <div class="bookmark-item">
+              <div class="bookmark-quote">异构的IT基础设施环境导致开发和部署的系统应用纷繁复杂……</div>
+              <div class="bookmark-meta">前言 · 批注 · 2026-04-19</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function switchTab(index) {
+    document.querySelectorAll('.drawer-tab').forEach((t,i) => t.classList.toggle('active', i===index));
+    document.querySelectorAll('.tab-panel').forEach((p,i) => p.classList.toggle('active', i===index));
+  }
+</script>
+</body>
+</html>

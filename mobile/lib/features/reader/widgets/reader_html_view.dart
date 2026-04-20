@@ -442,10 +442,22 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       border-radius: 14px;
     }
     .annot {
+      --annot-bg: transparent;
+      --annot-gap: 0.14em;
       border-radius: 4px;
       box-decoration-break: clone;
       -webkit-box-decoration-break: clone;
       cursor: pointer;
+      background-color: transparent !important;
+      background-image: linear-gradient(
+        to bottom,
+        transparent 0,
+        transparent var(--annot-gap),
+        var(--annot-bg) var(--annot-gap),
+        var(--annot-bg) calc(100% - var(--annot-gap)),
+        transparent calc(100% - var(--annot-gap)),
+        transparent 100%
+      );
     }
     .annot.has-underline {
       text-decoration-line: underline;
@@ -583,12 +595,13 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         if (!overlay) return;
         overlay.replaceChildren();
         for (const rect of data.rects || []) {
+          const verticalInset = Math.min(4, rect.height * 0.14);
           const segment = document.createElement('div');
           segment.className = 'segment';
-          segment.style.top = rect.top + 'px';
+          segment.style.top = (rect.top + verticalInset) + 'px';
           segment.style.left = rect.left + 'px';
           segment.style.width = rect.width + 'px';
-          segment.style.height = rect.height + 'px';
+          segment.style.height = Math.max(8, rect.height - (verticalInset * 2)) + 'px';
           overlay.appendChild(segment);
         }
         overlay.style.display = 'block';
@@ -833,7 +846,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       buffer.write(
         '<span class="annot$underlineClass" '
         'data-annotation-ids="${annotation.annotation.id}" '
-        'style="background:${_cssColor(background)};'
+        'style="--annot-bg:${_cssColor(background)};'
         '${annotation.anchor.underlineStyle == AnnotationUnderlineStyle.none ? '' : 'text-decoration-color:${_cssColor(color)};'}">'
         '${_escapeHtml(chunk)}</span>',
       );

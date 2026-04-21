@@ -40,6 +40,15 @@ class AdminBookController(
         return mapOf("success" to true)
     }
 
+    @GetMapping("/{bookId}/viewers")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','LIBRARIAN')")
+    fun listBookViewers(@PathVariable bookId: Long): List<BookViewerView> =
+        bookService.listBookViewers(bookId)
+
+    @GetMapping("/grantable-users")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','LIBRARIAN')")
+    fun listGrantableUsers(): List<UserView> = bookService.listGrantableUsers()
+
     @GetMapping("/import-jobs")
     @PreAuthorize("hasAnyRole('SUPER_ADMIN','LIBRARIAN')")
     fun listImportJobs(): List<Map<String, Any?>> = bookService.listImportJobs()

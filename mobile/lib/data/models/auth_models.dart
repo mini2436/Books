@@ -9,6 +9,10 @@ class AuthUser {
   final String username;
   final String role;
 
+  bool get canAccessAdmin => role == 'SUPER_ADMIN' || role == 'LIBRARIAN';
+
+  bool get canManageAdminUsers => role == 'SUPER_ADMIN';
+
   String get initials {
     final trimmed = username.trim();
     if (trimmed.isEmpty) {

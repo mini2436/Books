@@ -328,6 +328,72 @@ class BookService(
             .update()
     }
 
+    fun listBookViewers(bookId: Long): List<BookViewerView> =
+        jdbcClient.sql(
+            """
+            select u.id as user_id,
+                   u.username,
+                   u.role,
+                   u.enabled,
+                   case
+                       when u.role in ('SUPER_ADMIN', 'LIBRARIAN') then 'GLOBAL_ROLE'
+                       else 'EXPLICIT_GRANT'
+                   end as access_source,
+                   uba.granted_at
+            from users u
+            left join user_book_access uba on uba.user_id = u.id and uba.book_id = :bookId
+            where u.enabled = true
+              and (
+                  u.role in ('SUPER_ADMIN', 'LIBRARIAN')
+                  or uba.book_id is not null
+              )
+            order by
+                case
+                    when u.role = 'SUPER_ADMIN' then 0
+                    when u.role = 'LIBRARIAN' then 1
+                    else 2
+                end,
+                lower(u.username) asc
+            """.trimIndent(),
+        )
+            .param("bookId", bookId)
+            .query { rs, _ ->
+                BookViewerView(
+                    userId = rs.getLong("user_id"),
+                    username = rs.getString("username"),
+                    role = rs.getString("role"),
+                    enabled = rs.getBoolean("enabled"),
+                    accessSource = rs.getString("access_source"),
+                    grantedAt = rs.getTimestamp("granted_at")?.toInstant()?.toString(),
+                )
+            }
+            .list()
+
+    fun listGrantableUsers(): List<UserView> =
+        jdbcClient.sql(
+            """
+            select id, username, role, enabled
+            from users
+            where enabled = true
+            order by
+                case
+                    when role = 'SUPER_ADMIN' then 0
+                    when role = 'LIBRARIAN' then 1
+                    else 2
+                end,
+                lower(username) asc
+            """.trimIndent(),
+        )
+            .query { rs, _ ->
+                UserView(
+                    id = rs.getLong("id"),
+                    username = rs.getString("username"),
+                    role = rs.getString("role"),
+                    enabled = rs.getBoolean("enabled"),
+                )
+            }
+            .list()
+
     fun listTrackedSourcePaths(sourceId: Long): List<String> =
         jdbcClient.sql(
             """

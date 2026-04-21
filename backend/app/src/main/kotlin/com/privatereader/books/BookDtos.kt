@@ -119,3 +119,12 @@ data class UserView(
     val role: String,
     val enabled: Boolean,
 )
+
+data class BookViewerView(
+    val userId: Long,
+    val username: String,
+    val role: String,
+    val enabled: Boolean,
+    val accessSource: String,
+    val grantedAt: String?,
+)

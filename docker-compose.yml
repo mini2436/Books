@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -24,9 +22,9 @@ services:
       - "15672:15672"
 
   backend:
-    build:
-      context: ./backend
-      dockerfile: app/Dockerfile
+    image: eclipse-temurin:21-jre
+    working_dir: /workspace/backend
+    command: sh -lc "java -jar /workspace/backend/app/build/libs/app-0.1.0.jar"
     environment:
       SPRING_PROFILES_ACTIVE: docker
       APP_STORAGE_ROOT: /workspace/storage
@@ -36,6 +34,9 @@ services:
       SPRING_DATASOURCE_PASSWORD: reader
       SPRING_DATA_REDIS_HOST: redis
       SPRING_RABBITMQ_HOST: rabbitmq
+      HTTP_PROXY: ${HTTP_PROXY:-http://host.docker.internal:10808}
+      HTTPS_PROXY: ${HTTPS_PROXY:-http://host.docker.internal:10808}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,::1,host.docker.internal,postgres,redis,rabbitmq}
     depends_on:
       - postgres
       - redis
@@ -53,6 +54,9 @@ services:
       - ./:/workspace
     environment:
       NEXT_PUBLIC_API_BASE_URL: http://localhost:8080
+      HTTP_PROXY: ${HTTP_PROXY:-http://host.docker.internal:10808}
+      HTTPS_PROXY: ${HTTPS_PROXY:-http://host.docker.internal:10808}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,::1,host.docker.internal,backend,postgres,redis,rabbitmq}
     depends_on:
       - backend
     ports:

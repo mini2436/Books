@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../features/auth/auth_controller.dart';
+import '../features/admin/admin_center_screen.dart';
 import '../features/annotations/annotation_center_screen.dart';
 import '../features/auth/login_screen.dart';
 import '../features/bookshelf/bookshelf_screen.dart';
@@ -30,6 +31,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         return '/shelf';
       }
 
+      if (location == '/admin' && !(authController.user?.canAccessAdmin ?? false)) {
+        return '/profile';
+      }
+
       return null;
     },
     routes: [
@@ -55,6 +60,14 @@ final routerProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: '/annotations',
                 builder: (context, state) => const AnnotationCenterScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/admin',
+                builder: (context, state) => const AdminCenterScreen(),
               ),
             ],
           ),

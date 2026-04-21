@@ -1,5 +1,7 @@
 import 'package:dio/dio.dart';
+import 'package:path/path.dart' as path;
 
+import '../models/admin_models.dart';
 import '../../shared/config/app_config.dart';
 import '../models/auth_models.dart';
 import '../models/book_models.dart';
@@ -81,6 +83,205 @@ class ApiClient {
     return data
         .map((item) => BookSummary.fromJson(item as Map<String, dynamic>))
         .toList();
+  }
+
+  Future<List<AdminBookSummary>> listAdminBooks(String accessToken) async {
+    final data = await _request<List<dynamic>>(
+      () => _dio.get<List<dynamic>>(
+        '/api/admin/books',
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+
+    return data
+        .map((item) => AdminBookSummary.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<BookDetail> uploadAdminBook(
+    String accessToken, {
+    required String filePath,
+  }) async {
+    final fileName = path.basename(filePath);
+    final formData = FormData.fromMap({
+      'file': await MultipartFile.fromFile(filePath, filename: fileName),
+    });
+
+    final data = await _request<Map<String, dynamic>>(
+      () => _dio.post<Map<String, dynamic>>(
+        '/api/admin/books/upload',
+        data: formData,
+        options: Options(
+          headers: _headers(accessToken),
+          contentType: 'multipart/form-data',
+        ),
+      ),
+    );
+
+    return BookDetail.fromJson(data);
+  }
+
+  Future<List<AdminUserView>> listGrantableUsers(String accessToken) async {
+    final data = await _request<List<dynamic>>(
+      () => _dio.get<List<dynamic>>(
+        '/api/admin/books/grantable-users',
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+
+    return data
+        .map((item) => AdminUserView.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<Map<String, dynamic>> grantBook(
+    String accessToken,
+    int bookId, {
+    required int userId,
+  }) async {
+    return _request<Map<String, dynamic>>(
+      () => _dio.post<Map<String, dynamic>>(
+        '/api/admin/books/$bookId/grants',
+        data: {'userId': userId},
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+  }
+
+  Future<List<BookViewerView>> listBookViewers(
+    String accessToken,
+    int bookId,
+  ) async {
+    final data = await _request<List<dynamic>>(
+      () => _dio.get<List<dynamic>>(
+        '/api/admin/books/$bookId/viewers',
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+
+    return data
+        .map((item) => BookViewerView.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<List<AdminUserView>> listUsers(String accessToken) async {
+    final data = await _request<List<dynamic>>(
+      () => _dio.get<List<dynamic>>(
+        '/api/admin/users',
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+
+    return data
+        .map((item) => AdminUserView.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<AdminUserView> createUser(
+    String accessToken, {
+    required String username,
+    required String password,
+    required String role,
+  }) async {
+    final data = await _request<Map<String, dynamic>>(
+      () => _dio.post<Map<String, dynamic>>(
+        '/api/admin/users',
+        data: {
+          'username': username,
+          'password': password,
+          'role': role,
+        },
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+
+    return AdminUserView.fromJson(data);
+  }
+
+  Future<AdminUserView> updateUser(
+    String accessToken,
+    int userId, {
+    bool? enabled,
+    String? role,
+  }) async {
+    final payload = <String, dynamic>{
+      'enabled': enabled,
+      'role': role,
+    }..removeWhere((_, value) => value == null);
+
+    final data = await _request<Map<String, dynamic>>(
+      () => _dio.patch<Map<String, dynamic>>(
+        '/api/admin/users/$userId',
+        data: payload,
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+
+    return AdminUserView.fromJson(data);
+  }
+
+  Future<List<AdminAnnotationView>> listAdminAnnotations(
+    String accessToken,
+  ) async {
+    final data = await _request<List<dynamic>>(
+      () => _dio.get<List<dynamic>>(
+        '/api/admin/annotations',
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+
+    return data
+        .map(
+          (item) => AdminAnnotationView.fromJson(item as Map<String, dynamic>),
+        )
+        .toList();
+  }
+
+  Future<AdminAnnotationView> updateAdminAnnotationDeleted(
+    String accessToken,
+    int annotationId, {
+    required bool deleted,
+  }) async {
+    final data = await _request<Map<String, dynamic>>(
+      () => _dio.patch<Map<String, dynamic>>(
+        '/api/admin/annotations/$annotationId',
+        data: {'deleted': deleted},
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+
+    return AdminAnnotationView.fromJson(data);
+  }
+
+  Future<List<AdminBookmarkView>> listAdminBookmarks(String accessToken) async {
+    final data = await _request<List<dynamic>>(
+      () => _dio.get<List<dynamic>>(
+        '/api/admin/bookmarks',
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+
+    return data
+        .map(
+          (item) => AdminBookmarkView.fromJson(item as Map<String, dynamic>),
+        )
+        .toList();
+  }
+
+  Future<AdminBookmarkView> updateAdminBookmarkDeleted(
+    String accessToken,
+    int bookmarkId, {
+    required bool deleted,
+  }) async {
+    final data = await _request<Map<String, dynamic>>(
+      () => _dio.patch<Map<String, dynamic>>(
+        '/api/admin/bookmarks/$bookmarkId',
+        data: {'deleted': deleted},
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+
+    return AdminBookmarkView.fromJson(data);
   }
 
   Future<BookDetail> getMyBook(String accessToken, int bookId) async {

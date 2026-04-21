@@ -9,6 +9,7 @@ import '../../../data/models/book_models.dart';
 import '../../../data/models/sync_models.dart';
 import '../../../features/settings/reader_preferences_controller.dart';
 import '../../../shared/theme/reader_theme_extension.dart';
+import '../reader_controller.dart';
 import '../models/annotation_anchor.dart';
 import 'reader_blocks.dart';
 
@@ -341,8 +342,17 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       return;
     }
     _lastAnchorJumpVersion = widget.anchorJumpVersion;
+    final rawAnchor = widget.focusedAnchor ?? '';
+    if (rawAnchor == readerChapterEndMarker ||
+        rawAnchor == readerChapterStartMarker) {
+      final boundary = rawAnchor == readerChapterEndMarker ? 'end' : 'start';
+      await _controller.runJavaScript(
+        'window.readerScrollToBoundary(${jsonEncode(boundary)});',
+      );
+      return;
+    }
     final anchor = AnnotationAnchor.parse(
-      widget.focusedAnchor ?? '',
+      rawAnchor,
     ).blockAnchor;
     if (anchor.isEmpty) {
       return;
@@ -754,8 +764,19 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       }
 
       function pageBounds() {
-        const viewportWidth = (stage ? stage.clientWidth : 0) || window.innerWidth || 1;
-        const scrollWidth = root ? root.scrollWidth : viewportWidth;
+        if (!stage || !root) {
+          const viewportWidth = window.innerWidth || 1;
+          return { viewportWidth, maxOffset: 0 };
+        }
+        const stageRect = stage.getBoundingClientRect();
+        const stageStyles = window.getComputedStyle(stage);
+        const paddingLeft = Number.parseFloat(stageStyles.paddingLeft || '0') || 0;
+        const paddingRight = Number.parseFloat(stageStyles.paddingRight || '0') || 0;
+        const viewportWidth = Math.max(
+          1,
+          Math.round(stageRect.width - paddingLeft - paddingRight),
+        );
+        const scrollWidth = Math.max(root.scrollWidth, viewportWidth);
         const maxOffset = Math.max(0, scrollWidth - viewportWidth);
         return { viewportWidth, maxOffset };
       }
@@ -778,9 +799,12 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         const gap = Number.parseFloat(styles.columnGap || '0') || 0;
         const bounds = pageBounds();
         pageSpan = bounds.viewportWidth + gap;
+        const safePageSpan = Math.max(pageSpan, 1);
         pageCount = Math.max(
           1,
-          Math.floor((bounds.maxOffset + gap + 1) / Math.max(pageSpan, 1)) + 1,
+          (bounds.maxOffset <= 1
+            ? 0
+            : Math.floor((bounds.maxOffset - 1) / safePageSpan) + 1) + 1,
         );
         currentPage = Math.max(0, Math.min(currentPage, pageCount - 1));
         currentOffset = Math.min(bounds.maxOffset, currentPage * pageSpan);
@@ -1161,6 +1185,28 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
           return;
         }
         send({ type: 'toggleUi' });
+      };
+
+      window.readerScrollToBoundary = function(boundary) {
+        if (!pagedMode) {
+          if (boundary === 'end' && stage) {
+            stage.scrollTo({
+              top: Math.max(0, stage.scrollHeight - stage.clientHeight),
+              behavior: 'auto',
+            });
+            return;
+          }
+          if (boundary === 'start' && stage) {
+            stage.scrollTo({ top: 0, behavior: 'auto' });
+          }
+          return;
+        }
+        updatePagedMetrics();
+        if (boundary === 'end') {
+          goToPage(Math.max(0, pageCount - 1), false);
+          return;
+        }
+        goToPage(0, false);
       };
 
       window.readerScrollToAnchor = function(anchor) {

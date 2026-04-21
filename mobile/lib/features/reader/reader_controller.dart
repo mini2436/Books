@@ -43,6 +43,11 @@ class ReaderRouteArgs {
   int get hashCode => Object.hash(bookId, initialAnchor);
 }
 
+enum ReaderChapterOpenPosition { preserve, start, end }
+
+const readerChapterStartMarker = '__reader_chapter_start__';
+const readerChapterEndMarker = '__reader_chapter_end__';
+
 class ReaderController extends ChangeNotifier {
   ReaderController({
     required this.bookId,
@@ -177,6 +182,7 @@ class ReaderController extends ChangeNotifier {
   Future<void> openChapter(
     int chapterIndex, {
     bool persistProgress = true,
+    ReaderChapterOpenPosition position = ReaderChapterOpenPosition.preserve,
   }) async {
     final summaries = content?.chapters ?? const [];
     if (chapterIndex < 0 || chapterIndex >= summaries.length) {
@@ -187,6 +193,16 @@ class ReaderController extends ChangeNotifier {
     notifyListeners();
 
     await _fetchChapter(chapterIndex);
+    final targetAnchor = switch (position) {
+      ReaderChapterOpenPosition.preserve => null,
+      ReaderChapterOpenPosition.start => readerChapterStartMarker,
+      ReaderChapterOpenPosition.end => readerChapterEndMarker,
+    };
+    if (targetAnchor != null) {
+      focusedAnchor = targetAnchor;
+      anchorJumpVersion += 1;
+      notifyListeners();
+    }
     unawaited(_prefetchNeighbors(chapterIndex));
 
     if (persistProgress) {
@@ -197,6 +213,16 @@ class ReaderController extends ChangeNotifier {
   Future<void> nextChapter() => openChapter(currentChapterIndex + 1);
 
   Future<void> previousChapter() => openChapter(currentChapterIndex - 1);
+
+  Future<void> nextChapterFromPageBoundary() => openChapter(
+    currentChapterIndex + 1,
+    position: ReaderChapterOpenPosition.start,
+  );
+
+  Future<void> previousChapterFromPageBoundary() => openChapter(
+    currentChapterIndex - 1,
+    position: ReaderChapterOpenPosition.end,
+  );
 
   Future<void> jumpToAnchor(String anchor) async {
     final chapterIndex = await _resolveChapterIndex(anchor);

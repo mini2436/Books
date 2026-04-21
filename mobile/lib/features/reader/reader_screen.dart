@@ -151,8 +151,8 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                 ),
             onOpenAnnotations: (annotations) =>
                 _openAnnotationsFromReader(controller, annotations),
-            onPageBoundaryPrevious: controller.previousChapter,
-            onPageBoundaryNext: controller.nextChapter,
+            onPageBoundaryPrevious: controller.previousChapterFromPageBoundary,
+            onPageBoundaryNext: controller.nextChapterFromPageBoundary,
             onToggleUi: handleChromeToggle,
             onMenuRequest: handleTabletMenuRequest,
             viewportTapZone: _viewportTapZone,

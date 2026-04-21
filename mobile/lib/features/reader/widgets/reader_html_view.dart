@@ -94,6 +94,9 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
             await _controller.runJavaScript(
               'if (window.readerApplyLayout) { window.readerApplyLayout(); }',
             );
+            await _controller.runJavaScript(
+              'if (window.readerSetChromeVisible) { window.readerSetChromeVisible(${widget.uiVisible ? 'true' : 'false'}); }',
+            );
             await _verifyRenderedContent();
             await _scrollToFocusedAnchor();
           },
@@ -454,7 +457,6 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     final bodyClasses = <String>[
       if (widget.pagedMode) 'reader-paged',
       if (widget.dualColumn) 'reader-dual-column',
-      if (!widget.uiVisible) 'reader-ui-hidden',
     ].join(' ');
     final paragraphStyle = _fontCss(
       fontSize: 17 * widget.preferences.fontScale,
@@ -499,7 +501,8 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       font-family: ${_fontStackCss()};
     }
     body {
-      padding: 0 0 28px;
+      padding: 0;
+      overflow: hidden;
       user-select: text;
       -webkit-user-select: text;
     }
@@ -514,8 +517,11 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       position: relative;
       width: 100%;
       height: 100%;
-      overflow: hidden;
+      overflow-x: hidden;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
       background: var(--reader-bg);
+      padding: 0 0 28px;
     }
     #reader-root {
       padding: 0;
@@ -523,6 +529,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     }
     body.reader-paged #reader-stage {
       padding: 24px 28px 28px;
+      overflow: hidden;
     }
     body.reader-paged #reader-root {
       height: 100%;
@@ -682,6 +689,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       let touchStartY = 0;
       let touchMoved = false;
       let touchTracking = false;
+      let lastTouchHandledAt = 0;
 
       function send(payload) {
         if (!bridge || !bridge.postMessage) return;
@@ -867,6 +875,52 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         return goToPage(targetPage, true);
       }
 
+      function mobilePageStep() {
+        if (!stage) {
+          return window.innerHeight * 0.82;
+        }
+        return Math.max(120, stage.clientHeight * 0.82);
+      }
+
+      function mobileScrollBoundary() {
+        if (!stage) {
+          return { top: true, bottom: true };
+        }
+        const maxScroll = Math.max(0, stage.scrollHeight - stage.clientHeight);
+        return {
+          top: stage.scrollTop <= 4,
+          bottom: stage.scrollTop >= (maxScroll - 4)
+        };
+      }
+
+      function handleMobilePageTurn(direction) {
+        if (!stage || pagedMode) {
+          return false;
+        }
+        const step = mobilePageStep();
+        const boundary = mobileScrollBoundary();
+        if (direction < 0 && boundary.top) {
+          send({ type: 'previousChapter' });
+          return true;
+        }
+        if (direction > 0 && boundary.bottom) {
+          send({ type: 'nextChapter' });
+          return true;
+        }
+        const nextTop = Math.max(
+          0,
+          Math.min(
+            stage.scrollTop + (direction * step),
+            Math.max(0, stage.scrollHeight - stage.clientHeight),
+          ),
+        );
+        stage.scrollTo({
+          top: nextTop,
+          behavior: 'smooth',
+        });
+        return true;
+      }
+
       function renderSelectionOverlay(data) {
         if (!overlay) return;
         overlay.replaceChildren();
@@ -980,7 +1034,16 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
             handlePageTurn(1);
             return;
           }
-          send({ type: 'showMenu' });
+          send({ type: 'toggleUi' });
+          return;
+        }
+        const ratio = window.innerWidth <= 0 ? 0.5 : clientX / window.innerWidth;
+        if (ratio <= 0.18) {
+          handleMobilePageTurn(-1);
+          return;
+        }
+        if (ratio >= 0.82) {
+          handleMobilePageTurn(1);
           return;
         }
         send({ type: 'toggleUi' });
@@ -1021,7 +1084,8 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
           ? event.changedTouches[0]
           : null;
         if (!currentSelection) {
-          if (pagedMode && touchTracking && !touchMoved && touch) {
+          if (touchTracking && !touchMoved && touch) {
+            lastTouchHandledAt = Date.now();
             handleDocumentTap(event.target, touch.clientX);
           }
           touchTracking = false;
@@ -1033,6 +1097,9 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         touchMoved = false;
       }, { passive: true });
       document.addEventListener('scroll', clearSelectionUi, true);
+      if (stage) {
+        stage.addEventListener('scroll', clearSelectionUi, { passive: true });
+      }
       window.addEventListener('resize', function() {
         clearSelectionUi();
         updatePagedMetrics();
@@ -1070,6 +1137,9 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       }
 
       document.addEventListener('click', function(event) {
+        if (Date.now() - lastTouchHandledAt < 400) {
+          return;
+        }
         handleDocumentTap(event.target, event.clientX);
       });
 
@@ -1095,7 +1165,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
           handlePageTurn(1);
           return;
         }
-        send({ type: 'showMenu' });
+        send({ type: 'toggleUi' });
       };
 
       window.readerScrollToAnchor = function(anchor) {

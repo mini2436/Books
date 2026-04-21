@@ -32,6 +32,22 @@ data class BookDetailView(
     val latestContentVersionId: Long?,
 )
 
+data class AdminBookDetailView(
+    val id: Long,
+    val title: String,
+    val author: String?,
+    val groupName: String?,
+    val description: String?,
+    val pluginId: String,
+    val format: String,
+    val sourceType: String,
+    val sourceMissing: Boolean,
+    val hasStructuredContent: Boolean,
+    val contentModel: String?,
+    val latestContentVersionId: Long?,
+    val updatedAt: String,
+)
+
 data class BookContentView(
     val bookId: Long,
     val contentModel: String?,
@@ -70,6 +86,7 @@ data class AdminBookView(
     val id: Long,
     val title: String,
     val author: String?,
+    val groupName: String?,
     val description: String?,
     val pluginId: String,
     val format: String,
@@ -81,6 +98,15 @@ data class AdminBookView(
 data class CreateGrantRequest(
     @field:NotNull
     val userId: Long,
+)
+
+data class UpdateAdminBookRequest(
+    val groupName: String? = null,
+)
+
+data class BulkDeleteBooksRequest(
+    @field:NotNull
+    val bookIds: List<Long>,
 )
 
 data class CreateLibrarySourceRequest(

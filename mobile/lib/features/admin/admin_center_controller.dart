@@ -7,22 +7,15 @@ import '../../data/models/admin_models.dart';
 import '../../data/services/api_client.dart';
 import '../auth/auth_controller.dart';
 
-final adminCenterControllerProvider = ChangeNotifierProvider<AdminCenterController>(
-  (ref) {
-    return AdminCenterController(
-      authController: ref.read(authControllerProvider),
-      apiClient: ref.watch(apiClientProvider),
-    );
-  },
-);
+final adminCenterControllerProvider =
+    ChangeNotifierProvider<AdminCenterController>((ref) {
+      return AdminCenterController(
+        authController: ref.read(authControllerProvider),
+        apiClient: ref.watch(apiClientProvider),
+      );
+    });
 
-enum AdminSection {
-  users,
-  roles,
-  books,
-  annotations,
-  bookmarks,
-}
+enum AdminSection { users, roles, books, annotations, bookmarks }
 
 class AdminCenterController extends ChangeNotifier {
   AdminCenterController({
@@ -34,6 +27,8 @@ class AdminCenterController extends ChangeNotifier {
     _handleAuthChanged();
   }
 
+  static const String allBookGroupsLabel = '全部分组';
+
   final AuthController _authController;
   final ApiClient _apiClient;
 
@@ -44,7 +39,12 @@ class AdminCenterController extends ChangeNotifier {
   List<AdminAnnotationView> _annotations = const [];
   List<AdminBookmarkView> _bookmarks = const [];
   Map<int, List<BookViewerView>> _bookViewers = const {};
+  Map<int, AdminBookDetail> _bookDetails = const {};
   Set<int> _loadingViewerBookIds = <int>{};
+  Set<int> _loadingBookDetailIds = <int>{};
+  Set<int> _selectedBookIds = <int>{};
+  String _bookSearchQuery = '';
+  String _selectedBookGroup = allBookGroupsLabel;
   bool _isLoading = false;
   bool _isWorking = false;
   String? _error;
@@ -60,15 +60,15 @@ class AdminCenterController extends ChangeNotifier {
   bool get isWorking => _isWorking;
   String? get error => _error;
   String? get notice => _notice;
+  String get bookSearchQuery => _bookSearchQuery;
+  String get selectedBookGroup => _selectedBookGroup;
+  Set<int> get selectedBookIds => _selectedBookIds;
   bool get canAccessAdmin => _authController.user?.canAccessAdmin ?? false;
   bool get canManageUsers => _authController.user?.canManageAdminUsers ?? false;
   bool get canAssignBooks => canAccessAdmin;
 
   List<AdminSection> get availableSections => [
-    if (canManageUsers) ...[
-      AdminSection.users,
-      AdminSection.roles,
-    ],
+    if (canManageUsers) ...[AdminSection.users, AdminSection.roles],
     AdminSection.books,
     AdminSection.annotations,
     AdminSection.bookmarks,
@@ -78,6 +78,49 @@ class AdminCenterController extends ChangeNotifier {
   int get annotationCount => _annotations.length;
   int get bookmarkCount => _bookmarks.length;
   int get activeUserCount => _users.where((user) => user.enabled).length;
+  int get selectedBookCount => _selectedBookIds.length;
+  bool get hasBookSelection => _selectedBookIds.isNotEmpty;
+
+  List<String> get availableBookGroups {
+    final groups =
+        _books
+            .map((book) => book.groupName?.trim())
+            .whereType<String>()
+            .where((group) => group.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
+    return [allBookGroupsLabel, ...groups];
+  }
+
+  List<AdminBookSummary> get filteredBooks {
+    final normalizedQuery = _bookSearchQuery.trim().toLowerCase();
+    return _books.where((book) {
+      final groupMatches =
+          _selectedBookGroup == allBookGroupsLabel ||
+          (book.groupName?.trim() ?? '') == _selectedBookGroup;
+      if (!groupMatches) {
+        return false;
+      }
+      if (normalizedQuery.isEmpty) {
+        return true;
+      }
+      final haystacks = [
+        book.title,
+        book.author ?? '',
+        book.groupName ?? '',
+      ].map((value) => value.toLowerCase());
+      return haystacks.any((value) => value.contains(normalizedQuery));
+    }).toList();
+  }
+
+  bool get areAllVisibleBooksSelected {
+    final visibleIds = filteredBooks.map((book) => book.id).toSet();
+    if (visibleIds.isEmpty) {
+      return false;
+    }
+    return visibleIds.every(_selectedBookIds.contains);
+  }
 
   List<AdminRoleSummary> get roleSummaries {
     return adminRoles
@@ -105,7 +148,9 @@ class AdminCenterController extends ChangeNotifier {
 
     try {
       final results = await Future.wait<dynamic>([
-        _authController.runAuthorized((token) => _apiClient.listAdminBooks(token)),
+        _authController.runAuthorized(
+          (token) => _apiClient.listAdminBooks(token),
+        ),
         _authController.runAuthorized(
           (token) => _apiClient.listAdminAnnotations(token),
         ),
@@ -127,7 +172,15 @@ class AdminCenterController extends ChangeNotifier {
           ? results[4] as List<AdminUserView>
           : const <AdminUserView>[];
       _bookViewers = const {};
+      _bookDetails = const {};
       _loadingViewerBookIds = <int>{};
+      _loadingBookDetailIds = <int>{};
+      _selectedBookIds = _selectedBookIds
+          .where((bookId) => _books.any((book) => book.id == bookId))
+          .toSet();
+      if (!availableBookGroups.contains(_selectedBookGroup)) {
+        _selectedBookGroup = allBookGroupsLabel;
+      }
       _ensureValidSection();
     } catch (error) {
       _error = error.toString();
@@ -142,6 +195,54 @@ class AdminCenterController extends ChangeNotifier {
       return;
     }
     _selectedSection = section;
+    notifyListeners();
+  }
+
+  void setBookSearchQuery(String value) {
+    if (_bookSearchQuery == value) {
+      return;
+    }
+    _bookSearchQuery = value;
+    notifyListeners();
+  }
+
+  void setBookGroupFilter(String value) {
+    if (_selectedBookGroup == value) {
+      return;
+    }
+    _selectedBookGroup = value;
+    notifyListeners();
+  }
+
+  void toggleBookSelection(int bookId) {
+    final next = {..._selectedBookIds};
+    if (!next.add(bookId)) {
+      next.remove(bookId);
+    }
+    _selectedBookIds = next;
+    notifyListeners();
+  }
+
+  void toggleSelectAllVisibleBooks() {
+    final visibleIds = filteredBooks.map((book) => book.id).toSet();
+    if (visibleIds.isEmpty) {
+      return;
+    }
+    final next = {..._selectedBookIds};
+    if (visibleIds.every(next.contains)) {
+      next.removeAll(visibleIds);
+    } else {
+      next.addAll(visibleIds);
+    }
+    _selectedBookIds = next;
+    notifyListeners();
+  }
+
+  void clearSelectedBooks() {
+    if (_selectedBookIds.isEmpty) {
+      return;
+    }
+    _selectedBookIds = <int>{};
     notifyListeners();
   }
 
@@ -163,7 +264,8 @@ class AdminCenterController extends ChangeNotifier {
           role: role,
         ),
       );
-      _users = [..._users, created]..sort((left, right) => left.id.compareTo(right.id));
+      _users = [..._users, created]
+        ..sort((left, right) => left.id.compareTo(right.id));
       _notice = '已创建用户 ${created.username}';
     });
   }
@@ -179,9 +281,15 @@ class AdminCenterController extends ChangeNotifier {
     });
   }
 
-  List<BookViewerView> viewersForBook(int bookId) => _bookViewers[bookId] ?? const [];
+  List<BookViewerView> viewersForBook(int bookId) =>
+      _bookViewers[bookId] ?? const [];
+
+  AdminBookDetail? bookDetailFor(int bookId) => _bookDetails[bookId];
 
   bool isLoadingViewers(int bookId) => _loadingViewerBookIds.contains(bookId);
+
+  bool isLoadingBookDetail(int bookId) =>
+      _loadingBookDetailIds.contains(bookId);
 
   Future<void> loadBookViewers(int bookId, {bool force = false}) async {
     if (!canAccessAdmin) {
@@ -200,14 +308,37 @@ class AdminCenterController extends ChangeNotifier {
       final viewers = await _authController.runAuthorized(
         (token) => _apiClient.listBookViewers(token, bookId),
       );
-      _bookViewers = {
-        ..._bookViewers,
-        bookId: viewers,
-      };
+      _bookViewers = {..._bookViewers, bookId: viewers};
     } catch (error) {
       _error = error.toString();
     } finally {
       _loadingViewerBookIds = {..._loadingViewerBookIds}..remove(bookId);
+      notifyListeners();
+    }
+  }
+
+  Future<void> loadBookDetail(int bookId, {bool force = false}) async {
+    if (!canAccessAdmin) {
+      return;
+    }
+    if (!force && _bookDetails.containsKey(bookId)) {
+      return;
+    }
+    if (_loadingBookDetailIds.contains(bookId)) {
+      return;
+    }
+
+    _loadingBookDetailIds = {..._loadingBookDetailIds, bookId};
+    notifyListeners();
+    try {
+      final detail = await _authController.runAuthorized(
+        (token) => _apiClient.getAdminBook(token, bookId),
+      );
+      _bookDetails = {..._bookDetails, bookId: detail};
+    } catch (error) {
+      _error = error.toString();
+    } finally {
+      _loadingBookDetailIds = {..._loadingBookDetailIds}..remove(bookId);
       notifyListeners();
     }
   }
@@ -232,6 +363,69 @@ class AdminCenterController extends ChangeNotifier {
         ),
       );
       _notice = '已将书籍分配给 ${user.username}';
+    });
+  }
+
+  Future<void> revokeBookFromUser(int bookId, BookViewerView viewer) async {
+    if (!viewer.isExplicitGrant) {
+      return;
+    }
+
+    await _runMutation(() async {
+      await _authController.runAuthorized(
+        (token) => _apiClient.revokeBookGrant(token, bookId, viewer.userId),
+      );
+      await loadBookViewers(bookId, force: true);
+      _notice = '已移除 ${viewer.username} 的图书访问权限';
+    });
+  }
+
+  Future<void> updateBookGroup(int bookId, String? groupName) async {
+    await _runMutation(() async {
+      final updated = await _authController.runAuthorized(
+        (token) => _apiClient.updateAdminBook(
+          token,
+          bookId,
+          groupName: groupName?.trim().isEmpty == true
+              ? null
+              : groupName?.trim(),
+        ),
+      );
+      _bookDetails = {..._bookDetails, bookId: updated};
+      _books = _books
+          .map(
+            (book) => book.id == bookId
+                ? book.copyWith(
+                    groupName: updated.groupName,
+                    updatedAt: updated.updatedAt,
+                  )
+                : book,
+          )
+          .toList();
+      _notice = updated.groupName == null || updated.groupName!.isEmpty
+          ? '已清空图书分组'
+          : '已将图书分组更新为 ${updated.groupName}';
+    });
+  }
+
+  Future<void> deleteSelectedBooks() async {
+    final targetIds = _selectedBookIds.toList()..sort();
+    if (targetIds.isEmpty) {
+      return;
+    }
+
+    await _runMutation(() async {
+      final deletedCount = await _authController.runAuthorized(
+        (token) => _apiClient.bulkDeleteAdminBooks(token, targetIds),
+      );
+      final idSet = targetIds.toSet();
+      _books = _books.where((book) => !idSet.contains(book.id)).toList();
+      _bookDetails = Map<int, AdminBookDetail>.from(_bookDetails)
+        ..removeWhere((bookId, _) => idSet.contains(bookId));
+      _bookViewers = Map<int, List<BookViewerView>>.from(_bookViewers)
+        ..removeWhere((bookId, _) => idSet.contains(bookId));
+      _selectedBookIds = <int>{};
+      _notice = '已删除 $deletedCount 本图书';
     });
   }
 
@@ -294,7 +488,8 @@ class AdminCenterController extends ChangeNotifier {
     final previousAnnotations = _annotations;
     _annotations = _annotations
         .map(
-          (item) => item.id == annotation.id ? item.copyWith(deleted: deleted) : item,
+          (item) =>
+              item.id == annotation.id ? item.copyWith(deleted: deleted) : item,
         )
         .toList();
     notifyListeners();
@@ -323,7 +518,10 @@ class AdminCenterController extends ChangeNotifier {
   ) async {
     final previousBookmarks = _bookmarks;
     _bookmarks = _bookmarks
-        .map((item) => item.id == bookmark.id ? item.copyWith(deleted: deleted) : item)
+        .map(
+          (item) =>
+              item.id == bookmark.id ? item.copyWith(deleted: deleted) : item,
+        )
         .toList();
     notifyListeners();
 
@@ -381,7 +579,12 @@ class AdminCenterController extends ChangeNotifier {
     _annotations = const [];
     _bookmarks = const [];
     _bookViewers = const {};
+    _bookDetails = const {};
     _loadingViewerBookIds = <int>{};
+    _loadingBookDetailIds = <int>{};
+    _selectedBookIds = <int>{};
+    _bookSearchQuery = '';
+    _selectedBookGroup = allBookGroupsLabel;
     _error = null;
     _notice = null;
     _isLoading = false;
@@ -405,23 +608,24 @@ class AdminCenterController extends ChangeNotifier {
   }
 
   void _replaceUser(AdminUserView updated) {
-    _users = _users
-        .map((item) => item.id == updated.id ? updated : item)
-        .toList()
-      ..sort((left, right) => left.id.compareTo(right.id));
+    _users =
+        _users.map((item) => item.id == updated.id ? updated : item).toList()
+          ..sort((left, right) => left.id.compareTo(right.id));
   }
 
   void _replaceAnnotation(AdminAnnotationView updated) {
-    _annotations = _annotations
-        .map((item) => item.id == updated.id ? updated : item)
-        .toList()
-      ..sort((left, right) => right.updatedAt.compareTo(left.updatedAt));
+    _annotations =
+        _annotations
+            .map((item) => item.id == updated.id ? updated : item)
+            .toList()
+          ..sort((left, right) => right.updatedAt.compareTo(left.updatedAt));
   }
 
   void _replaceBookmark(AdminBookmarkView updated) {
-    _bookmarks = _bookmarks
-        .map((item) => item.id == updated.id ? updated : item)
-        .toList()
-      ..sort((left, right) => right.updatedAt.compareTo(left.updatedAt));
+    _bookmarks =
+        _bookmarks
+            .map((item) => item.id == updated.id ? updated : item)
+            .toList()
+          ..sort((left, right) => right.updatedAt.compareTo(left.updatedAt));
   }
 }

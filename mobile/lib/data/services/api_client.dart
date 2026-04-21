@@ -98,6 +98,48 @@ class ApiClient {
         .toList();
   }
 
+  Future<AdminBookDetail> getAdminBook(String accessToken, int bookId) async {
+    final data = await _request<Map<String, dynamic>>(
+      () => _dio.get<Map<String, dynamic>>(
+        '/api/admin/books/$bookId',
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+
+    return AdminBookDetail.fromJson(data);
+  }
+
+  Future<AdminBookDetail> updateAdminBook(
+    String accessToken,
+    int bookId, {
+    String? groupName,
+  }) async {
+    final data = await _request<Map<String, dynamic>>(
+      () => _dio.patch<Map<String, dynamic>>(
+        '/api/admin/books/$bookId',
+        data: {'groupName': groupName},
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+
+    return AdminBookDetail.fromJson(data);
+  }
+
+  Future<int> bulkDeleteAdminBooks(
+    String accessToken,
+    List<int> bookIds,
+  ) async {
+    final data = await _request<Map<String, dynamic>>(
+      () => _dio.post<Map<String, dynamic>>(
+        '/api/admin/books/bulk-delete',
+        data: {'bookIds': bookIds},
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+
+    return (data['deletedCount'] as num?)?.toInt() ?? 0;
+  }
+
   Future<BookDetail> uploadAdminBook(
     String accessToken, {
     required String filePath,
@@ -148,6 +190,19 @@ class ApiClient {
     );
   }
 
+  Future<void> revokeBookGrant(
+    String accessToken,
+    int bookId,
+    int userId,
+  ) async {
+    await _request<Map<String, dynamic>>(
+      () => _dio.delete<Map<String, dynamic>>(
+        '/api/admin/books/$bookId/grants/$userId',
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+  }
+
   Future<List<BookViewerView>> listBookViewers(
     String accessToken,
     int bookId,
@@ -186,11 +241,7 @@ class ApiClient {
     final data = await _request<Map<String, dynamic>>(
       () => _dio.post<Map<String, dynamic>>(
         '/api/admin/users',
-        data: {
-          'username': username,
-          'password': password,
-          'role': role,
-        },
+        data: {'username': username, 'password': password, 'role': role},
         options: Options(headers: _headers(accessToken)),
       ),
     );
@@ -204,10 +255,8 @@ class ApiClient {
     bool? enabled,
     String? role,
   }) async {
-    final payload = <String, dynamic>{
-      'enabled': enabled,
-      'role': role,
-    }..removeWhere((_, value) => value == null);
+    final payload = <String, dynamic>{'enabled': enabled, 'role': role}
+      ..removeWhere((_, value) => value == null);
 
     final data = await _request<Map<String, dynamic>>(
       () => _dio.patch<Map<String, dynamic>>(
@@ -262,9 +311,7 @@ class ApiClient {
     );
 
     return data
-        .map(
-          (item) => AdminBookmarkView.fromJson(item as Map<String, dynamic>),
-        )
+        .map((item) => AdminBookmarkView.fromJson(item as Map<String, dynamic>))
         .toList();
   }
 

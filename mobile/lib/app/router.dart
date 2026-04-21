@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../features/auth/auth_controller.dart';
+import '../features/admin/admin_book_detail_screen.dart';
 import '../features/admin/admin_center_screen.dart';
 import '../features/annotations/annotation_center_screen.dart';
 import '../features/auth/login_screen.dart';
@@ -31,7 +32,8 @@ final routerProvider = Provider<GoRouter>((ref) {
         return '/shelf';
       }
 
-      if (location == '/admin' && !(authController.user?.canAccessAdmin ?? false)) {
+      if (location.startsWith('/admin') &&
+          !(authController.user?.canAccessAdmin ?? false)) {
         return '/profile';
       }
 
@@ -68,6 +70,17 @@ final routerProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: '/admin',
                 builder: (context, state) => const AdminCenterScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'books/:bookId',
+                    builder: (context, state) {
+                      final bookId = int.tryParse(
+                        state.pathParameters['bookId'] ?? '',
+                      );
+                      return AdminBookDetailScreen(bookId: bookId ?? 0);
+                    },
+                  ),
+                ],
               ),
             ],
           ),

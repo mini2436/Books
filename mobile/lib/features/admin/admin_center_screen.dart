@@ -1,6 +1,7 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:file_picker/file_picker.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../data/models/admin_models.dart';
 import '../../shared/theme/reader_theme_extension.dart';
@@ -144,7 +145,9 @@ class AdminCenterScreen extends ConsumerWidget {
                           icon: Icons.check_circle_outline,
                           message: controller.notice!,
                           foregroundColor: palette.accent,
-                          backgroundColor: palette.accent.withValues(alpha: 0.12),
+                          backgroundColor: palette.accent.withValues(
+                            alpha: 0.12,
+                          ),
                           onClose: ref
                               .read(adminCenterControllerProvider)
                               .clearBanner,
@@ -219,10 +222,7 @@ class AdminCenterScreen extends ConsumerWidget {
 }
 
 class _SectionBody extends StatelessWidget {
-  const _SectionBody({
-    required this.section,
-    required this.controller,
-  });
+  const _SectionBody({required this.section, required this.controller});
 
   final AdminSection section;
   final AdminCenterController controller;
@@ -287,19 +287,16 @@ class _UserManagementSection extends ConsumerWidget {
               ),
               Text(
                 '共 ${controller.users.length} 人',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: palette.inkSecondary,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(color: palette.inkSecondary),
               ),
             ],
           ),
         ),
         const SizedBox(height: 14),
         if (controller.users.isEmpty)
-          const _EmptyPanel(
-            title: '暂无用户数据',
-            body: '刷新后台后，这里会显示可管理的账号列表。',
-          )
+          const _EmptyPanel(title: '暂无用户数据', body: '刷新后台后，这里会显示可管理的账号列表。')
         else
           ...controller.users.map(
             (user) => Padding(
@@ -312,7 +309,9 @@ class _UserManagementSection extends ConsumerWidget {
                       children: [
                         CircleAvatar(
                           child: Text(
-                            user.username.substring(0, user.username.length >= 2 ? 2 : 1).toUpperCase(),
+                            user.username
+                                .substring(0, user.username.length >= 2 ? 2 : 1)
+                                .toUpperCase(),
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -322,17 +321,13 @@ class _UserManagementSection extends ConsumerWidget {
                             children: [
                               Text(
                                 user.username,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .titleMedium
+                                style: Theme.of(context).textTheme.titleMedium
                                     ?.copyWith(fontWeight: FontWeight.w700),
                               ),
                               const SizedBox(height: 4),
                               Text(
                                 'ID ${user.id} · ${adminRoleLabel(user.role)}',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodySmall
+                                style: Theme.of(context).textTheme.bodySmall
                                     ?.copyWith(color: palette.inkSecondary),
                               ),
                             ],
@@ -389,25 +384,22 @@ class _RoleManagementSection extends ConsumerWidget {
                       children: [
                         Text(
                           role.label,
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleMedium
+                          style: Theme.of(context).textTheme.titleMedium
                               ?.copyWith(fontWeight: FontWeight.w700),
                         ),
                         const SizedBox(height: 8),
                         Text(
                           role.description,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: palette.inkSecondary,
-                            height: 1.45,
-                          ),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: palette.inkSecondary,
+                                height: 1.45,
+                              ),
                         ),
                         const SizedBox(height: 14),
                         Text(
                           '${role.userCount} 人',
-                          style: Theme.of(context)
-                              .textTheme
-                              .headlineSmall
+                          style: Theme.of(context).textTheme.headlineSmall
                               ?.copyWith(fontWeight: FontWeight.w700),
                         ),
                       ],
@@ -430,17 +422,14 @@ class _RoleManagementSection extends ConsumerWidget {
                       children: [
                         Text(
                           user.username,
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleMedium
+                          style: Theme.of(context).textTheme.titleMedium
                               ?.copyWith(fontWeight: FontWeight.w700),
                         ),
                         const SizedBox(height: 6),
                         Text(
                           user.enabled ? '当前启用' : '当前停用',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: palette.inkSecondary,
-                          ),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: palette.inkSecondary),
                         ),
                       ],
                     ),
@@ -476,141 +465,382 @@ class _RoleManagementSection extends ConsumerWidget {
   }
 }
 
-class _BookManagementSection extends StatelessWidget {
+class _BookManagementSection extends ConsumerWidget {
   const _BookManagementSection({required this.controller});
 
   final AdminCenterController controller;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final palette = AppReaderPalette.of(context);
+    final auth = ref.watch(authControllerProvider);
+    final filteredBooks = controller.filteredBooks;
+    final isTablet = Responsive.isTablet(context);
+    final crossAxisCount = isTablet ? 4 : 2;
+
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _PanelCard(
-          child: Row(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final wide = constraints.maxWidth >= 720;
+              return Flex(
+                direction: wide ? Axis.horizontal : Axis.vertical,
+                crossAxisAlignment: wide
+                    ? CrossAxisAlignment.center
+                    : CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '书籍管理',
+                          style: Theme.of(context).textTheme.titleLarge
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          '把导入、筛选、分组和授权整合到同一条工作流里，减少在多个弹窗之间反复跳转。',
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(color: palette.inkSecondary),
+                        ),
+                        const SizedBox(height: 14),
+                        Wrap(
+                          spacing: 10,
+                          runSpacing: 10,
+                          children: [
+                            _SummaryChip(
+                              label: '图书总数',
+                              value: '${controller.bookCount}',
+                            ),
+                            _SummaryChip(
+                              label: '当前分组',
+                              value:
+                                  '${controller.availableBookGroups.length - 1}',
+                            ),
+                            _SummaryChip(
+                              label: '已勾选',
+                              value: '${controller.selectedBookCount}',
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  SizedBox(width: wide ? 18 : 0, height: wide ? 0 : 16),
+                  _UploadBookButton(controller: controller),
+                ],
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 14),
+        _PanelCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '导入图书',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      '从本机选择图书文件并上传到后台，成功后会自动出现在下方书籍列表中。',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: palette.inkSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      '支持格式：TXT / EPUB / PDF',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: palette.inkTertiary,
-                      ),
-                    ),
-                  ],
+              TextField(
+                onChanged: controller.setBookSearchQuery,
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.search),
+                  hintText: '查找书名、作者或分组',
+                  labelText: '书籍查找',
                 ),
               ),
-              const SizedBox(width: 16),
-              _UploadBookButton(controller: controller),
+              const SizedBox(height: 14),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: controller.availableBookGroups
+                      .map(
+                        (group) => Padding(
+                          padding: const EdgeInsets.only(right: 10),
+                          child: ChoiceChip(
+                            label: Text(group),
+                            selected: controller.selectedBookGroup == group,
+                            onSelected: (_) =>
+                                controller.setBookGroupFilter(group),
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: filteredBooks.isEmpty
+                        ? null
+                        : controller.toggleSelectAllVisibleBooks,
+                    icon: Icon(
+                      controller.areAllVisibleBooksSelected
+                          ? Icons.deselect
+                          : Icons.select_all,
+                    ),
+                    label: Text(
+                      controller.areAllVisibleBooksSelected ? '取消全选' : '全选当前结果',
+                    ),
+                  ),
+                  if (controller.hasBookSelection)
+                    FilledButton.tonalIcon(
+                      onPressed: controller.isWorking
+                          ? null
+                          : () async {
+                              final confirmed = await showDialog<bool>(
+                                context: context,
+                                builder: (context) => AlertDialog(
+                                  title: const Text('批量删除图书'),
+                                  content: Text(
+                                    '确定删除已勾选的 ${controller.selectedBookCount} 本图书吗？这会同时清理图书授权、批注、书签和阅读进度记录。',
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () =>
+                                          Navigator.of(context).pop(false),
+                                      child: const Text('取消'),
+                                    ),
+                                    FilledButton(
+                                      onPressed: () =>
+                                          Navigator.of(context).pop(true),
+                                      child: const Text('确认删除'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                              if (confirmed == true && context.mounted) {
+                                await controller.deleteSelectedBooks();
+                              }
+                            },
+                      icon: const Icon(Icons.delete_outline),
+                      label: Text(
+                        controller.isWorking
+                            ? '删除中...'
+                            : '批量删除 ${controller.selectedBookCount} 本',
+                      ),
+                    ),
+                  Text(
+                    '当前显示 ${filteredBooks.length} 本',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: palette.inkSecondary,
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
         const SizedBox(height: 14),
         if (controller.books.isEmpty)
-          const _EmptyPanel(
-            title: '还没有可管理的书籍',
-            body: '先导入一本图书，这里会显示格式、来源与当前状态。',
-          )
+          const _EmptyPanel(title: '还没有可管理的书籍', body: '先导入一本图书，这里会自动切到封面管理视图。')
+        else if (filteredBooks.isEmpty)
+          const _EmptyPanel(title: '没有找到匹配图书', body: '试试更换搜索词，或切换到其他分组查看。')
         else
-          ...controller.books.map(
-            (book) => Padding(
-              padding: const EdgeInsets.only(bottom: 14),
-              child: _PanelCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: filteredBooks.length,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: crossAxisCount,
+              mainAxisSpacing: isTablet ? 18 : 14,
+              crossAxisSpacing: isTablet ? 18 : 14,
+              childAspectRatio: 0.62,
+            ),
+            itemBuilder: (context, index) {
+              final book = filteredBooks[index];
+              return _AdminBookTile(
+                book: book,
+                selected: controller.selectedBookIds.contains(book.id),
+                imageUrl: auth.accessToken == null
+                    ? null
+                    : ref
+                          .read(apiClientProvider)
+                          .buildUrl('/api/me/books/${book.id}/cover'),
+                headers: auth.accessToken == null
+                    ? null
+                    : ref
+                          .read(apiClientProvider)
+                          .coverHeaders(auth.accessToken!),
+                onTap: () => context.push('/admin/books/${book.id}'),
+                onSelectionToggle: () =>
+                    controller.toggleBookSelection(book.id),
+              );
+            },
+          ),
+      ],
+    );
+  }
+}
+
+class _AdminBookTile extends StatelessWidget {
+  const _AdminBookTile({
+    required this.book,
+    required this.selected,
+    required this.onTap,
+    required this.onSelectionToggle,
+    this.imageUrl,
+    this.headers,
+  });
+
+  final AdminBookSummary book;
+  final bool selected;
+  final VoidCallback onTap;
+  final VoidCallback onSelectionToggle;
+  final String? imageUrl;
+  final Map<String, String>? headers;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppReaderPalette.of(context);
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(20),
+      onTap: onTap,
+      child: Ink(
+        decoration: BoxDecoration(
+          color: palette.panel,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected ? palette.accent : palette.line,
+            width: selected ? 1.6 : 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: Stack(
                   children: [
-                    Text(
-                      book.title,
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleMedium
-                          ?.copyWith(fontWeight: FontWeight.w700),
-                    ),
-                    if ((book.author ?? '').trim().isNotEmpty) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        book.author!,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: palette.inkSecondary,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: [
-                        _MetaPill(label: '格式', value: book.format),
-                        _MetaPill(label: '插件', value: book.pluginId),
-                        _MetaPill(label: '来源', value: book.sourceType),
-                        _MetaPill(
-                          label: '状态',
-                          value: book.sourceMissing ? '源文件缺失' : '正常',
-                        ),
-                      ],
-                    ),
-                    if ((book.description ?? '').trim().isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      Text(
-                        book.description!,
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                    ],
-                    const SizedBox(height: 12),
-                    Text(
-                      '更新于 ${_formatDate(book.updatedAt)}',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: palette.inkTertiary,
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: [
-                        OutlinedButton.icon(
-                          onPressed: () => showModalBottomSheet<void>(
-                            context: context,
-                            isScrollControlled: true,
-                            builder: (context) => BookAccessSheet(book: book),
+                    Positioned.fill(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(14),
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF5D3A22), Color(0xFF93633A)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
                           ),
-                          icon: const Icon(Icons.visibility_outlined),
-                          label: const Text('可见人员'),
                         ),
-                        if (controller.canAssignBooks)
-                          FilledButton.tonalIcon(
-                            onPressed: () => showModalBottomSheet<void>(
-                              context: context,
-                              isScrollControlled: true,
-                              builder: (context) => BookAccessSheet(book: book),
+                        child: imageUrl == null
+                            ? _AdminBookFallback(title: book.title)
+                            : ClipRRect(
+                                borderRadius: BorderRadius.circular(14),
+                                child: Image.network(
+                                  imageUrl!,
+                                  headers: headers,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) =>
+                                      _AdminBookFallback(title: book.title),
+                                ),
+                              ),
+                      ),
+                    ),
+                    Positioned(
+                      top: 8,
+                      left: 8,
+                      child: Material(
+                        color: Colors.black.withValues(alpha: 0.28),
+                        borderRadius: BorderRadius.circular(999),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(999),
+                          onTap: onSelectionToggle,
+                          child: Padding(
+                            padding: const EdgeInsets.all(6),
+                            child: Icon(
+                              selected
+                                  ? Icons.check_circle
+                                  : Icons.radio_button_unchecked,
+                              color: Colors.white,
+                              size: 20,
                             ),
-                            icon: const Icon(Icons.person_add_alt_1),
-                            label: const Text('分配读者'),
                           ),
-                      ],
+                        ),
+                      ),
                     ),
+                    if ((book.groupName ?? '').trim().isNotEmpty)
+                      Positioned(
+                        right: 8,
+                        bottom: 8,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.56),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            child: Text(
+                              book.groupName!,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
+              const SizedBox(height: 12),
+              Text(
+                book.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AdminBookFallback extends StatelessWidget {
+  const _AdminBookFallback({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Spacer(),
+          Text(
+            title,
+            maxLines: 4,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+              height: 1.35,
             ),
           ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -655,253 +885,6 @@ class _UploadBookButton extends ConsumerWidget {
   }
 }
 
-class BookAccessSheet extends ConsumerStatefulWidget {
-  const BookAccessSheet({super.key, required this.book});
-
-  final AdminBookSummary book;
-
-  @override
-  ConsumerState<BookAccessSheet> createState() => _BookAccessSheetState();
-}
-
-class _BookAccessSheetState extends ConsumerState<BookAccessSheet> {
-  int? _selectedUserId;
-
-  @override
-  void initState() {
-    super.initState();
-    Future.microtask(
-      () => ref
-          .read(adminCenterControllerProvider)
-          .loadBookViewers(widget.book.id),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final controller = ref.watch(adminCenterControllerProvider);
-    final palette = AppReaderPalette.of(context);
-    final viewers = controller.viewersForBook(widget.book.id);
-    final loading = controller.isLoadingViewers(widget.book.id);
-    final availableUsers = controller.grantableUsers
-        .where(
-          (user) => viewers.every((viewer) => viewer.userId != user.id),
-        )
-        .toList();
-
-    final mediaQuery = MediaQuery.of(context);
-    final maxSheetHeight =
-        (mediaQuery.size.height - mediaQuery.padding.top) * 0.88;
-
-    return SafeArea(
-      top: false,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxHeight: maxSheetHeight),
-        child: Padding(
-          padding: EdgeInsets.only(
-            left: 16,
-            right: 16,
-            top: 18,
-            bottom: mediaQuery.viewInsets.bottom + 24,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.max,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 42,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: palette.line,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 18),
-              Text(
-                widget.book.title,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                '查看当前可见人员，并将这本书分配给更多用户。',
-                style: Theme.of(
-                  context,
-                ).textTheme.bodyMedium?.copyWith(color: palette.inkSecondary),
-              ),
-              const SizedBox(height: 18),
-              Flexible(
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (controller.canAssignBooks) ...[
-                        _PanelCard(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '分配给指定人员',
-                                style: Theme.of(
-                                  context,
-                                ).textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                '选择一位当前还看不到这本书的用户，立即添加到可见范围。',
-                                style: Theme.of(
-                                  context,
-                                ).textTheme.bodySmall?.copyWith(
-                                  color: palette.inkSecondary,
-                                ),
-                              ),
-                              const SizedBox(height: 14),
-                              DropdownButtonFormField<int>(
-                                initialValue: _selectedUserId,
-                                decoration: const InputDecoration(
-                                  labelText: '选择用户',
-                                ),
-                                items: availableUsers
-                                    .map(
-                                      (user) => DropdownMenuItem<int>(
-                                        value: user.id,
-                                        child: Text(
-                                          '${user.username} · ${adminRoleLabel(user.role)}',
-                                        ),
-                                      ),
-                                    )
-                                    .toList(),
-                                onChanged: controller.isWorking
-                                    ? null
-                                    : (value) {
-                                        setState(() {
-                                          _selectedUserId = value;
-                                        });
-                                      },
-                              ),
-                              const SizedBox(height: 14),
-                              Align(
-                                alignment: Alignment.centerRight,
-                                child: FilledButton.icon(
-                                  onPressed:
-                                      controller.isWorking ||
-                                          _selectedUserId == null
-                                      ? null
-                                      : () async {
-                                          await ref
-                                              .read(adminCenterControllerProvider)
-                                              .grantBookToUser(
-                                                widget.book.id,
-                                                _selectedUserId!,
-                                              );
-                                          if (!mounted) {
-                                            return;
-                                          }
-                                          setState(() {
-                                            _selectedUserId = null;
-                                          });
-                                        },
-                                  icon: const Icon(Icons.person_add_alt_1),
-                                  label: Text(
-                                    controller.isWorking ? '分配中...' : '确认分配',
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                      ],
-                      Text(
-                        '当前可见人员',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      if (loading && viewers.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 32),
-                          child: Center(child: CircularProgressIndicator()),
-                        )
-                      else if (viewers.isEmpty)
-                        const _EmptyPanel(
-                          title: '暂无可见人员信息',
-                          body: '刷新后如果仍为空，说明当前书籍还没有有效访问者。',
-                        )
-                      else
-                        ListView.separated(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: viewers.length,
-                          separatorBuilder: (_, _) => const SizedBox(height: 12),
-                          itemBuilder: (context, index) {
-                            final viewer = viewers[index];
-                            return _PanelCard(
-                              child: Row(
-                                children: [
-                                  CircleAvatar(
-                                    child: Text(
-                                      viewer.username.substring(
-                                        0,
-                                        viewer.username.length >= 2 ? 2 : 1,
-                                      ).toUpperCase(),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          viewer.username,
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .titleMedium
-                                              ?.copyWith(
-                                                fontWeight: FontWeight.w700,
-                                              ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          adminRoleLabel(viewer.role),
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .bodySmall
-                                              ?.copyWith(
-                                                color: palette.inkSecondary,
-                                              ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  _StatusChip(
-                                    label: viewer.isGlobalAccess ? '角色可见' : '已分配',
-                                    highlighted: viewer.isGlobalAccess,
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _AnnotationManagementSection extends ConsumerWidget {
   const _AnnotationManagementSection({required this.controller});
 
@@ -911,10 +894,7 @@ class _AnnotationManagementSection extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final palette = AppReaderPalette.of(context);
     if (controller.annotations.isEmpty) {
-      return const _EmptyPanel(
-        title: '还没有批注记录',
-        body: '用户产生高亮与批注后，这里会出现全局列表。',
-      );
+      return const _EmptyPanel(title: '还没有批注记录', body: '用户产生高亮与批注后，这里会出现全局列表。');
     }
 
     return Column(
@@ -934,17 +914,13 @@ class _AnnotationManagementSection extends ConsumerWidget {
                             children: [
                               Text(
                                 annotation.bookTitle,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .titleMedium
+                                style: Theme.of(context).textTheme.titleMedium
                                     ?.copyWith(fontWeight: FontWeight.w700),
                               ),
                               const SizedBox(height: 4),
                               Text(
                                 '${annotation.username} · ${_formatDate(annotation.updatedAt)}',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodySmall
+                                style: Theme.of(context).textTheme.bodySmall
                                     ?.copyWith(color: palette.inkSecondary),
                               ),
                             ],
@@ -977,9 +953,7 @@ class _AnnotationManagementSection extends ConsumerWidget {
                             '定位：${annotation.anchor}',
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
+                            style: Theme.of(context).textTheme.bodySmall
                                 ?.copyWith(color: palette.inkTertiary),
                           ),
                         ),
@@ -1044,17 +1018,13 @@ class _BookmarkManagementSection extends ConsumerWidget {
                             children: [
                               Text(
                                 bookmark.bookTitle,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .titleMedium
+                                style: Theme.of(context).textTheme.titleMedium
                                     ?.copyWith(fontWeight: FontWeight.w700),
                               ),
                               const SizedBox(height: 4),
                               Text(
                                 '${bookmark.username} · ${_formatDate(bookmark.updatedAt)}',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodySmall
+                                style: Theme.of(context).textTheme.bodySmall
                                     ?.copyWith(color: palette.inkSecondary),
                               ),
                             ],
@@ -1237,10 +1207,7 @@ class _PanelCard extends StatelessWidget {
           ),
         ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: child,
-      ),
+      child: Padding(padding: const EdgeInsets.all(16), child: child),
     );
   }
 }
@@ -1363,33 +1330,6 @@ class _EmptyPanel extends StatelessWidget {
             ).textTheme.bodyMedium?.copyWith(color: palette.inkSecondary),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _MetaPill extends StatelessWidget {
-  const _MetaPill({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = AppReaderPalette.of(context);
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: palette.backgroundSoft,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        child: Text(
-          '$label · $value',
-          style: Theme.of(
-            context,
-          ).textTheme.bodySmall?.copyWith(color: palette.inkSecondary),
-        ),
       ),
     );
   }

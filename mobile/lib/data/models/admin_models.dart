@@ -3,6 +3,7 @@ class AdminBookSummary {
     required this.id,
     required this.title,
     required this.author,
+    required this.groupName,
     required this.description,
     required this.pluginId,
     required this.format,
@@ -14,6 +15,7 @@ class AdminBookSummary {
   final int id;
   final String title;
   final String? author;
+  final String? groupName;
   final String? description;
   final String pluginId;
   final String format;
@@ -26,11 +28,87 @@ class AdminBookSummary {
       id: (json['id'] as num).toInt(),
       title: json['title'] as String? ?? '未命名书籍',
       author: json['author'] as String?,
+      groupName: json['groupName'] as String?,
       description: json['description'] as String?,
       pluginId: json['pluginId'] as String? ?? '',
       format: (json['format'] as String? ?? '').toUpperCase(),
       sourceType: json['sourceType'] as String? ?? '',
       sourceMissing: json['sourceMissing'] as bool? ?? false,
+      updatedAt: json['updatedAt'] as String? ?? '',
+    );
+  }
+
+  AdminBookSummary copyWith({
+    String? title,
+    String? author,
+    String? groupName,
+    String? description,
+    String? pluginId,
+    String? format,
+    String? sourceType,
+    bool? sourceMissing,
+    String? updatedAt,
+  }) {
+    return AdminBookSummary(
+      id: id,
+      title: title ?? this.title,
+      author: author ?? this.author,
+      groupName: groupName ?? this.groupName,
+      description: description ?? this.description,
+      pluginId: pluginId ?? this.pluginId,
+      format: format ?? this.format,
+      sourceType: sourceType ?? this.sourceType,
+      sourceMissing: sourceMissing ?? this.sourceMissing,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+}
+
+class AdminBookDetail {
+  const AdminBookDetail({
+    required this.id,
+    required this.title,
+    required this.author,
+    required this.groupName,
+    required this.description,
+    required this.pluginId,
+    required this.format,
+    required this.sourceType,
+    required this.sourceMissing,
+    required this.hasStructuredContent,
+    required this.contentModel,
+    required this.latestContentVersionId,
+    required this.updatedAt,
+  });
+
+  final int id;
+  final String title;
+  final String? author;
+  final String? groupName;
+  final String? description;
+  final String pluginId;
+  final String format;
+  final String sourceType;
+  final bool sourceMissing;
+  final bool hasStructuredContent;
+  final String? contentModel;
+  final int? latestContentVersionId;
+  final String updatedAt;
+
+  factory AdminBookDetail.fromJson(Map<String, dynamic> json) {
+    return AdminBookDetail(
+      id: (json['id'] as num).toInt(),
+      title: json['title'] as String? ?? '未命名书籍',
+      author: json['author'] as String?,
+      groupName: json['groupName'] as String?,
+      description: json['description'] as String?,
+      pluginId: json['pluginId'] as String? ?? '',
+      format: (json['format'] as String? ?? '').toUpperCase(),
+      sourceType: json['sourceType'] as String? ?? '',
+      sourceMissing: json['sourceMissing'] as bool? ?? false,
+      hasStructuredContent: json['hasStructuredContent'] as bool? ?? false,
+      contentModel: json['contentModel'] as String?,
+      latestContentVersionId: (json['latestContentVersionId'] as num?)?.toInt(),
       updatedAt: json['updatedAt'] as String? ?? '',
     );
   }
@@ -58,10 +136,7 @@ class AdminUserView {
     );
   }
 
-  AdminUserView copyWith({
-    String? role,
-    bool? enabled,
-  }) {
+  AdminUserView copyWith({String? role, bool? enabled}) {
     return AdminUserView(
       id: id,
       username: username,
@@ -219,6 +294,7 @@ class BookViewerView {
   final String? grantedAt;
 
   bool get isGlobalAccess => accessSource == 'GLOBAL_ROLE';
+  bool get isExplicitGrant => !isGlobalAccess;
 
   factory BookViewerView.fromJson(Map<String, dynamic> json) {
     return BookViewerView(

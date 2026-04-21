@@ -154,7 +154,7 @@ class BookService(
     fun listAdminBooks(): List<AdminBookView> =
         jdbcClient.sql(
             """
-            select b.id, b.title, b.author, b.description, bf.plugin_id, bf.format, bf.source_type, bf.source_missing, b.updated_at
+            select b.id, b.title, b.author, b.group_name, b.description, bf.plugin_id, bf.format, bf.source_type, bf.source_missing, b.updated_at
             from books b
             join book_files bf on bf.book_id = b.id
             where bf.id = (
@@ -169,6 +169,7 @@ class BookService(
                     id = rs.getLong("id"),
                     title = rs.getString("title"),
                     author = rs.getString("author"),
+                    groupName = rs.getString("group_name"),
                     description = rs.getString("description"),
                     pluginId = rs.getString("plugin_id"),
                     format = rs.getString("format"),
@@ -178,6 +179,56 @@ class BookService(
                 )
             }
             .list()
+
+    fun getAdminBookDetail(bookId: Long): AdminBookDetailView =
+        jdbcClient.sql(
+            """
+            select b.id, b.title, b.author, b.group_name, b.description, bf.plugin_id, bf.format, f.source_type, f.source_missing,
+                   exists(
+                       select 1 from book_content_versions bcv
+                       where bcv.book_id = b.id and bcv.status = 'READY'
+                   ) as has_structured_content,
+                   (
+                       select bcv.content_model from book_content_versions bcv
+                       where bcv.book_id = b.id and bcv.status = 'READY'
+                       order by bcv.id desc
+                       limit 1
+                   ) as content_model,
+                   (
+                       select bcv.id from book_content_versions bcv
+                       where bcv.book_id = b.id and bcv.status = 'READY'
+                       order by bcv.id desc
+                       limit 1
+                   ) as latest_content_version_id,
+                   b.updated_at
+            from books b
+            join book_files f on f.book_id = b.id
+            join book_formats bf on bf.book_id = b.id
+            where b.id = :bookId
+            order by f.id desc
+            limit 1
+            """.trimIndent(),
+        )
+            .param("bookId", bookId)
+            .query { rs, _ ->
+                AdminBookDetailView(
+                    id = rs.getLong("id"),
+                    title = rs.getString("title"),
+                    author = rs.getString("author"),
+                    groupName = rs.getString("group_name"),
+                    description = rs.getString("description"),
+                    pluginId = rs.getString("plugin_id"),
+                    format = rs.getString("format"),
+                    sourceType = rs.getString("source_type"),
+                    sourceMissing = rs.getBoolean("source_missing"),
+                    hasStructuredContent = rs.getBoolean("has_structured_content"),
+                    contentModel = rs.getString("content_model"),
+                    latestContentVersionId = rs.getObject("latest_content_version_id")?.let { (it as Number).toLong() },
+                    updatedAt = rs.getTimestamp("updated_at").toInstant().toString(),
+                )
+            }
+            .optional()
+            .orElseThrow { IllegalArgumentException("Book $bookId was not found") }
 
     fun getAccessibleBook(userId: Long, bookId: Long): BookDetailView {
         require(hasAccess(userId, bookId)) { "Book access denied" }
@@ -325,6 +376,55 @@ class BookService(
             .param("bookId", bookId)
             .param("grantedBy", grantedBy)
             .param("grantedAt", Instant.now().toSqlTimestamp())
+            .update()
+    }
+
+    @Transactional
+    fun updateAdminBook(bookId: Long, request: UpdateAdminBookRequest): AdminBookDetailView {
+        val normalizedGroupName = request.groupName?.trim()?.takeIf { it.isNotEmpty() }
+        val updated = jdbcClient.sql(
+            """
+            update books
+            set group_name = :groupName,
+                updated_at = :updatedAt
+            where id = :bookId
+            """.trimIndent(),
+        )
+            .param("groupName", normalizedGroupName)
+            .param("updatedAt", Instant.now().toSqlTimestamp())
+            .param("bookId", bookId)
+            .update()
+
+        require(updated > 0) { "Book $bookId was not found" }
+        return getAdminBookDetail(bookId)
+    }
+
+    @Transactional
+    fun deleteBooks(bookIds: List<Long>): Int {
+        val normalizedIds = bookIds.distinct()
+        if (normalizedIds.isEmpty()) {
+            return 0
+        }
+
+        return jdbcClient.sql(
+            """
+            delete from books
+            where id in (:bookIds)
+            """.trimIndent(),
+        )
+            .param("bookIds", normalizedIds)
+            .update()
+    }
+
+    fun revokeBookGrant(bookId: Long, userId: Long) {
+        jdbcClient.sql(
+            """
+            delete from user_book_access
+            where book_id = :bookId and user_id = :userId
+            """.trimIndent(),
+        )
+            .param("bookId", bookId)
+            .param("userId", userId)
             .update()
     }
 

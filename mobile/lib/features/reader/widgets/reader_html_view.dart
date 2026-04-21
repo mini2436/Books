@@ -30,6 +30,8 @@ class ReaderHtmlView extends StatefulWidget {
     required this.onPageBoundaryNext,
     required this.onToggleUi,
     required this.onMenuRequest,
+    required this.viewportTapZoneVersion,
+    this.viewportTapZone,
     this.focusedAnchor,
   });
 
@@ -58,6 +60,8 @@ class ReaderHtmlView extends StatefulWidget {
   final Future<void> Function() onPageBoundaryNext;
   final VoidCallback onToggleUi;
   final VoidCallback onMenuRequest;
+  final int viewportTapZoneVersion;
+  final String? viewportTapZone;
 
   @override
   State<ReaderHtmlView> createState() => _ReaderHtmlViewState();
@@ -129,6 +133,9 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         widget.focusedAnchor != oldWidget.focusedAnchor) {
       _scrollToFocusedAnchor();
     }
+    if (widget.viewportTapZoneVersion != oldWidget.viewportTapZoneVersion) {
+      _handleViewportTapZone();
+    }
     if (widget.uiVisible != oldWidget.uiVisible) {
       _controller.runJavaScript(
         'window.readerSetChromeVisible(${widget.uiVisible ? 'true' : 'false'});',
@@ -154,27 +161,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     }
     return DecoratedBox(
       decoration: BoxDecoration(color: widget.palette.background),
-      child: Stack(
-        children: [
-          Positioned.fill(child: WebViewWidget(controller: _controller)),
-          if (widget.pagedMode)
-            Positioned.fill(
-              child: Row(
-                children: [
-                  _PageTapHotspot(
-                    alignment: Alignment.centerLeft,
-                    onTap: () => _handleExternalTapZone('left'),
-                  ),
-                  const Spacer(),
-                  _PageTapHotspot(
-                    alignment: Alignment.centerRight,
-                    onTap: () => _handleExternalTapZone('right'),
-                  ),
-                ],
-              ),
-            ),
-        ],
-      ),
+      child: WebViewWidget(controller: _controller),
     );
   }
 
@@ -259,6 +246,14 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     await _controller.runJavaScript(
       'window.readerHandleTapZone($escapedZone);',
     );
+  }
+
+  Future<void> _handleViewportTapZone() async {
+    final zone = widget.viewportTapZone;
+    if (zone == null || zone.isEmpty) {
+      return;
+    }
+    await _handleExternalTapZone(zone);
   }
 
   Future<void> _verifyRenderedContent() async {
@@ -1370,26 +1365,4 @@ class _SelectionIntent {
 
   final AnnotationSelection selection;
   final AnnotationView? existingAnnotation;
-}
-
-class _PageTapHotspot extends StatelessWidget {
-  const _PageTapHotspot({required this.alignment, required this.onTap});
-
-  final Alignment alignment;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Align(
-      alignment: alignment,
-      child: SizedBox(
-        width: 72,
-        child: GestureDetector(
-          behavior: HitTestBehavior.translucent,
-          onTap: onTap,
-          child: const SizedBox.expand(),
-        ),
-      ),
-    );
-  }
 }

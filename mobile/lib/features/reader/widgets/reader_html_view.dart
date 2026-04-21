@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
@@ -83,7 +84,9 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
   void initState() {
     super.initState();
     _lastHtml = _buildHtml();
-    _controller = WebViewController()
+    _controller = WebViewController.fromPlatformCreationParams(
+      const PlatformWebViewControllerCreationParams(),
+    )
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(widget.palette.background)
       ..setNavigationDelegate(
@@ -112,6 +115,11 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         onMessageReceived: _handleBridgeMessage,
       )
       ..loadHtmlString(_lastHtml);
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      final dynamic platformController = _controller.platform;
+      unawaited(platformController.setVerticalScrollBarEnabled(false));
+      unawaited(platformController.setHorizontalScrollBarEnabled(false));
+    }
     _armBlankPageGuard();
   }
 
@@ -524,9 +532,16 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       height: 100%;
       overflow-x: hidden;
       overflow-y: auto;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
       -webkit-overflow-scrolling: touch;
       background: var(--reader-bg);
       padding: 0 0 28px;
+    }
+    #reader-stage::-webkit-scrollbar {
+      display: none;
+      width: 0;
+      height: 0;
     }
     #reader-root {
       padding: 0;
@@ -646,9 +661,6 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       color: ${_cssColor(widget.palette.background)};
       font-weight: 600;
     }
-    body.reader-ui-hidden .reader-toolbar {
-      display: none !important;
-    }
     .reader-selection-overlay {
       position: fixed;
       inset: 0;
@@ -695,6 +707,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       let touchMoved = false;
       let touchTracking = false;
       let lastTouchHandledAt = 0;
+      let selectionRefreshTimer = null;
 
       function send(payload) {
         if (!bridge || !bridge.postMessage) return;
@@ -979,6 +992,21 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         }, delay);
       }
 
+      function cancelSelectionRefresh() {
+        if (selectionRefreshTimer) {
+          window.clearTimeout(selectionRefreshTimer);
+          selectionRefreshTimer = null;
+        }
+      }
+
+      function scheduleSelectionRefresh(delay) {
+        cancelSelectionRefresh();
+        selectionRefreshTimer = window.setTimeout(function() {
+          selectionRefreshTimer = null;
+          handleSelectionChange();
+        }, delay);
+      }
+
       function placeToolbar(data) {
         if (!toolbar) return;
         const estimatedWidth = 154;
@@ -1071,6 +1099,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       document.addEventListener('selectionchange', handleSelectionChange);
       document.addEventListener('touchstart', function(event) {
         cancelNativeSelectionClear();
+        cancelSelectionRefresh();
         const touch = event.touches && event.touches.length > 0 ? event.touches[0] : null;
         if (!touch) {
           touchTracking = false;
@@ -1086,6 +1115,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         if (!touchTracking) {
           return;
         }
+        cancelSelectionRefresh();
         const touch = event.touches && event.touches.length > 0 ? event.touches[0] : null;
         if (!touch) {
           return;
@@ -1102,6 +1132,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         const touch = event.changedTouches && event.changedTouches.length > 0
           ? event.changedTouches[0]
           : null;
+        scheduleSelectionRefresh(60);
         if (!currentSelection) {
           if (touchTracking && !touchMoved && touch) {
             lastTouchHandledAt = Date.now();
@@ -1115,6 +1146,9 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         touchTracking = false;
         touchMoved = false;
       }, { passive: true });
+      document.addEventListener('mouseup', function() {
+        scheduleSelectionRefresh(20);
+      });
       document.addEventListener('scroll', clearSelectionUi, true);
       if (stage) {
         stage.addEventListener('scroll', clearSelectionUi, { passive: true });

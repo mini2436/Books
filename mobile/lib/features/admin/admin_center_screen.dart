@@ -689,180 +689,213 @@ class _BookAccessSheetState extends ConsumerState<BookAccessSheet> {
         )
         .toList();
 
+    final mediaQuery = MediaQuery.of(context);
+    final maxSheetHeight =
+        (mediaQuery.size.height - mediaQuery.padding.top) * 0.88;
+
     return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.only(
-          left: 16,
-          right: 16,
-          top: 18,
-          bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 42,
-                height: 5,
-                decoration: BoxDecoration(
-                  color: palette.line,
-                  borderRadius: BorderRadius.circular(999),
+      top: false,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: maxSheetHeight),
+        child: Padding(
+          padding: EdgeInsets.only(
+            left: 16,
+            right: 16,
+            top: 18,
+            bottom: mediaQuery.viewInsets.bottom + 24,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.max,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 42,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: palette.line,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 18),
-            Text(
-              widget.book.title,
-              style: Theme.of(
-                context,
-              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '查看当前可见人员，并将这本书分配给更多用户。',
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(color: palette.inkSecondary),
-            ),
-            const SizedBox(height: 18),
-            if (controller.canAssignBooks) ...[
-              _PanelCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '分配给指定人员',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '选择一位当前还看不到这本书的用户，立即添加到可见范围。',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: palette.inkSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    DropdownButtonFormField<int>(
-                      initialValue: _selectedUserId,
-                      decoration: const InputDecoration(labelText: '选择用户'),
-                      items: availableUsers
-                          .map(
-                            (user) => DropdownMenuItem<int>(
-                              value: user.id,
-                              child: Text(
-                                '${user.username} · ${adminRoleLabel(user.role)}',
-                              ),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: controller.isWorking
-                          ? null
-                          : (value) {
-                              setState(() {
-                                _selectedUserId = value;
-                              });
-                            },
-                    ),
-                    const SizedBox(height: 14),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: FilledButton.icon(
-                        onPressed:
-                            controller.isWorking || _selectedUserId == null
-                            ? null
-                            : () async {
-                                await ref
-                                    .read(adminCenterControllerProvider)
-                                    .grantBookToUser(
-                                      widget.book.id,
-                                      _selectedUserId!,
-                                    );
-                                if (!mounted) {
-                                  return;
-                                }
-                                setState(() {
-                                  _selectedUserId = null;
-                                });
-                              },
-                        icon: const Icon(Icons.person_add_alt_1),
-                        label: Text(controller.isWorking ? '分配中...' : '确认分配'),
-                      ),
-                    ),
-                  ],
-                ),
+              const SizedBox(height: 18),
+              Text(
+                widget.book.title,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
               ),
-              const SizedBox(height: 14),
-            ],
-            Text(
-              '当前可见人员',
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 10),
-            SizedBox(
-              height: 320,
-              child: loading && viewers.isEmpty
-                  ? const Center(child: CircularProgressIndicator())
-                  : viewers.isEmpty
-                  ? const _EmptyPanel(
-                      title: '暂无可见人员信息',
-                      body: '刷新后如果仍为空，说明当前书籍还没有有效访问者。',
-                    )
-                  : ListView.separated(
-                      shrinkWrap: true,
-                      itemCount: viewers.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 12),
-                      itemBuilder: (context, index) {
-                        final viewer = viewers[index];
-                        return _PanelCard(
-                          child: Row(
+              const SizedBox(height: 6),
+              Text(
+                '查看当前可见人员，并将这本书分配给更多用户。',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(color: palette.inkSecondary),
+              ),
+              const SizedBox(height: 18),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (controller.canAssignBooks) ...[
+                        _PanelCard(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              CircleAvatar(
-                                child: Text(
-                                  viewer.username.substring(
-                                    0,
-                                    viewer.username.length >= 2 ? 2 : 1,
-                                  ).toUpperCase(),
+                              Text(
+                                '分配给指定人员',
+                                style: Theme.of(
+                                  context,
+                                ).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
                                 ),
                               ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      viewer.username,
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .titleMedium
-                                          ?.copyWith(fontWeight: FontWeight.w700),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      adminRoleLabel(viewer.role),
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodySmall
-                                          ?.copyWith(color: palette.inkSecondary),
-                                    ),
-                                  ],
+                              const SizedBox(height: 8),
+                              Text(
+                                '选择一位当前还看不到这本书的用户，立即添加到可见范围。',
+                                style: Theme.of(
+                                  context,
+                                ).textTheme.bodySmall?.copyWith(
+                                  color: palette.inkSecondary,
                                 ),
                               ),
-                              _StatusChip(
-                                label: viewer.isGlobalAccess ? '角色可见' : '已分配',
-                                highlighted: viewer.isGlobalAccess,
+                              const SizedBox(height: 14),
+                              DropdownButtonFormField<int>(
+                                initialValue: _selectedUserId,
+                                decoration: const InputDecoration(
+                                  labelText: '选择用户',
+                                ),
+                                items: availableUsers
+                                    .map(
+                                      (user) => DropdownMenuItem<int>(
+                                        value: user.id,
+                                        child: Text(
+                                          '${user.username} · ${adminRoleLabel(user.role)}',
+                                        ),
+                                      ),
+                                    )
+                                    .toList(),
+                                onChanged: controller.isWorking
+                                    ? null
+                                    : (value) {
+                                        setState(() {
+                                          _selectedUserId = value;
+                                        });
+                                      },
+                              ),
+                              const SizedBox(height: 14),
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: FilledButton.icon(
+                                  onPressed:
+                                      controller.isWorking ||
+                                          _selectedUserId == null
+                                      ? null
+                                      : () async {
+                                          await ref
+                                              .read(adminCenterControllerProvider)
+                                              .grantBookToUser(
+                                                widget.book.id,
+                                                _selectedUserId!,
+                                              );
+                                          if (!mounted) {
+                                            return;
+                                          }
+                                          setState(() {
+                                            _selectedUserId = null;
+                                          });
+                                        },
+                                  icon: const Icon(Icons.person_add_alt_1),
+                                  label: Text(
+                                    controller.isWorking ? '分配中...' : '确认分配',
+                                  ),
+                                ),
                               ),
                             ],
                           ),
-                        );
-                      },
-                    ),
-            ),
-          ],
+                        ),
+                        const SizedBox(height: 14),
+                      ],
+                      Text(
+                        '当前可见人员',
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      if (loading && viewers.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 32),
+                          child: Center(child: CircularProgressIndicator()),
+                        )
+                      else if (viewers.isEmpty)
+                        const _EmptyPanel(
+                          title: '暂无可见人员信息',
+                          body: '刷新后如果仍为空，说明当前书籍还没有有效访问者。',
+                        )
+                      else
+                        ListView.separated(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: viewers.length,
+                          separatorBuilder: (_, _) => const SizedBox(height: 12),
+                          itemBuilder: (context, index) {
+                            final viewer = viewers[index];
+                            return _PanelCard(
+                              child: Row(
+                                children: [
+                                  CircleAvatar(
+                                    child: Text(
+                                      viewer.username.substring(
+                                        0,
+                                        viewer.username.length >= 2 ? 2 : 1,
+                                      ).toUpperCase(),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          viewer.username,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .titleMedium
+                                              ?.copyWith(
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          adminRoleLabel(viewer.role),
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodySmall
+                                              ?.copyWith(
+                                                color: palette.inkSecondary,
+                                              ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  _StatusChip(
+                                    label: viewer.isGlobalAccess ? '角色可见' : '已分配',
+                                    highlighted: viewer.isGlobalAccess,
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

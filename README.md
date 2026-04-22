@@ -1,5 +1,7 @@
 # Private Reader
 
+[中文说明](/C:/Users/MINI2436/PROJRCT/AI/Books/README.zh-CN.md)
+
 Private Reader is a self-hosted multi-user ebook platform with:
 
 - A Kotlin + Spring Boot backend designed for JVM and GraalVM native image builds

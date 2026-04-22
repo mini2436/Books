@@ -257,115 +257,69 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       drawer: Drawer(
         child: SafeArea(child: _ReaderLeftPanel(controller: controller)),
       ),
-      appBar: controller.uiVisible
-          ? AppBar(
-              title: Text(
-                detail.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: AnimatedPadding(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  controller.uiVisible ? 86 : 24,
+                  16,
+                  controller.uiVisible ? 108 : 40,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      chapter?.title ?? detail.title,
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 20),
+                    if (controller.isCurrentChapterLoading)
+                      const Padding(
+                        padding: EdgeInsets.only(bottom: 16),
+                        child: LinearProgressIndicator(),
+                      ),
+                    Expanded(child: body),
+                  ],
+                ),
               ),
-              actions: [
-                IconButton(
-                  onPressed: () => _openBookmarksSheet(controller),
-                  icon: const Icon(Icons.bookmarks_outlined),
-                ),
-                IconButton(
-                  onPressed: () => _openNotesSheet(controller),
-                  icon: const Icon(Icons.edit_note),
-                ),
-                IconButton(
-                  onPressed: () => showModalBottomSheet<void>(
+            ),
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: _TabletChromeVisibility(
+                visible: controller.uiVisible,
+                offset: const Offset(0, -0.08),
+                child: _MobileReaderTopBar(
+                  title: detail.title,
+                  onOpenMenu: () => _scaffoldKey.currentState?.openDrawer(),
+                  onOpenBookmarks: () => _openBookmarksSheet(controller),
+                  onOpenNotes: () => _openNotesSheet(controller),
+                  onOpenSettings: () => showModalBottomSheet<void>(
                     context: context,
                     isScrollControlled: true,
                     builder: (context) => const ReaderSettingsSheet(),
                   ),
-                  icon: const Icon(Icons.tune),
-                ),
-              ],
-            )
-          : null,
-      bottomNavigationBar: controller.uiVisible
-          ? DecoratedBox(
-              decoration: BoxDecoration(
-                color: palette.panel,
-                border: Border(top: BorderSide(color: palette.line)),
-              ),
-              child: SafeArea(
-                top: false,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    LinearProgressIndicator(
-                      value: controller.progressPercent / 100,
-                      backgroundColor: palette.backgroundSoft,
-                      color: palette.accent,
-                    ),
-                    Row(
-                      children: [
-                        IconButton(
-                          onPressed: () =>
-                              _scaffoldKey.currentState?.openDrawer(),
-                          icon: const Icon(Icons.list_alt_outlined),
-                        ),
-                        IconButton(
-                          onPressed: () => _openBookmarksSheet(controller),
-                          icon: const Icon(Icons.bookmarks_outlined),
-                        ),
-                        IconButton(
-                          onPressed: () => _openNotesSheet(controller),
-                          icon: const Icon(Icons.sticky_note_2_outlined),
-                        ),
-                        IconButton(
-                          onPressed: () => showModalBottomSheet<void>(
-                            context: context,
-                            isScrollControlled: true,
-                            builder: (context) => const ReaderSettingsSheet(),
-                          ),
-                          icon: const Icon(Icons.palette_outlined),
-                        ),
-                        const Spacer(),
-                        TextButton(
-                          onPressed: controller.previousChapter,
-                          child: const Text('上一章'),
-                        ),
-                        TextButton(
-                          onPressed: controller.nextChapter,
-                          child: const Text('下一章'),
-                        ),
-                        const SizedBox(width: 8),
-                      ],
-                    ),
-                  ],
                 ),
               ),
-            )
-          : null,
-      body: SafeArea(
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(
-            16,
-            24,
-            16,
-            controller.uiVisible ? 24 : 40,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                chapter?.title ?? detail.title,
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+            ),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: _TabletChromeVisibility(
+                visible: controller.uiVisible,
+                offset: const Offset(0, 0.12),
+                child: _MobileReaderBottomBar(controller: controller),
               ),
-              const SizedBox(height: 20),
-              if (controller.isCurrentChapterLoading)
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 16),
-                  child: LinearProgressIndicator(),
-                ),
-              Expanded(child: body),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -1195,6 +1149,161 @@ class _TabletChromeVisibility extends StatelessWidget {
           curve: Curves.easeOutCubic,
           offset: visible ? Offset.zero : offset,
           child: child,
+        ),
+      ),
+    );
+  }
+}
+
+class _MobileReaderTopBar extends StatelessWidget {
+  const _MobileReaderTopBar({
+    required this.title,
+    required this.onOpenMenu,
+    required this.onOpenBookmarks,
+    required this.onOpenNotes,
+    required this.onOpenSettings,
+  });
+
+  final String title;
+  final VoidCallback onOpenMenu;
+  final VoidCallback onOpenBookmarks;
+  final VoidCallback onOpenNotes;
+  final VoidCallback onOpenSettings;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppReaderPalette.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: palette.panel.withValues(alpha: 0.96),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: palette.line),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.06),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          child: Row(
+            children: [
+              IconButton(
+                onPressed: onOpenMenu,
+                icon: const Icon(Icons.menu_rounded),
+                tooltip: '目录',
+              ),
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              IconButton(
+                onPressed: onOpenBookmarks,
+                icon: const Icon(Icons.bookmarks_outlined),
+                tooltip: '书签',
+              ),
+              IconButton(
+                onPressed: onOpenNotes,
+                icon: const Icon(Icons.edit_note_rounded),
+                tooltip: '批注',
+              ),
+              IconButton(
+                onPressed: onOpenSettings,
+                icon: const Icon(Icons.tune_rounded),
+                tooltip: '设置',
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MobileReaderBottomBar extends StatelessWidget {
+  const _MobileReaderBottomBar({required this.controller});
+
+  final ReaderController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppReaderPalette.of(context);
+    final chapterCount = controller.content?.chapters.length ?? 0;
+    final chapterNumber = chapterCount == 0 ? 0 : controller.currentChapterIndex + 1;
+    final progress = controller.progressPercent.clamp(0, 100);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: palette.panel.withValues(alpha: 0.97),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: palette.line),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.06),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '阅读进度 ${progress.toStringAsFixed(1)}%',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(999),
+                      child: LinearProgressIndicator(
+                        value: progress / 100,
+                        minHeight: 6,
+                        backgroundColor: palette.backgroundSoft,
+                        color: palette.accent,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      chapterCount <= 0 ? '正在计算章节进度' : '第 $chapterNumber / $chapterCount 章',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: palette.inkSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 14),
+              TextButton(
+                onPressed: controller.previousChapter,
+                child: const Text('上一章'),
+              ),
+              TextButton(
+                onPressed: controller.nextChapter,
+                child: const Text('下一章'),
+              ),
+            ],
+          ),
         ),
       ),
     );

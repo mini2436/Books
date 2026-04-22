@@ -486,52 +486,64 @@ class _BookManagementSection extends ConsumerWidget {
           child: LayoutBuilder(
             builder: (context, constraints) {
               final wide = constraints.maxWidth >= 720;
-              return Flex(
-                direction: wide ? Axis.horizontal : Axis.vertical,
-                crossAxisAlignment: wide
-                    ? CrossAxisAlignment.center
-                    : CrossAxisAlignment.start,
+              final summary = Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '书籍管理',
-                          style: Theme.of(context).textTheme.titleLarge
-                              ?.copyWith(fontWeight: FontWeight.w700),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          '把导入、筛选、分组和授权整合到同一条工作流里，减少在多个弹窗之间反复跳转。',
-                          style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(color: palette.inkSecondary),
-                        ),
-                        const SizedBox(height: 14),
-                        Wrap(
-                          spacing: 10,
-                          runSpacing: 10,
-                          children: [
-                            _SummaryChip(
-                              label: '图书总数',
-                              value: '${controller.bookCount}',
-                            ),
-                            _SummaryChip(
-                              label: '当前分组',
-                              value:
-                                  '${controller.availableBookGroups.length - 1}',
-                            ),
-                            _SummaryChip(
-                              label: '已勾选',
-                              value: '${controller.selectedBookCount}',
-                            ),
-                          ],
-                        ),
-                      ],
+                  Text(
+                    '书籍管理',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
-                  SizedBox(width: wide ? 18 : 0, height: wide ? 0 : 16),
-                  _UploadBookButton(controller: controller),
+                  const SizedBox(height: 6),
+                  Text(
+                    '把导入、筛选、分组和授权整合到同一条工作流里，减少在多个弹窗之间反复跳转。',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: palette.inkSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      _SummaryChip(
+                        label: '图书总数',
+                        value: '${controller.bookCount}',
+                      ),
+                      _SummaryChip(
+                        label: '当前分组',
+                        value: '${controller.availableBookGroups.length - 1}',
+                      ),
+                      _SummaryChip(
+                        label: '已勾选',
+                        value: '${controller.selectedBookCount}',
+                      ),
+                    ],
+                  ),
+                ],
+              );
+
+              if (wide) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(child: summary),
+                    const SizedBox(width: 18),
+                    _UploadBookButton(controller: controller),
+                  ],
+                );
+              }
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  summary,
+                  const SizedBox(height: 16),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: _UploadBookButton(controller: controller),
+                  ),
                 ],
               );
             },

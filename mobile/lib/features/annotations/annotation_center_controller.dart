@@ -21,13 +21,21 @@ final annotationCenterControllerProvider =
     });
 
 class AnnotationCenterEntry {
-  const AnnotationCenterEntry({
-    required this.annotation,
-    required this.book,
-  });
+  const AnnotationCenterEntry({required this.annotation, required this.book});
 
   final AnnotationView annotation;
   final BookSummary book;
+}
+
+class AnnotationBookGroup {
+  const AnnotationBookGroup({required this.book, required this.entries});
+
+  final BookSummary book;
+  final List<AnnotationCenterEntry> entries;
+
+  int get annotationCount => entries.length;
+  String get latestUpdatedAt =>
+      entries.isEmpty ? '' : entries.first.annotation.updatedAt;
 }
 
 class AnnotationCenterController extends ChangeNotifier {
@@ -51,18 +59,21 @@ class AnnotationCenterController extends ChangeNotifier {
   final AnnotationChangeNotifier _annotationChangeNotifier;
 
   List<AnnotationCenterEntry> _entries = const [];
+  List<AnnotationBookGroup> _bookGroups = const [];
   bool _isLoading = false;
   String? _error;
 
   List<AnnotationCenterEntry> get entries => _entries;
+  List<AnnotationBookGroup> get bookGroups => _bookGroups;
   bool get isLoading => _isLoading;
   String? get error => _error;
   int get annotationCount => _entries.length;
-  int get bookCount => _entries.map((entry) => entry.book.id).toSet().length;
+  int get bookCount => _bookGroups.length;
 
   Future<void> refresh() async {
     if (!_authController.isAuthenticated) {
       _entries = const [];
+      _bookGroups = const [];
       _error = null;
       notifyListeners();
       return;
@@ -101,9 +112,11 @@ class AnnotationCenterController extends ChangeNotifier {
             right.annotation.updatedAt.compareTo(left.annotation.updatedAt),
       );
       _entries = nextEntries;
+      _bookGroups = _groupEntries(nextEntries);
     } catch (caught) {
       _error = caught.toString();
       _entries = const [];
+      _bookGroups = const [];
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -124,9 +137,11 @@ class AnnotationCenterController extends ChangeNotifier {
     );
 
     final previousEntries = _entries;
+    final previousGroups = _bookGroups;
     _entries = _entries
         .where((item) => item.annotation.id != entry.annotation.id)
         .toList();
+    _bookGroups = _groupEntries(_entries);
     notifyListeners();
 
     try {
@@ -140,6 +155,7 @@ class AnnotationCenterController extends ChangeNotifier {
       _annotationChangeNotifier.markChanged();
     } catch (_) {
       _entries = previousEntries;
+      _bookGroups = previousGroups;
       notifyListeners();
       await _offlineQueueService.enqueue(
         PendingOperation(
@@ -166,6 +182,7 @@ class AnnotationCenterController extends ChangeNotifier {
       unawaited(refresh());
     } else {
       _entries = const [];
+      _bookGroups = const [];
       _error = null;
       notifyListeners();
     }
@@ -175,5 +192,35 @@ class AnnotationCenterController extends ChangeNotifier {
     if (_authController.isAuthenticated) {
       unawaited(refresh());
     }
+  }
+
+  List<AnnotationBookGroup> _groupEntries(List<AnnotationCenterEntry> entries) {
+    final grouped = <int, List<AnnotationCenterEntry>>{};
+    final books = <int, BookSummary>{};
+    for (final entry in entries) {
+      grouped
+          .putIfAbsent(entry.book.id, () => <AnnotationCenterEntry>[])
+          .add(entry);
+      books[entry.book.id] = entry.book;
+    }
+
+    final groups =
+        grouped.entries.map((item) {
+          final nextEntries = List<AnnotationCenterEntry>.from(item.value)
+            ..sort(
+              (left, right) => right.annotation.updatedAt.compareTo(
+                left.annotation.updatedAt,
+              ),
+            );
+          return AnnotationBookGroup(
+            book: books[item.key]!,
+            entries: nextEntries,
+          );
+        }).toList()..sort(
+          (left, right) =>
+              right.latestUpdatedAt.compareTo(left.latestUpdatedAt),
+        );
+
+    return groups;
   }
 }

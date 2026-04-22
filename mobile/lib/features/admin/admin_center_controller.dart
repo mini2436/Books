@@ -15,7 +15,7 @@ final adminCenterControllerProvider =
       );
     });
 
-enum AdminSection { users, roles, books, annotations, bookmarks }
+enum AdminSection { users, roles, books, annotations, librarySources }
 
 class AdminCenterController extends ChangeNotifier {
   AdminCenterController({
@@ -38,6 +38,8 @@ class AdminCenterController extends ChangeNotifier {
   List<AdminBookSummary> _books = const [];
   List<AdminAnnotationView> _annotations = const [];
   List<AdminBookmarkView> _bookmarks = const [];
+  List<AdminLibrarySourceView> _librarySources = const [];
+  List<AdminImportJobView> _importJobs = const [];
   Map<int, List<BookViewerView>> _bookViewers = const {};
   Map<int, AdminBookDetail> _bookDetails = const {};
   Set<int> _loadingViewerBookIds = <int>{};
@@ -56,6 +58,8 @@ class AdminCenterController extends ChangeNotifier {
   List<AdminBookSummary> get books => _books;
   List<AdminAnnotationView> get annotations => _annotations;
   List<AdminBookmarkView> get bookmarks => _bookmarks;
+  List<AdminLibrarySourceView> get librarySources => _librarySources;
+  List<AdminImportJobView> get importJobs => _importJobs;
   bool get isLoading => _isLoading;
   bool get isWorking => _isWorking;
   String? get error => _error;
@@ -71,12 +75,13 @@ class AdminCenterController extends ChangeNotifier {
     if (canManageUsers) ...[AdminSection.users, AdminSection.roles],
     AdminSection.books,
     AdminSection.annotations,
-    AdminSection.bookmarks,
+    AdminSection.librarySources,
   ];
 
   int get bookCount => _books.length;
   int get annotationCount => _annotations.length;
-  int get bookmarkCount => _bookmarks.length;
+  int get librarySourceCount => _librarySources.length;
+  int get importJobCount => _importJobs.length;
   int get activeUserCount => _users.where((user) => user.enabled).length;
   int get selectedBookCount => _selectedBookIds.length;
   bool get hasBookSelection => _selectedBookIds.isNotEmpty;
@@ -155,10 +160,13 @@ class AdminCenterController extends ChangeNotifier {
           (token) => _apiClient.listAdminAnnotations(token),
         ),
         _authController.runAuthorized(
-          (token) => _apiClient.listAdminBookmarks(token),
+          (token) => _apiClient.listGrantableUsers(token),
         ),
         _authController.runAuthorized(
-          (token) => _apiClient.listGrantableUsers(token),
+          (token) => _apiClient.listLibrarySources(token),
+        ),
+        _authController.runAuthorized(
+          (token) => _apiClient.listImportJobs(token),
         ),
         if (canManageUsers)
           _authController.runAuthorized((token) => _apiClient.listUsers(token)),
@@ -166,11 +174,13 @@ class AdminCenterController extends ChangeNotifier {
 
       _books = results[0] as List<AdminBookSummary>;
       _annotations = results[1] as List<AdminAnnotationView>;
-      _bookmarks = results[2] as List<AdminBookmarkView>;
-      _grantableUsers = results[3] as List<AdminUserView>;
+      _grantableUsers = results[2] as List<AdminUserView>;
+      _librarySources = results[3] as List<AdminLibrarySourceView>;
+      _importJobs = results[4] as List<AdminImportJobView>;
       _users = canManageUsers
-          ? results[4] as List<AdminUserView>
+          ? results[5] as List<AdminUserView>
           : const <AdminUserView>[];
+      _bookmarks = const [];
       _bookViewers = const {};
       _bookDetails = const {};
       _loadingViewerBookIds = <int>{};
@@ -278,6 +288,107 @@ class AdminCenterController extends ChangeNotifier {
       await refresh();
       _notice = '已导入《${uploaded.title}》';
       _selectedSection = AdminSection.books;
+    });
+  }
+
+  Future<void> createLibrarySource({
+    required String name,
+    required String sourceType,
+    String? rootPath,
+    String? baseUrl,
+    String? remotePath,
+    String? username,
+    String? password,
+    required bool enabled,
+    required int scanIntervalMinutes,
+  }) async {
+    await _runMutation(() async {
+      final created = await _authController.runAuthorized(
+        (token) => _apiClient.createLibrarySource(
+          token,
+          name: name,
+          sourceType: sourceType,
+          rootPath: rootPath,
+          baseUrl: baseUrl,
+          remotePath: remotePath,
+          username: username,
+          password: password,
+          enabled: enabled,
+          scanIntervalMinutes: scanIntervalMinutes,
+        ),
+      );
+      _librarySources = [..._librarySources, created]
+        ..sort((left, right) => left.id.compareTo(right.id));
+      _selectedSection = AdminSection.librarySources;
+      _notice = '已新增扫描源 ${created.name}';
+    });
+  }
+
+  Future<void> updateLibrarySource({
+    required int sourceId,
+    required String name,
+    required String sourceType,
+    String? rootPath,
+    String? baseUrl,
+    String? remotePath,
+    String? username,
+    String? password,
+    required bool enabled,
+    required int scanIntervalMinutes,
+  }) async {
+    await _runMutation(() async {
+      final updated = await _authController.runAuthorized(
+        (token) => _apiClient.updateLibrarySource(
+          token,
+          sourceId,
+          name: name,
+          sourceType: sourceType,
+          rootPath: rootPath,
+          baseUrl: baseUrl,
+          remotePath: remotePath,
+          username: username,
+          password: password,
+          enabled: enabled,
+          scanIntervalMinutes: scanIntervalMinutes,
+        ),
+      );
+      _librarySources =
+          _librarySources
+              .map((item) => item.id == updated.id ? updated : item)
+              .toList()
+            ..sort((left, right) => left.id.compareTo(right.id));
+      _notice = '已更新扫描源 ${updated.name}';
+    });
+  }
+
+  Future<void> toggleLibrarySourceEnabled(
+    AdminLibrarySourceView source,
+    bool enabled,
+  ) async {
+    await updateLibrarySource(
+      sourceId: source.id,
+      name: source.name,
+      sourceType: source.sourceType,
+      rootPath: source.rootPath,
+      baseUrl: source.baseUrl,
+      remotePath: source.remotePath,
+      username: source.username,
+      password: source.password,
+      enabled: enabled,
+      scanIntervalMinutes: source.scanIntervalMinutes,
+    );
+  }
+
+  Future<void> rescanLibrarySource(AdminLibrarySourceView source) async {
+    await _runMutation(() async {
+      final result = await _authController.runAuthorized(
+        (token) => _apiClient.rescanLibrarySource(token, source.id),
+      );
+      await refresh();
+      final imported = (result['imported'] as num?)?.toInt() ?? 0;
+      final missingMarked = (result['missingMarked'] as num?)?.toInt() ?? 0;
+      _selectedSection = AdminSection.librarySources;
+      _notice = '${source.name} 扫描完成，导入 $imported 本，标记缺失 $missingMarked 本';
     });
   }
 
@@ -578,6 +689,8 @@ class AdminCenterController extends ChangeNotifier {
     _books = const [];
     _annotations = const [];
     _bookmarks = const [];
+    _librarySources = const [];
+    _importJobs = const [];
     _bookViewers = const {};
     _bookDetails = const {};
     _loadingViewerBookIds = <int>{};

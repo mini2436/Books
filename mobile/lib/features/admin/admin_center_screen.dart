@@ -7,6 +7,7 @@ import '../../data/models/admin_models.dart';
 import '../../shared/theme/reader_theme_extension.dart';
 import '../../shared/utils/responsive.dart';
 import '../auth/auth_controller.dart';
+import 'admin_library_sources_section.dart';
 import 'admin_center_controller.dart';
 
 class AdminCenterScreen extends ConsumerWidget {
@@ -22,7 +23,7 @@ class AdminCenterScreen extends ConsumerWidget {
         controller.isLoading &&
         controller.books.isEmpty &&
         controller.annotations.isEmpty &&
-        controller.bookmarks.isEmpty &&
+        controller.librarySources.isEmpty &&
         controller.users.isEmpty;
 
     if (!(auth.user?.canAccessAdmin ?? false)) {
@@ -108,8 +109,8 @@ class AdminCenterScreen extends ConsumerWidget {
                             value: '${controller.annotationCount}',
                           ),
                           _SummaryChip(
-                            label: '书签',
-                            value: '${controller.bookmarkCount}',
+                            label: '扫描源',
+                            value: '${controller.librarySourceCount}',
                           ),
                           if (controller.canManageUsers)
                             _SummaryChip(
@@ -238,8 +239,8 @@ class _SectionBody extends StatelessWidget {
         return _BookManagementSection(controller: controller);
       case AdminSection.annotations:
         return _AnnotationManagementSection(controller: controller);
-      case AdminSection.bookmarks:
-        return _BookmarkManagementSection(controller: controller);
+      case AdminSection.librarySources:
+        return AdminLibrarySourcesSection(controller: controller);
     }
   }
 }
@@ -256,7 +257,7 @@ class _UserManagementSection extends ConsumerWidget {
     if (!controller.canManageUsers) {
       return _EmptyPanel(
         title: '仅超级管理员可管理用户',
-        body: '当前角色可以继续管理图书、批注与书签，但不能新增或停用用户。',
+        body: '当前角色可以继续管理图书、批注与扫描任务，但不能新增或停用用户。',
       );
     }
 
@@ -885,107 +886,596 @@ class _UploadBookButton extends ConsumerWidget {
   }
 }
 
-class _AnnotationManagementSection extends ConsumerWidget {
+class _AdminAnnotationBookGroup {
+  const _AdminAnnotationBookGroup({
+    required this.bookId,
+    required this.bookTitle,
+    required this.book,
+    required this.annotations,
+  });
+
+  final int bookId;
+  final String bookTitle;
+  final AdminBookSummary? book;
+  final List<AdminAnnotationView> annotations;
+
+  int get annotationCount => annotations.length;
+  int get visibleCount => annotations.where((item) => !item.deleted).length;
+  String get latestUpdatedAt =>
+      annotations.isEmpty ? '' : annotations.first.updatedAt;
+}
+
+class _AnnotationManagementSection extends ConsumerStatefulWidget {
   const _AnnotationManagementSection({required this.controller});
 
   final AdminCenterController controller;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_AnnotationManagementSection> createState() =>
+      _AnnotationManagementSectionState();
+}
+
+class _AnnotationManagementSectionState
+    extends ConsumerState<_AnnotationManagementSection> {
+  late final TextEditingController _searchController;
+  String _query = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController = TextEditingController()
+      ..addListener(() {
+        setState(() {
+          _query = _searchController.text.trim();
+        });
+      });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final palette = AppReaderPalette.of(context);
+    final controller = widget.controller;
+    final groups = _buildGroups(controller);
+    final filteredGroups = _filterGroups(groups, _query);
+
     if (controller.annotations.isEmpty) {
-      return const _EmptyPanel(title: '还没有批注记录', body: '用户产生高亮与批注后，这里会出现全局列表。');
+      return const _EmptyPanel(
+        title: '还没有批注记录',
+        body: '用户产生高亮与批注后，这里会出现按书聚合的后台列表。',
+      );
     }
 
     return Column(
-      children: controller.annotations
-          .map(
-            (annotation) => Padding(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _PanelCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '批注管理',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '先按书定位，再进入书内查看和处理具体批注。',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(color: palette.inkSecondary),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _searchController,
+                textInputAction: TextInputAction.search,
+                decoration: InputDecoration(
+                  hintText: '搜索书名、作者、分组或格式',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _query.isEmpty
+                      ? null
+                      : IconButton(
+                          onPressed: _searchController.clear,
+                          icon: const Icon(Icons.close),
+                        ),
+                  filled: true,
+                  fillColor: palette.backgroundSoft,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(18),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        if (filteredGroups.isEmpty)
+          const _EmptyPanel(title: '没有找到匹配书籍', body: '试试换个书名、作者或分组关键词。')
+        else
+          ...filteredGroups.map(
+            (group) => Padding(
               padding: const EdgeInsets.only(bottom: 14),
-              child: _PanelCard(
+              child: _AdminAnnotationBookCard(
+                group: group,
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => _AdminAnnotationBookDetailScreen(
+                        bookId: group.bookId,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  List<_AdminAnnotationBookGroup> _buildGroups(
+    AdminCenterController controller,
+  ) {
+    final booksById = <int, AdminBookSummary>{
+      for (final book in controller.books) book.id: book,
+    };
+    final grouped = <int, List<AdminAnnotationView>>{};
+    for (final annotation in controller.annotations) {
+      grouped
+          .putIfAbsent(annotation.bookId, () => <AdminAnnotationView>[])
+          .add(annotation);
+    }
+
+    return grouped.entries.map((entry) {
+      final items = List<AdminAnnotationView>.from(entry.value)
+        ..sort((left, right) => right.updatedAt.compareTo(left.updatedAt));
+      final book = booksById[entry.key];
+      return _AdminAnnotationBookGroup(
+        bookId: entry.key,
+        bookTitle: book?.title ?? items.first.bookTitle,
+        book: book,
+        annotations: items,
+      );
+    }).toList()..sort(
+      (left, right) => right.latestUpdatedAt.compareTo(left.latestUpdatedAt),
+    );
+  }
+
+  List<_AdminAnnotationBookGroup> _filterGroups(
+    List<_AdminAnnotationBookGroup> groups,
+    String query,
+  ) {
+    if (query.isEmpty) {
+      return groups;
+    }
+    final normalized = query.toLowerCase();
+    return groups.where((group) {
+      final title = group.bookTitle.toLowerCase();
+      final author = (group.book?.author ?? '').toLowerCase();
+      final format = (group.book?.format ?? '').toLowerCase();
+      final groupName = (group.book?.groupName ?? '').toLowerCase();
+      return title.contains(normalized) ||
+          author.contains(normalized) ||
+          format.contains(normalized) ||
+          groupName.contains(normalized);
+    }).toList();
+  }
+}
+
+class _AdminAnnotationBookDetailScreen extends ConsumerStatefulWidget {
+  const _AdminAnnotationBookDetailScreen({required this.bookId});
+
+  final int bookId;
+
+  @override
+  ConsumerState<_AdminAnnotationBookDetailScreen> createState() =>
+      _AdminAnnotationBookDetailScreenState();
+}
+
+class _AdminAnnotationBookDetailScreenState
+    extends ConsumerState<_AdminAnnotationBookDetailScreen> {
+  late final TextEditingController _searchController;
+  String _query = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController = TextEditingController()
+      ..addListener(() {
+        setState(() {
+          _query = _searchController.text.trim();
+        });
+      });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = ref.watch(adminCenterControllerProvider);
+    final palette = AppReaderPalette.of(context);
+    final booksById = <int, AdminBookSummary>{
+      for (final book in controller.books) book.id: book,
+    };
+    final book = booksById[widget.bookId];
+    final annotations =
+        controller.annotations
+            .where((item) => item.bookId == widget.bookId)
+            .toList()
+          ..sort((left, right) => right.updatedAt.compareTo(left.updatedAt));
+    final filteredAnnotations = _filterAnnotations(annotations, _query);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          book?.title ?? '书籍批注',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+      body: SafeArea(
+        child: CustomScrollView(
+          physics: const BouncingScrollPhysics(
+            parent: AlwaysScrollableScrollPhysics(),
+          ),
+          slivers: [
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        _AdminMiniBookCover(book: book, bookId: widget.bookId),
+                        const SizedBox(width: 14),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                annotation.bookTitle,
-                                style: Theme.of(context).textTheme.titleMedium
+                                book?.title ?? '未命名书籍',
+                                style: Theme.of(context).textTheme.titleLarge
                                     ?.copyWith(fontWeight: FontWeight.w700),
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '${annotation.username} · ${_formatDate(annotation.updatedAt)}',
-                                style: Theme.of(context).textTheme.bodySmall
-                                    ?.copyWith(color: palette.inkSecondary),
+                              if (((book?.author ?? '').trim()).isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 6),
+                                  child: Text(
+                                    book!.author!,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodyMedium
+                                        ?.copyWith(color: palette.inkSecondary),
+                                  ),
+                                ),
+                              const SizedBox(height: 10),
+                              Wrap(
+                                spacing: 10,
+                                runSpacing: 10,
+                                children: [
+                                  _SummaryChip(
+                                    label: '本书批注',
+                                    value: annotations.length.toString(),
+                                  ),
+                                  if (book != null)
+                                    _SummaryChip(
+                                      label: '格式',
+                                      value: book.format,
+                                    ),
+                                ],
                               ),
                             ],
                           ),
                         ),
-                        _StatusChip(
-                          label: annotation.deleted ? '已隐藏' : '显示中',
-                          highlighted: !annotation.deleted,
-                        ),
                       ],
                     ),
-                    const SizedBox(height: 12),
-                    Text(
-                      annotation.quoteText?.trim().isNotEmpty == true
-                          ? annotation.quoteText!
-                          : '无摘录文本',
-                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        fontWeight: FontWeight.w600,
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _searchController,
+                      textInputAction: TextInputAction.search,
+                      decoration: InputDecoration(
+                        hintText: '搜索用户、摘录、笔记或日期',
+                        prefixIcon: const Icon(Icons.search),
+                        suffixIcon: _query.isEmpty
+                            ? null
+                            : IconButton(
+                                onPressed: _searchController.clear,
+                                icon: const Icon(Icons.close),
+                              ),
+                        filled: true,
+                        fillColor: palette.backgroundSoft,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(18),
+                          borderSide: BorderSide.none,
+                        ),
                       ),
-                    ),
-                    if ((annotation.noteText ?? '').trim().isNotEmpty) ...[
-                      const SizedBox(height: 10),
-                      Text(annotation.noteText!),
-                    ],
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            '定位：${annotation.anchor}',
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(color: palette.inkTertiary),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        TextButton.icon(
-                          onPressed: controller.isWorking
-                              ? null
-                              : () => ref
-                                    .read(adminCenterControllerProvider)
-                                    .updateAnnotationDeleted(
-                                      annotation,
-                                      !annotation.deleted,
-                                    ),
-                          icon: Icon(
-                            annotation.deleted
-                                ? Icons.restore_from_trash_outlined
-                                : Icons.delete_outline,
-                          ),
-                          label: Text(annotation.deleted ? '恢复' : '隐藏'),
-                        ),
-                      ],
                     ),
                   ],
                 ),
               ),
             ),
-          )
-          .toList(),
+            if (annotations.isEmpty)
+              const SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(child: Text('这本书暂时还没有批注。')),
+              )
+            else if (filteredAnnotations.isEmpty)
+              const SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(child: Text('没有找到匹配的批注。')),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                sliver: SliverList.separated(
+                  itemBuilder: (context, index) {
+                    final annotation = filteredAnnotations[index];
+                    return _AdminAnnotationCard(annotation: annotation);
+                  },
+                  separatorBuilder: (_, _) => const SizedBox(height: 14),
+                  itemCount: filteredAnnotations.length,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<AdminAnnotationView> _filterAnnotations(
+    List<AdminAnnotationView> annotations,
+    String query,
+  ) {
+    if (query.isEmpty) {
+      return annotations;
+    }
+    final normalized = query.toLowerCase();
+    return annotations.where((annotation) {
+      final username = annotation.username.toLowerCase();
+      final quote = (annotation.quoteText ?? '').toLowerCase();
+      final note = (annotation.noteText ?? '').toLowerCase();
+      final date = annotation.updatedAt.toLowerCase();
+      return username.contains(normalized) ||
+          quote.contains(normalized) ||
+          note.contains(normalized) ||
+          date.contains(normalized);
+    }).toList();
+  }
+}
+
+class _AdminAnnotationBookCard extends ConsumerWidget {
+  const _AdminAnnotationBookCard({required this.group, required this.onTap});
+
+  final _AdminAnnotationBookGroup group;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final palette = AppReaderPalette.of(context);
+    final latest = group.annotations.first;
+
+    return _PanelCard(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Row(
+          children: [
+            _AdminMiniBookCover(book: group.book, bookId: group.bookId),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    group.bookTitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  if (((group.book?.author ?? '').trim()).isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        group.book!.author!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: palette.inkSecondary,
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 10),
+                  Text(
+                    latest.quoteText?.trim().isNotEmpty == true
+                        ? latest.quoteText!
+                        : '最近一条批注',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: palette.inkSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      _StatusChip(
+                        label: '${group.annotationCount} 条批注',
+                        highlighted: true,
+                      ),
+                      _StatusChip(
+                        label: '显示 ${group.visibleCount} 条',
+                        highlighted: group.visibleCount > 0,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Icon(Icons.chevron_right_rounded, color: palette.inkSecondary),
+          ],
+        ),
+      ),
     );
   }
 }
 
+class _AdminMiniBookCover extends ConsumerWidget {
+  const _AdminMiniBookCover({required this.book, required this.bookId});
+
+  final AdminBookSummary? book;
+  final int bookId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final auth = ref.watch(authControllerProvider);
+    final imageUrl = auth.accessToken == null
+        ? null
+        : ref.read(apiClientProvider).buildUrl('/api/me/books/$bookId/cover');
+    final headers = auth.accessToken == null
+        ? null
+        : ref.read(apiClientProvider).coverHeaders(auth.accessToken!);
+
+    return SizedBox(
+      width: 68,
+      height: 96,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          gradient: const LinearGradient(
+            colors: [Color(0xFF5D3A22), Color(0xFF93633A)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: imageUrl == null
+            ? _AdminBookFallback(title: book?.title ?? '未命名书籍')
+            : ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: Image.network(
+                  imageUrl,
+                  headers: headers,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) =>
+                      _AdminBookFallback(title: book?.title ?? '未命名书籍'),
+                ),
+              ),
+      ),
+    );
+  }
+}
+
+class _AdminAnnotationCard extends ConsumerWidget {
+  const _AdminAnnotationCard({required this.annotation});
+
+  final AdminAnnotationView annotation;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final controller = ref.watch(adminCenterControllerProvider);
+    final palette = AppReaderPalette.of(context);
+
+    return _PanelCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      annotation.username,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _formatDate(annotation.updatedAt),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: palette.inkSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              _StatusChip(
+                label: annotation.deleted ? '已隐藏' : '显示中',
+                highlighted: !annotation.deleted,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            annotation.quoteText?.trim().isNotEmpty == true
+                ? annotation.quoteText!
+                : '无摘录文本',
+            style: Theme.of(
+              context,
+            ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+          ),
+          if ((annotation.noteText ?? '').trim().isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(annotation.noteText!),
+          ],
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '定位：${annotation.anchor}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: palette.inkTertiary),
+                ),
+              ),
+              const SizedBox(width: 12),
+              TextButton.icon(
+                onPressed: controller.isWorking
+                    ? null
+                    : () => ref
+                          .read(adminCenterControllerProvider)
+                          .updateAnnotationDeleted(
+                            annotation,
+                            !annotation.deleted,
+                          ),
+                icon: Icon(
+                  annotation.deleted
+                      ? Icons.restore_from_trash_outlined
+                      : Icons.delete_outline,
+                ),
+                label: Text(annotation.deleted ? '恢复' : '隐藏'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ignore: unused_element
 class _BookmarkManagementSection extends ConsumerWidget {
   const _BookmarkManagementSection({required this.controller});
 
@@ -1109,6 +1599,7 @@ class _CreateUserDialogState extends State<CreateUserDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
+      scrollable: true,
       title: const Text('新建后台用户'),
       content: Form(
         key: _formKey,
@@ -1375,8 +1866,8 @@ String _sectionLabel(AdminSection section) {
       return '书籍管理';
     case AdminSection.annotations:
       return '批注管理';
-    case AdminSection.bookmarks:
-      return '书签管理';
+    case AdminSection.librarySources:
+      return '资源扫描';
   }
 }
 

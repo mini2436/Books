@@ -26,9 +26,16 @@ class ReaderSettingsSheet extends ConsumerWidget {
 }
 
 class ReaderSettingsPanelContent extends ConsumerWidget {
-  const ReaderSettingsPanelContent({super.key, this.showDoneAction = false});
+  const ReaderSettingsPanelContent({
+    super.key,
+    this.showDoneAction = false,
+    this.showHeader = true,
+    this.compact = false,
+  });
 
   final bool showDoneAction;
+  final bool showHeader;
+  final bool compact;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -36,38 +43,29 @@ class ReaderSettingsPanelContent extends ConsumerWidget {
     final preferences = controller.value;
     final palette = AppReaderPalette.of(context);
     final tablet = Responsive.isTablet(context);
+    final contentMaxWidth = compact ? 292.0 : 420.0;
+    final sectionGap = compact ? 14.0 : 18.0;
+    final titleGap = compact ? 12.0 : 16.0;
+    final optionSpacing = compact ? 8.0 : 10.0;
+    final themeSpacing = compact ? 10.0 : 12.0;
+    final themeSwatchSize = compact ? 44.0 : 52.0;
+    final segmentedStyle = ButtonStyle(
+      visualDensity: VisualDensity.compact,
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      padding: const WidgetStatePropertyAll(
+        EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      ),
+      textStyle: WidgetStatePropertyAll(
+        Theme.of(context).textTheme.bodySmall?.copyWith(
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
 
-    return ListView(
+    Widget settingsBody = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Center(
-          child: Container(
-            width: 36,
-            height: 4,
-            decoration: BoxDecoration(
-              color: palette.line,
-              borderRadius: BorderRadius.circular(999),
-            ),
-          ),
-        ),
-        const SizedBox(height: 18),
-        Row(
-          children: [
-            Text(
-              '阅读设置',
-              style: Theme.of(
-                context,
-              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            const Spacer(),
-            if (showDoneAction)
-              TextButton(
-                onPressed: () => Navigator.of(context).maybePop(),
-                child: const Text('完成'),
-              ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        _SectionTitle(title: '字号'),
+        _SectionTitle(title: '字号', bottomSpacing: compact ? 8 : 12),
         Slider(
           value: preferences.fontScale,
           min: 0.9,
@@ -81,23 +79,28 @@ class ReaderSettingsPanelContent extends ConsumerWidget {
             context,
           ).textTheme.bodySmall?.copyWith(color: palette.inkSecondary),
         ),
-        const SizedBox(height: 18),
-        _SectionTitle(title: '字体'),
+        SizedBox(height: sectionGap),
+        _SectionTitle(title: '字体', bottomSpacing: compact ? 8 : 12),
         Wrap(
-          spacing: 10,
-          runSpacing: 10,
+          spacing: optionSpacing,
+          runSpacing: optionSpacing,
           children: ReaderFontFamilyPreference.values.map((family) {
             final selected = preferences.fontFamily == family;
             return ChoiceChip(
               label: Text(family.label),
               selected: selected,
+              visualDensity: VisualDensity.compact,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              labelPadding: const EdgeInsets.symmetric(horizontal: 2),
               onSelected: (_) => controller.setFontFamily(family),
             );
           }).toList(),
         ),
-        const SizedBox(height: 18),
-        _SectionTitle(title: '行高'),
+        SizedBox(height: sectionGap),
+        _SectionTitle(title: '行高', bottomSpacing: compact ? 8 : 12),
         SegmentedButton<double>(
+          style: segmentedStyle,
           segments: const [
             ButtonSegment(value: 1.6, label: Text('紧凑')),
             ButtonSegment(value: 1.8, label: Text('标准')),
@@ -107,11 +110,11 @@ class ReaderSettingsPanelContent extends ConsumerWidget {
           onSelectionChanged: (selection) =>
               controller.setLineHeight(selection.first),
         ),
-        const SizedBox(height: 18),
-        _SectionTitle(title: '主题'),
+        SizedBox(height: sectionGap),
+        _SectionTitle(title: '主题', bottomSpacing: compact ? 8 : 12),
         Wrap(
-          spacing: 12,
-          runSpacing: 12,
+          spacing: themeSpacing,
+          runSpacing: themeSpacing,
           children: ReaderThemeMode.values.map((mode) {
             final modePalette = AppReaderPalette.resolve(mode);
             final selected = preferences.themeMode == mode;
@@ -122,8 +125,8 @@ class ReaderSettingsPanelContent extends ConsumerWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
-                    width: 52,
-                    height: 52,
+                    width: themeSwatchSize,
+                    height: themeSwatchSize,
                     decoration: BoxDecoration(
                       color: modePalette.background,
                       borderRadius: BorderRadius.circular(999),
@@ -133,29 +136,34 @@ class ReaderSettingsPanelContent extends ConsumerWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Text(switch (mode) {
-                    ReaderThemeMode.paper => '默认白',
-                    ReaderThemeMode.kraft => '牛皮纸',
-                    ReaderThemeMode.eyeCare => '护眼',
-                    ReaderThemeMode.night => '夜间',
-                  }),
+                  SizedBox(height: compact ? 6 : 8),
+                  Text(
+                    switch (mode) {
+                      ReaderThemeMode.paper => '默认白',
+                      ReaderThemeMode.kraft => '牛皮纸',
+                      ReaderThemeMode.eyeCare => '护眼',
+                      ReaderThemeMode.night => '夜间',
+                    },
+                    style: compact
+                        ? Theme.of(context).textTheme.bodySmall
+                        : null,
+                  ),
                 ],
               ),
             );
           }).toList(),
         ),
         if (tablet) ...[
-          const SizedBox(height: 24),
-          _SectionTitle(title: '平板阅读'),
+          SizedBox(height: compact ? 18 : 24),
+          _SectionTitle(title: '平板阅读', bottomSpacing: compact ? 8 : 12),
           DecoratedBox(
             decoration: BoxDecoration(
               color: palette.backgroundSoft,
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(compact ? 16 : 18),
               border: Border.all(color: palette.line),
             ),
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.all(compact ? 14 : 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -165,7 +173,7 @@ class ReaderSettingsPanelContent extends ConsumerWidget {
                       fontWeight: FontWeight.w700,
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  SizedBox(height: compact ? 4 : 6),
                   Text(
                     '点击左侧上一页，右侧下一页，中间呼出阅读工具。手机端继续保留滚动阅读。',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -173,7 +181,7 @@ class ReaderSettingsPanelContent extends ConsumerWidget {
                       height: 1.5,
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  SizedBox(height: compact ? 12 : 16),
                   Text(
                     '翻页方向',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -181,8 +189,9 @@ class ReaderSettingsPanelContent extends ConsumerWidget {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  SizedBox(height: compact ? 8 : 10),
                   SegmentedButton<TabletPageTurnAxis>(
+                    style: segmentedStyle,
                     segments: TabletPageTurnAxis.values
                         .map(
                           (axis) => ButtonSegment(
@@ -195,7 +204,7 @@ class ReaderSettingsPanelContent extends ConsumerWidget {
                     onSelectionChanged: (selection) =>
                         controller.setTabletPageTurnAxis(selection.first),
                   ),
-                  const SizedBox(height: 16),
+                  SizedBox(height: compact ? 12 : 16),
                   Text(
                     '翻页动画',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -203,8 +212,9 @@ class ReaderSettingsPanelContent extends ConsumerWidget {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  SizedBox(height: compact ? 8 : 10),
                   SegmentedButton<TabletPageTurnAnimation>(
+                    style: segmentedStyle,
                     segments: TabletPageTurnAnimation.values
                         .map(
                           (animation) => ButtonSegment(
@@ -224,19 +234,62 @@ class ReaderSettingsPanelContent extends ConsumerWidget {
         ],
       ],
     );
+
+    settingsBody = ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: contentMaxWidth),
+      child: settingsBody,
+    );
+
+    return ListView(
+      padding: EdgeInsets.zero,
+      children: [
+        if (showHeader) ...[
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: palette.line,
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+          ),
+          SizedBox(height: titleGap),
+          Row(
+            children: [
+              Text(
+                '阅读设置',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const Spacer(),
+              if (showDoneAction)
+                TextButton(
+                  onPressed: () => Navigator.of(context).maybePop(),
+                  child: const Text('完成'),
+                ),
+            ],
+          ),
+          SizedBox(height: titleGap),
+        ],
+        Align(alignment: Alignment.topLeft, child: settingsBody),
+      ],
+    );
   }
 }
 
 class _SectionTitle extends StatelessWidget {
-  const _SectionTitle({required this.title});
+  const _SectionTitle({required this.title, this.bottomSpacing = 12});
 
   final String title;
+  final double bottomSpacing;
 
   @override
   Widget build(BuildContext context) {
     final palette = AppReaderPalette.of(context);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: EdgeInsets.only(bottom: bottomSpacing),
       child: Text(
         title,
         style: Theme.of(context).textTheme.bodySmall?.copyWith(

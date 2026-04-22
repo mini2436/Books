@@ -82,7 +82,7 @@ extension TabletPageTurnAnimationX on TabletPageTurnAnimation {
       case TabletPageTurnAnimation.smooth:
         return '平滑翻页';
       case TabletPageTurnAnimation.roll:
-        return '卷轴翻页';
+        return '仿真翻页';
     }
   }
 

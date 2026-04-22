@@ -45,9 +45,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const _SplashScreen(),
       ),
       GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
-      StatefulShellRoute.indexedStack(
+      StatefulShellRoute(
         builder: (context, state, navigationShell) =>
             AppShell(navigationShell: navigationShell),
+        navigatorContainerBuilder: AppShell.buildBranchContainer,
         branches: [
           StatefulShellBranch(
             routes: [

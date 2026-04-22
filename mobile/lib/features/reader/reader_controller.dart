@@ -110,6 +110,7 @@ class ReaderController extends ChangeNotifier {
 
   bool get isCurrentChapterLoading =>
       _loadingChapters.contains(currentChapterIndex);
+  bool get hasPendingChapterLoad => _loadingChapters.isNotEmpty;
 
   Future<void> load() async {
     isLoading = true;
@@ -189,15 +190,16 @@ class ReaderController extends ChangeNotifier {
       return;
     }
 
-    currentChapterIndex = chapterIndex;
-    notifyListeners();
-
     await _fetchChapter(chapterIndex);
+    currentChapterIndex = chapterIndex;
     final targetAnchor = switch (position) {
       ReaderChapterOpenPosition.preserve => null,
       ReaderChapterOpenPosition.start => readerChapterStartMarker,
       ReaderChapterOpenPosition.end => readerChapterEndMarker,
     };
+    if (targetAnchor == null) {
+      notifyListeners();
+    }
     if (targetAnchor != null) {
       focusedAnchor = targetAnchor;
       anchorJumpVersion += 1;

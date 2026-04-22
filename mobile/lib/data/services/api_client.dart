@@ -302,6 +302,118 @@ class ApiClient {
     return AdminAnnotationView.fromJson(data);
   }
 
+  Future<List<AdminLibrarySourceView>> listLibrarySources(
+    String accessToken,
+  ) async {
+    final data = await _request<List<dynamic>>(
+      () => _dio.get<List<dynamic>>(
+        '/api/admin/library-sources',
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+
+    return data
+        .map(
+          (item) =>
+              AdminLibrarySourceView.fromJson(item as Map<String, dynamic>),
+        )
+        .toList();
+  }
+
+  Future<AdminLibrarySourceView> createLibrarySource(
+    String accessToken, {
+    required String name,
+    required String sourceType,
+    String? rootPath,
+    String? baseUrl,
+    String? remotePath,
+    String? username,
+    String? password,
+    required bool enabled,
+    required int scanIntervalMinutes,
+  }) async {
+    final data = await _request<Map<String, dynamic>>(
+      () => _dio.post<Map<String, dynamic>>(
+        '/api/admin/library-sources',
+        data: {
+          'name': name,
+          'sourceType': sourceType,
+          'rootPath': rootPath,
+          'baseUrl': baseUrl,
+          'remotePath': remotePath,
+          'username': username,
+          'password': password,
+          'enabled': enabled,
+          'scanIntervalMinutes': scanIntervalMinutes,
+        },
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+
+    return AdminLibrarySourceView.fromJson(data);
+  }
+
+  Future<AdminLibrarySourceView> updateLibrarySource(
+    String accessToken,
+    int sourceId, {
+    required String name,
+    required String sourceType,
+    String? rootPath,
+    String? baseUrl,
+    String? remotePath,
+    String? username,
+    String? password,
+    required bool enabled,
+    required int scanIntervalMinutes,
+  }) async {
+    final data = await _request<Map<String, dynamic>>(
+      () => _dio.patch<Map<String, dynamic>>(
+        '/api/admin/library-sources/$sourceId',
+        data: {
+          'name': name,
+          'sourceType': sourceType,
+          'rootPath': rootPath,
+          'baseUrl': baseUrl,
+          'remotePath': remotePath,
+          'username': username,
+          'password': password,
+          'enabled': enabled,
+          'scanIntervalMinutes': scanIntervalMinutes,
+        },
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+
+    return AdminLibrarySourceView.fromJson(data);
+  }
+
+  Future<Map<String, dynamic>> rescanLibrarySource(
+    String accessToken,
+    int sourceId,
+  ) async {
+    return _request<Map<String, dynamic>>(
+      () => _dio.post<Map<String, dynamic>>(
+        '/api/admin/library-sources/$sourceId/rescan',
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+  }
+
+  Future<List<AdminImportJobView>> listImportJobs(String accessToken) async {
+    final data = await _request<List<dynamic>>(
+      () => _dio.get<List<dynamic>>(
+        '/api/admin/books/import-jobs',
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+
+    return data
+        .map(
+          (item) => AdminImportJobView.fromJson(item as Map<String, dynamic>),
+        )
+        .toList();
+  }
+
   Future<List<AdminBookmarkView>> listAdminBookmarks(String accessToken) async {
     final data = await _request<List<dynamic>>(
       () => _dio.get<List<dynamic>>(

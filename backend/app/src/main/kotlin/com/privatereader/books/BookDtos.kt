@@ -113,15 +113,41 @@ data class CreateLibrarySourceRequest(
     @field:NotBlank
     val name: String,
     @field:NotBlank
-    val rootPath: String,
+    val sourceType: String,
+    val rootPath: String? = null,
+    val baseUrl: String? = null,
+    val remotePath: String? = null,
+    val username: String? = null,
+    val password: String? = null,
     val enabled: Boolean = true,
+    val scanIntervalMinutes: Int = 60,
+)
+
+data class UpdateLibrarySourceRequest(
+    @field:NotBlank
+    val name: String,
+    @field:NotBlank
+    val sourceType: String,
+    val rootPath: String? = null,
+    val baseUrl: String? = null,
+    val remotePath: String? = null,
+    val username: String? = null,
+    val password: String? = null,
+    val enabled: Boolean = true,
+    val scanIntervalMinutes: Int = 60,
 )
 
 data class LibrarySourceView(
     val id: Long,
     val name: String,
-    val rootPath: String,
+    val sourceType: String,
+    val rootPath: String?,
+    val baseUrl: String?,
+    val remotePath: String?,
+    val username: String?,
+    val password: String?,
     val enabled: Boolean,
+    val scanIntervalMinutes: Int,
     val lastScanAt: String?,
 )
 

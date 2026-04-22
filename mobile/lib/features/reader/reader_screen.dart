@@ -55,8 +55,13 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     final palette = AppReaderPalette.of(context);
     final tablet = Responsive.isTablet(context);
 
-    if (controller.isLoading && controller.detail == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (controller.isLoading && controller.currentChapter == null) {
+      return Scaffold(
+        body: DecoratedBox(
+          decoration: BoxDecoration(color: palette.background),
+          child: const Center(child: CircularProgressIndicator()),
+        ),
+      );
     }
 
     if (controller.error != null && controller.detail == null) {
@@ -174,7 +179,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                       child: Stack(
                         children: [
                           Positioned.fill(child: body),
-                          if (controller.isCurrentChapterLoading)
+                          if (controller.hasPendingChapterLoad)
                             const Positioned(
                               top: 0,
                               left: 0,
@@ -228,28 +233,23 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                   ),
                 ),
               ),
-              if (_tabletPanel != null)
-                Positioned.fill(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => setState(() => _tabletPanel = null),
-                    child: const ColoredBox(color: Color(0x12000000)),
-                  ),
-                ),
-              if (_tabletPanel != null)
-                _TabletReaderPanelSheet(
-                  panel: _tabletPanel!,
-                  controller: controller,
-                  onClose: () => setState(() => _tabletPanel = null),
-                  onEditAnnotation: (annotation) => _openAnnotationComposer(
-                    controller,
-                    annotation: annotation,
-                  ),
-                ),
-            ],
-          ),
-        ),
-      );
+               _TabletReaderPanelScrim(
+                 visible: _tabletPanel != null,
+                 onTap: () => setState(() => _tabletPanel = null),
+               ),
+               _TabletReaderPanelHost(
+                 panel: _tabletPanel,
+                 controller: controller,
+                 onClose: () => setState(() => _tabletPanel = null),
+                 onEditAnnotation: (annotation) => _openAnnotationComposer(
+                   controller,
+                   annotation: annotation,
+                 ),
+               ),
+             ],
+           ),
+         ),
+       );
     }
 
     return Scaffold(
@@ -1201,8 +1201,99 @@ class _TabletChromeVisibility extends StatelessWidget {
   }
 }
 
+class _TabletReaderPanelScrim extends StatelessWidget {
+  const _TabletReaderPanelScrim({
+    required this.visible,
+    required this.onTap,
+  });
+
+  final bool visible;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned.fill(
+      child: IgnorePointer(
+        ignoring: !visible,
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOutCubic,
+          opacity: visible ? 1 : 0,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onTap,
+            child: const ColoredBox(color: Color(0x12000000)),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TabletReaderPanelHost extends StatelessWidget {
+  const _TabletReaderPanelHost({
+    required this.panel,
+    required this.controller,
+    required this.onClose,
+    required this.onEditAnnotation,
+  });
+
+  final _TabletReaderPanel? panel;
+  final ReaderController controller;
+  final VoidCallback onClose;
+  final ValueChanged<AnnotationView> onEditAnnotation;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned.fill(
+      child: IgnorePointer(
+        ignoring: panel == null,
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 240),
+          reverseDuration: const Duration(milliseconds: 180),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          layoutBuilder: (currentChild, previousChildren) => Stack(
+            children: [
+              ...previousChildren,
+              ...?(currentChild != null ? [currentChild] : null),
+            ],
+          ),
+          transitionBuilder: (child, animation) {
+            final key = child.key;
+            final panelValue = key is ValueKey<_TabletReaderPanel?>
+                ? key.value
+                : null;
+            final alignLeft = panelValue == _TabletReaderPanel.toc;
+            final slide = Tween<Offset>(
+              begin: alignLeft ? const Offset(-0.08, 0) : const Offset(0.08, 0),
+              end: Offset.zero,
+            ).animate(
+              CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+            );
+            return FadeTransition(
+              opacity: animation,
+              child: SlideTransition(position: slide, child: child),
+            );
+          },
+          child: panel == null
+              ? const SizedBox.shrink(key: ValueKey<_TabletReaderPanel?>(null))
+              : _TabletReaderPanelSheet(
+                  key: ValueKey<_TabletReaderPanel?>(panel),
+                  panel: panel!,
+                  controller: controller,
+                  onClose: onClose,
+                  onEditAnnotation: onEditAnnotation,
+                ),
+        ),
+      ),
+    );
+  }
+}
+
 class _TabletReaderPanelSheet extends StatelessWidget {
   const _TabletReaderPanelSheet({
+    super.key,
     required this.panel,
     required this.controller,
     required this.onClose,
@@ -1218,69 +1309,90 @@ class _TabletReaderPanelSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = AppReaderPalette.of(context);
     final alignLeft = panel == _TabletReaderPanel.toc;
+    final panelWidth = switch (panel) {
+      _TabletReaderPanel.toc => 292.0,
+      _TabletReaderPanel.settings => 344.0,
+      _TabletReaderPanel.notes => 334.0,
+      _TabletReaderPanel.bookmarks => 326.0,
+    };
+    final panelPadding = EdgeInsets.fromLTRB(
+      alignLeft ? 28 : 0,
+      92,
+      alignLeft ? 0 : 98,
+      24,
+    );
 
-    return Positioned(
-      top: 92,
-      bottom: 24,
-      left: alignLeft ? 28 : null,
-      right: alignLeft ? null : 98,
-      width: alignLeft ? 340 : 380,
-      child: Material(
-        color: palette.panel,
-        elevation: 20,
-        shadowColor: Colors.black.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(28),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(28),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      switch (panel) {
-                        _TabletReaderPanel.toc => '目录与书签',
-                        _TabletReaderPanel.notes => '批注管理',
-                        _TabletReaderPanel.bookmarks => '书签管理',
-                        _TabletReaderPanel.settings => '阅读设置',
-                      },
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
+    return Padding(
+      padding: panelPadding,
+      child: LayoutBuilder(
+        builder: (context, constraints) => Align(
+          alignment: alignLeft ? Alignment.topLeft : Alignment.topRight,
+          child: SizedBox(
+            width: panelWidth,
+            height: constraints.maxHeight,
+            child: Material(
+              color: palette.panel,
+              elevation: 20,
+              shadowColor: Colors.black.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(26),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(26),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            switch (panel) {
+                              _TabletReaderPanel.toc => '目录与书签',
+                              _TabletReaderPanel.notes => '批注管理',
+                              _TabletReaderPanel.bookmarks => '书签管理',
+                              _TabletReaderPanel.settings => '阅读设置',
+                            },
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                          const Spacer(),
+                          IconButton(
+                            onPressed: onClose,
+                            icon: const Icon(Icons.close),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ],
                       ),
-                    ),
-                    const Spacer(),
-                    IconButton(
-                      onPressed: onClose,
-                      icon: const Icon(Icons.close),
-                    ),
-                  ],
+                      const SizedBox(height: 10),
+                      Expanded(
+                        child: switch (panel) {
+                          _TabletReaderPanel.toc => _ReaderLeftPanel(
+                            controller: controller,
+                          ),
+                          _TabletReaderPanel.notes => _ReaderNotesList(
+                            annotations: controller.annotations,
+                            onJump: (anchor) async {
+                              onClose();
+                              await controller.jumpToAnchor(anchor);
+                            },
+                            onDelete: controller.deleteAnnotation,
+                            onEdit: onEditAnnotation,
+                          ),
+                          _TabletReaderPanel.bookmarks =>
+                            _ReaderBookmarksManager(
+                              controller: controller,
+                              onClose: onClose,
+                            ),
+                          _TabletReaderPanel.settings =>
+                            const ReaderSettingsPanelContent(
+                              showHeader: false,
+                              compact: true,
+                            ),
+                        },
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 12),
-                Expanded(
-                  child: switch (panel) {
-                    _TabletReaderPanel.toc => _ReaderLeftPanel(
-                      controller: controller,
-                    ),
-                    _TabletReaderPanel.notes => _ReaderNotesList(
-                      annotations: controller.annotations,
-                      onJump: (anchor) async {
-                        onClose();
-                        await controller.jumpToAnchor(anchor);
-                      },
-                      onDelete: controller.deleteAnnotation,
-                      onEdit: onEditAnnotation,
-                    ),
-                    _TabletReaderPanel.bookmarks => _ReaderBookmarksManager(
-                      controller: controller,
-                      onClose: onClose,
-                    ),
-                    _TabletReaderPanel.settings =>
-                      const ReaderSettingsPanelContent(),
-                  },
-                ),
-              ],
+              ),
             ),
           ),
         ),
@@ -1298,38 +1410,50 @@ class _ReaderLeftPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = AppReaderPalette.of(context);
     final chapters = controller.content?.chapters ?? const [];
+    final compactTileDensity = const VisualDensity(horizontal: -2, vertical: -3);
 
     return ColoredBox(
       color: palette.panel,
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 18, 16, 20),
+        padding: const EdgeInsets.fromLTRB(10, 10, 10, 14),
         children: [
           Text(
             '目录',
             style: Theme.of(
               context,
-            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 8),
           ...chapters.map((chapter) {
             final selected =
                 chapter.chapterIndex == controller.currentChapterIndex;
             return ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(chapter.title),
+              dense: true,
+              minTileHeight: 0,
+              visualDensity: compactTileDensity,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 8,
+                vertical: 1,
+              ),
+              title: Text(
+                chapter.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
               selected: selected,
               selectedTileColor: palette.accent.withValues(alpha: 0.08),
               onTap: () => controller.openChapter(chapter.chapterIndex),
             );
           }),
-          const SizedBox(height: 20),
+          const SizedBox(height: 14),
           Text(
             '书签',
             style: Theme.of(
               context,
-            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           if (controller.bookmarks.isEmpty)
             Text(
               '还没有书签',
@@ -1340,9 +1464,27 @@ class _ReaderLeftPanel extends StatelessWidget {
           else
             ...controller.bookmarks.map(
               (bookmark) => ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text(bookmark.label ?? bookmark.location),
-                subtitle: Text(bookmark.updatedAt.split('T').first),
+                dense: true,
+                minTileHeight: 0,
+                visualDensity: compactTileDensity,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 1,
+                ),
+                title: Text(
+                  bookmark.label ?? bookmark.location,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                subtitle: Text(
+                  bookmark.updatedAt.split('T').first,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: palette.inkTertiary,
+                  ),
+                ),
                 onTap: () => controller.jumpToAnchor(bookmark.location),
               ),
             ),
@@ -1372,11 +1514,11 @@ class _ReaderBookmarksManager extends StatelessWidget {
         DecoratedBox(
           decoration: BoxDecoration(
             color: palette.backgroundSoft,
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(16),
             border: Border.all(color: palette.line),
           ),
           child: Padding(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1384,17 +1526,25 @@ class _ReaderBookmarksManager extends StatelessWidget {
                   '当前书签',
                   style: Theme.of(
                     context,
-                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                  ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w700),
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 4),
                 Text(
                   currentChapter?.title ?? '当前章节还在加载中',
                   style: Theme.of(
                     context,
                   ).textTheme.bodyMedium?.copyWith(color: palette.inkSecondary),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                  ),
                   onPressed:
                       currentChapter == null ||
                           controller.hasCurrentChapterBookmark
@@ -1411,20 +1561,27 @@ class _ReaderBookmarksManager extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
         Row(
           children: [
             Text(
               '历史书签',
               style: Theme.of(
                 context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
             ),
             const Spacer(),
-            TextButton(onPressed: onClose, child: const Text('收起')),
+            TextButton(
+              onPressed: onClose,
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text('收起'),
+            ),
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         if (controller.bookmarks.isEmpty)
           Expanded(
             child: Center(
@@ -1441,17 +1598,17 @@ class _ReaderBookmarksManager extends StatelessWidget {
           Expanded(
             child: ListView.separated(
               itemCount: controller.bookmarks.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 12),
+              separatorBuilder: (_, _) => const SizedBox(height: 10),
               itemBuilder: (context, index) {
                 final bookmark = controller.bookmarks[index];
                 return DecoratedBox(
                   decoration: BoxDecoration(
                     color: palette.backgroundSoft,
-                    borderRadius: BorderRadius.circular(18),
+                    borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: palette.line),
                   ),
                   child: Padding(
-                    padding: const EdgeInsets.all(14),
+                    padding: const EdgeInsets.all(12),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -1462,20 +1619,26 @@ class _ReaderBookmarksManager extends StatelessWidget {
                           style: Theme.of(context).textTheme.bodyLarge
                               ?.copyWith(fontWeight: FontWeight.w700),
                         ),
-                        const SizedBox(height: 6),
+                        const SizedBox(height: 4),
                         Text(
                           bookmark.updatedAt.split('T').first,
                           style: Theme.of(context).textTheme.bodySmall
                               ?.copyWith(color: palette.inkTertiary),
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 10),
                         Wrap(
-                          spacing: 10,
-                          runSpacing: 10,
+                          spacing: 8,
+                          runSpacing: 8,
                           children: [
                             OutlinedButton.icon(
                               style: OutlinedButton.styleFrom(
-                                minimumSize: const Size(0, 44),
+                                minimumSize: const Size(0, 36),
+                                visualDensity: VisualDensity.compact,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 8,
+                                ),
                               ),
                               onPressed: () async {
                                 onClose();
@@ -1487,6 +1650,14 @@ class _ReaderBookmarksManager extends StatelessWidget {
                               label: const Text('跳转'),
                             ),
                             TextButton.icon(
+                              style: TextButton.styleFrom(
+                                visualDensity: VisualDensity.compact,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 8,
+                                ),
+                              ),
                               onPressed: () =>
                                   _confirmDeleteBookmark(context, bookmark),
                               icon: const Icon(Icons.delete_outline),
@@ -1575,7 +1746,7 @@ class _ReaderNotesList extends StatelessWidget {
 
     return ListView.separated(
       itemCount: annotations.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 12),
+      separatorBuilder: (_, _) => const SizedBox(height: 10),
       itemBuilder: (context, index) {
         final annotation = annotations[index];
         final color = annotation.color == null
@@ -1585,11 +1756,11 @@ class _ReaderNotesList extends StatelessWidget {
         return DecoratedBox(
           decoration: BoxDecoration(
             color: palette.backgroundSoft,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(14),
             border: Border(left: BorderSide(color: color, width: 3)),
           ),
           child: Padding(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1602,11 +1773,18 @@ class _ReaderNotesList extends StatelessWidget {
                   ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
                 ),
                 if ((annotation.noteText ?? '').trim().isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text(annotation.noteText!),
+                  const SizedBox(height: 6),
+                  Text(
+                    annotation.noteText!,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
                 ],
-                const SizedBox(height: 10),
-                Row(
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  alignment: WrapAlignment.spaceBetween,
                   children: [
                     Text(
                       annotation.updatedAt.split('T').first,
@@ -1614,16 +1792,30 @@ class _ReaderNotesList extends StatelessWidget {
                         color: palette.inkTertiary,
                       ),
                     ),
-                    const Spacer(),
                     TextButton(
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                      ),
                       onPressed: () => onJump(annotation.anchor),
                       child: const Text('定位'),
                     ),
                     TextButton(
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                      ),
                       onPressed: () => onEdit(annotation),
                       child: const Text('编辑'),
                     ),
                     TextButton(
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                      ),
                       onPressed: () => onDelete(annotation),
                       child: const Text('删除'),
                     ),

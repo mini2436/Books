@@ -74,8 +74,10 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
   late String _lastHtml;
   bool _pageReady = false;
   bool _useFlutterFallback = false;
+  int? _pendingBoundaryAnimationDirection;
   int _lastAnchorJumpVersion = -1;
   final Map<String, GlobalKey> _fallbackAnchorKeys = <String, GlobalKey>{};
+  final List<String> _pendingTapZones = <String>[];
   Timer? _blankPageGuard;
 
   bool get _allowFlutterFallback => !widget.pagedMode;
@@ -84,37 +86,35 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
   void initState() {
     super.initState();
     _lastHtml = _buildHtml();
-    _controller = WebViewController.fromPlatformCreationParams(
-      const PlatformWebViewControllerCreationParams(),
-    )
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(widget.palette.background)
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onWebResourceError: (error) {
-            _handleWebViewFailure(
-              reason:
-                  'Web resource error: ${error.errorCode} ${error.description}',
-            );
-          },
-          onPageFinished: (_) async {
-            _pageReady = true;
-            await _controller.runJavaScript(
-              'if (window.readerApplyLayout) { window.readerApplyLayout(); }',
-            );
-            await _controller.runJavaScript(
-              'if (window.readerSetChromeVisible) { window.readerSetChromeVisible(${widget.uiVisible ? 'true' : 'false'}); }',
-            );
-            await _verifyRenderedContent();
-            await _scrollToFocusedAnchor();
-          },
-        ),
-      )
-      ..addJavaScriptChannel(
-        'ReaderBridge',
-        onMessageReceived: _handleBridgeMessage,
-      )
-      ..loadHtmlString(_lastHtml);
+    _controller =
+        WebViewController.fromPlatformCreationParams(
+            const PlatformWebViewControllerCreationParams(),
+          )
+          ..setJavaScriptMode(JavaScriptMode.unrestricted)
+          ..setBackgroundColor(widget.palette.background)
+          ..setNavigationDelegate(
+            NavigationDelegate(
+              onWebResourceError: (error) {
+                _handleWebViewFailure(
+                  reason:
+                      'Web resource error: ${error.errorCode} ${error.description}',
+                );
+              },
+              onPageFinished: (_) async {
+                await _controller.runJavaScript(
+                  'if (window.readerSetChromeVisible) { window.readerSetChromeVisible(${widget.uiVisible ? 'true' : 'false'}); }',
+                );
+                await _controller.runJavaScript(
+                  'if (window.readerApplyLayout) { window.readerApplyLayout(); }',
+                );
+              },
+            ),
+          )
+          ..addJavaScriptChannel(
+            'ReaderBridge',
+            onMessageReceived: _handleBridgeMessage,
+          )
+          ..loadHtmlString(_lastHtml);
     if (defaultTargetPlatform == TargetPlatform.android) {
       final dynamic platformController = _controller.platform;
       unawaited(platformController.setVerticalScrollBarEnabled(false));
@@ -126,11 +126,16 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
   @override
   void didUpdateWidget(covariant ReaderHtmlView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    final chapterChanged = oldWidget.chapter.anchor != widget.chapter.anchor;
     final nextHtml = _buildHtml();
     if (nextHtml != _lastHtml) {
       _lastHtml = nextHtml;
       _pageReady = false;
       _useFlutterFallback = false;
+      _pendingBoundaryAnimationDirection = chapterChanged
+          ? _boundaryAnimationDirectionForAnchor(widget.focusedAnchor)
+          : null;
+      _pendingTapZones.clear();
       _blankPageGuard?.cancel();
       _controller
         ..setBackgroundColor(widget.palette.background)
@@ -170,7 +175,30 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     }
     return DecoratedBox(
       decoration: BoxDecoration(color: widget.palette.background),
-      child: WebViewWidget(controller: _controller),
+      child: Stack(
+        children: [
+          Positioned.fill(child: WebViewWidget(controller: _controller)),
+          if (!_pageReady)
+            Positioned.fill(
+              child: AbsorbPointer(
+                child: ColoredBox(
+                  color: widget.palette.background,
+                  child: _ReaderLoadingOverlay(
+                    chapter: widget.chapter,
+                    annotations: widget.annotations,
+                    preferences: widget.preferences,
+                    palette: widget.palette,
+                    pagedMode: widget.pagedMode,
+                    onHighlight: widget.onHighlight,
+                    onAnnotate: widget.onAnnotate,
+                    onOpenAnnotations: widget.onOpenAnnotations,
+                    keyForAnchor: _fallbackKeyForAnchor,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -189,6 +217,9 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     }
 
     switch (payload['type']) {
+      case 'ready':
+        await _handlePageReady();
+        break;
       case 'toggleUi':
         widget.onToggleUi();
         break;
@@ -240,21 +271,36 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
 
   Future<void> _handleExternalTapZone(String zone) async {
     if (!_pageReady) {
-      if (zone == 'left') {
-        await widget.onPageBoundaryPrevious();
+      if (zone == 'center') {
+        widget.onMenuRequest();
         return;
       }
-      if (zone == 'right') {
-        await widget.onPageBoundaryNext();
-        return;
-      }
-      widget.onMenuRequest();
+      _pendingTapZones.add(zone);
       return;
     }
     final escapedZone = jsonEncode(zone);
     await _controller.runJavaScript(
       'window.readerHandleTapZone($escapedZone);',
     );
+  }
+
+  Future<void> _handlePageReady() async {
+    if (_pageReady || _useFlutterFallback) {
+      return;
+    }
+    await _verifyRenderedContent();
+    if (!mounted || _useFlutterFallback) {
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _pageReady = true;
+    });
+    await _scrollToFocusedAnchor();
+    await _playPendingBoundaryAnimation();
+    await _flushPendingTapZones();
   }
 
   Future<void> _handleViewportTapZone() async {
@@ -309,10 +355,10 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
   void _armBlankPageGuard() {
     _blankPageGuard?.cancel();
     _blankPageGuard = Timer(const Duration(seconds: 2), () async {
-      if (!mounted || _useFlutterFallback) {
+      if (!mounted || _useFlutterFallback || _pageReady) {
         return;
       }
-      await _verifyRenderedContent();
+      await _handlePageReady();
     });
   }
 
@@ -342,6 +388,17 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     });
   }
 
+  Future<void> _flushPendingTapZones() async {
+    if (!_pageReady || _pendingTapZones.isEmpty) {
+      return;
+    }
+    final pending = List<String>.from(_pendingTapZones);
+    _pendingTapZones.clear();
+    for (final zone in pending) {
+      await _handleExternalTapZone(zone);
+    }
+  }
+
   Future<void> _scrollToFocusedAnchor() async {
     if (!_pageReady) {
       return;
@@ -359,15 +416,34 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       );
       return;
     }
-    final anchor = AnnotationAnchor.parse(
-      rawAnchor,
-    ).blockAnchor;
+    final anchor = AnnotationAnchor.parse(rawAnchor).blockAnchor;
     if (anchor.isEmpty) {
       return;
     }
     final escapedAnchor = jsonEncode(anchor);
     await _controller.runJavaScript(
       'window.readerScrollToAnchor($escapedAnchor);',
+    );
+  }
+
+  int? _boundaryAnimationDirectionForAnchor(String? anchor) {
+    if (anchor == readerChapterStartMarker) {
+      return 1;
+    }
+    if (anchor == readerChapterEndMarker) {
+      return -1;
+    }
+    return null;
+  }
+
+  Future<void> _playPendingBoundaryAnimation() async {
+    final direction = _pendingBoundaryAnimationDirection;
+    _pendingBoundaryAnimationDirection = null;
+    if (!_pageReady || !widget.pagedMode || direction == null) {
+      return;
+    }
+    await _controller.runJavaScript(
+      'window.readerPlayBoundaryTransition(${direction >= 0 ? 1 : -1});',
     );
   }
 
@@ -522,6 +598,8 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     body.reader-paged {
       padding: 0;
       overflow: hidden;
+      perspective: 1800px;
+      perspective-origin: center center;
     }
     ::selection {
       background: var(--reader-selection);
@@ -550,6 +628,9 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     body.reader-paged #reader-stage {
       padding: 24px 28px 28px;
       overflow: hidden;
+      transform-style: preserve-3d;
+      backface-visibility: hidden;
+      will-change: transform, opacity, filter;
     }
     body.reader-paged #reader-root {
       height: 100%;
@@ -673,12 +754,21 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       border-radius: 6px;
       background: var(--reader-selection);
     }
+    .reader-page-turn-shadow {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 2;
+      opacity: 0;
+      background: transparent;
+    }
   </style>
 </head>
 <body${bodyClasses.isEmpty ? '' : ' class="$bodyClasses"'}>
   <div id="reader-stage">
     <div id="reader-root">$htmlBlocks</div>
   </div>
+  <div id="reader-page-turn-shadow" class="reader-page-turn-shadow"></div>
   <div id="reader-selection-overlay" class="reader-selection-overlay"></div>
   <div id="reader-toolbar" class="reader-toolbar">
     <button type="button" data-action="highlight">高亮</button>
@@ -689,6 +779,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       const bridge = window.ReaderBridge;
       const stage = document.getElementById('reader-stage');
       const root = document.getElementById('reader-root');
+      const turnShadow = document.getElementById('reader-page-turn-shadow');
       const toolbar = document.getElementById('reader-toolbar');
       const overlay = document.getElementById('reader-selection-overlay');
       const pagedMode = ${widget.pagedMode ? 'true' : 'false'};
@@ -697,6 +788,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       let currentSelection = null;
       let nativeSelectionClearTimer = null;
       let preservingSelectionUi = false;
+      let readySent = false;
       let currentPage = 0;
       let pageCount = 1;
       let pageSpan = 0;
@@ -712,6 +804,95 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       function send(payload) {
         if (!bridge || !bridge.postMessage) return;
         bridge.postMessage(JSON.stringify(payload));
+      }
+
+      function sendReady() {
+        if (readySent) {
+          return;
+        }
+        readySent = true;
+        send({ type: 'ready' });
+      }
+
+      function afterStableLayout(callback) {
+        const finalize = function() {
+          window.requestAnimationFrame(function() {
+            window.requestAnimationFrame(callback);
+          });
+        };
+        if (document.fonts && document.fonts.ready && typeof document.fonts.ready.then === 'function') {
+          document.fonts.ready.then(finalize).catch(finalize);
+          return;
+        }
+        finalize();
+      }
+
+      function afterTwoFrames(callback) {
+        window.requestAnimationFrame(function() {
+          window.requestAnimationFrame(callback);
+        });
+      }
+
+      function directionalTransform(distance) {
+        if (pageTurnAxis === 'horizontal') {
+          return 'translate3d(' + distance + 'px,0,0)';
+        }
+        return 'translate3d(0,' + distance + 'px,0)';
+      }
+
+      function clearTurnShadow() {
+        if (!turnShadow) {
+          return;
+        }
+        turnShadow.style.transition = 'none';
+        turnShadow.style.opacity = '0';
+        turnShadow.style.background = 'transparent';
+      }
+
+      function updateTurnShadow(direction, intensity, incoming) {
+        if (!turnShadow) {
+          return;
+        }
+        const shadowStrength = Math.max(0, Math.min(0.28, intensity));
+        if (shadowStrength <= 0.001) {
+          clearTurnShadow();
+          return;
+        }
+        let gradient;
+        if (pageTurnAxis === 'horizontal') {
+          if (direction > 0) {
+            gradient = incoming
+              ? 'linear-gradient(270deg, rgba(0,0,0,' + (shadowStrength * 0.92) + ') 0%, rgba(0,0,0,' + (shadowStrength * 0.38) + ') 18%, rgba(255,255,255,' + (shadowStrength * 0.28) + ') 48%, rgba(255,255,255,0) 74%)'
+              : 'linear-gradient(90deg, rgba(255,255,255,' + (shadowStrength * 0.22) + ') 0%, rgba(0,0,0,' + (shadowStrength * 0.72) + ') 24%, rgba(0,0,0,0) 62%)';
+          } else {
+            gradient = incoming
+              ? 'linear-gradient(90deg, rgba(0,0,0,' + (shadowStrength * 0.92) + ') 0%, rgba(0,0,0,' + (shadowStrength * 0.38) + ') 18%, rgba(255,255,255,' + (shadowStrength * 0.28) + ') 48%, rgba(255,255,255,0) 74%)'
+              : 'linear-gradient(270deg, rgba(255,255,255,' + (shadowStrength * 0.22) + ') 0%, rgba(0,0,0,' + (shadowStrength * 0.72) + ') 24%, rgba(0,0,0,0) 62%)';
+          }
+        } else if (direction > 0) {
+          gradient = incoming
+            ? 'linear-gradient(180deg, rgba(0,0,0,' + (shadowStrength * 0.9) + ') 0%, rgba(0,0,0,' + (shadowStrength * 0.34) + ') 18%, rgba(255,255,255,' + (shadowStrength * 0.2) + ') 42%, rgba(255,255,255,0) 70%)'
+            : 'linear-gradient(0deg, rgba(255,255,255,' + (shadowStrength * 0.18) + ') 0%, rgba(0,0,0,' + (shadowStrength * 0.72) + ') 22%, rgba(0,0,0,0) 58%)';
+        } else {
+          gradient = incoming
+            ? 'linear-gradient(0deg, rgba(0,0,0,' + (shadowStrength * 0.9) + ') 0%, rgba(0,0,0,' + (shadowStrength * 0.34) + ') 18%, rgba(255,255,255,' + (shadowStrength * 0.2) + ') 42%, rgba(255,255,255,0) 70%)'
+            : 'linear-gradient(180deg, rgba(255,255,255,' + (shadowStrength * 0.18) + ') 0%, rgba(0,0,0,' + (shadowStrength * 0.72) + ') 22%, rgba(0,0,0,0) 58%)';
+        }
+        turnShadow.style.background = gradient;
+        turnShadow.style.opacity = '1';
+      }
+
+      function clearStageAnimationState() {
+        if (!stage) {
+          clearTurnShadow();
+          return;
+        }
+        stage.style.transition = 'none';
+        stage.style.transformOrigin = 'center center';
+        stage.style.transform = 'translate3d(0,0,0)';
+        stage.style.opacity = '1';
+        stage.style.filter = 'none';
+        clearTurnShadow();
       }
 
       function selectionData() {
@@ -830,42 +1011,149 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
           return;
         }
         pageAnimationBusy = true;
-        const distance = pageTurnAxis === 'horizontal' ? 18 : 24;
-        const outShift = direction > 0 ? -distance : distance;
-        const inShift = -outShift;
-        const outTransform = pageTurnAxis === 'horizontal'
-          ? 'translate3d(' + outShift + 'px,0,0)'
-          : 'translate3d(0,' + outShift + 'px,0)';
-        const inTransform = pageTurnAxis === 'horizontal'
-          ? 'translate3d(' + inShift + 'px,0,0)'
-          : 'translate3d(0,' + inShift + 'px,0)';
-        const scaleOut = pageTurnAnimation === 'roll'
-          ? (pageTurnAxis === 'horizontal' ? ' scale(0.986, 0.992)' : ' scale(0.992, 0.968)')
-          : '';
-        const scaleIn = pageTurnAnimation === 'roll'
-          ? (pageTurnAxis === 'horizontal' ? ' scale(1.01, 1)' : ' scale(1, 1.02)')
-          : '';
+        if (pageTurnAnimation === 'roll') {
+          const outgoingDistance = pageTurnAxis === 'horizontal' ? 10 : 12;
+          const incomingDistance = pageTurnAxis === 'horizontal' ? 18 : 20;
+          const outgoingShift = direction > 0 ? -outgoingDistance : outgoingDistance;
+          const incomingShift = direction > 0 ? incomingDistance : -incomingDistance;
+          const outgoingAngle = direction > 0 ? -14 : 14;
+          const incomingAngle = direction > 0 ? 11 : -11;
+          const rotateAxis = pageTurnAxis === 'horizontal' ? 'Y' : 'X';
+          stage.style.transformOrigin = pageTurnAxis === 'horizontal'
+            ? (direction > 0 ? 'right center' : 'left center')
+            : (direction > 0 ? 'center top' : 'center bottom');
+          stage.style.transition = 'transform 170ms cubic-bezier(0.45, 0, 0.68, 1), opacity 170ms ease, filter 170ms ease';
+          stage.style.opacity = '0.93';
+          stage.style.filter = 'brightness(0.97)';
+          stage.style.transform =
+            'perspective(1800px) ' +
+            directionalTransform(outgoingShift) +
+            ' rotate' + rotateAxis + '(' + outgoingAngle + 'deg) scale(0.986, 0.996)';
+          updateTurnShadow(direction, 0.24, false);
 
-        stage.style.transformOrigin = pageTurnAxis === 'horizontal'
-          ? (direction > 0 ? 'right center' : 'left center')
-          : (direction > 0 ? 'center top' : 'center bottom');
-        stage.style.transition = 'transform 160ms ease, opacity 160ms ease';
-        stage.style.opacity = pageTurnAnimation === 'roll' ? '0.96' : '0.985';
-        stage.style.transform = outTransform + scaleOut;
+          window.setTimeout(function() {
+            commit();
+            stage.style.transition = 'none';
+            stage.style.opacity = '0.985';
+            stage.style.filter = 'brightness(1.015)';
+            stage.style.transform =
+              'perspective(1800px) ' +
+              directionalTransform(incomingShift) +
+              ' rotate' + rotateAxis + '(' + incomingAngle + 'deg) scale(0.992, 1)';
+            updateTurnShadow(direction, 0.18, true);
+            afterTwoFrames(function() {
+              stage.style.transition = 'transform 260ms cubic-bezier(0.2, 0.72, 0.18, 1), opacity 240ms ease-out, filter 240ms ease-out';
+              stage.style.opacity = '1';
+              stage.style.filter = 'none';
+              stage.style.transform = 'translate3d(0,0,0)';
+              if (turnShadow) {
+                turnShadow.style.transition = 'opacity 240ms ease-out';
+                turnShadow.style.opacity = '0';
+              }
+              window.setTimeout(function() {
+                clearStageAnimationState();
+                pageAnimationBusy = false;
+              }, 260);
+            });
+          }, 150);
+          return;
+        }
+
+        const outgoingDistance = pageTurnAxis === 'horizontal' ? 18 : 24;
+        const incomingDistance = pageTurnAxis === 'horizontal' ? 12 : 16;
+        const outgoingShift = direction > 0 ? -outgoingDistance : outgoingDistance;
+        const incomingShift = direction > 0 ? incomingDistance : -incomingDistance;
+        stage.style.transformOrigin = 'center center';
+        stage.style.transition = 'transform 150ms cubic-bezier(0.38, 0, 0.7, 1), opacity 150ms linear, filter 150ms ease';
+        stage.style.opacity = '0.9';
+        stage.style.filter = 'blur(0.7px)';
+        stage.style.transform = directionalTransform(outgoingShift);
+        updateTurnShadow(direction, 0.12, false);
 
         window.setTimeout(function() {
-          stage.style.transition = 'none';
           commit();
-          stage.style.transform = inTransform + scaleIn;
-          window.requestAnimationFrame(function() {
-            stage.style.transition = 'transform 220ms ease, opacity 220ms ease';
+          stage.style.transition = 'none';
+          stage.style.opacity = '0.985';
+          stage.style.filter = 'blur(0.45px)';
+          stage.style.transform = directionalTransform(incomingShift);
+          updateTurnShadow(direction, 0.08, true);
+          afterTwoFrames(function() {
+            stage.style.transition = 'transform 230ms cubic-bezier(0.22, 0.61, 0.36, 1), opacity 230ms ease-out, filter 230ms ease-out';
             stage.style.opacity = '1';
+            stage.style.filter = 'none';
             stage.style.transform = 'translate3d(0,0,0)';
+            if (turnShadow) {
+              turnShadow.style.transition = 'opacity 220ms ease-out';
+              turnShadow.style.opacity = '0';
+            }
             window.setTimeout(function() {
+              clearStageAnimationState();
               pageAnimationBusy = false;
-            }, 220);
+            }, 230);
           });
-        }, 140);
+        }, 110);
+      }
+
+      function playBoundaryTransition(direction) {
+        if (!stage || pageAnimationBusy) {
+          return;
+        }
+        pageAnimationBusy = true;
+        if (pageTurnAnimation === 'roll') {
+          const incomingDistance = pageTurnAxis === 'horizontal' ? 20 : 22;
+          const incomingShift = direction > 0 ? incomingDistance : -incomingDistance;
+          const incomingAngle = direction > 0 ? 12 : -12;
+          const rotateAxis = pageTurnAxis === 'horizontal' ? 'Y' : 'X';
+          stage.style.transformOrigin = pageTurnAxis === 'horizontal'
+            ? (direction > 0 ? 'right center' : 'left center')
+            : (direction > 0 ? 'center bottom' : 'center top');
+          stage.style.transition = 'none';
+          stage.style.opacity = '0.985';
+          stage.style.filter = 'brightness(1.02)';
+          stage.style.transform =
+            'perspective(1800px) ' +
+            directionalTransform(incomingShift) +
+            ' rotate' + rotateAxis + '(' + incomingAngle + 'deg) scale(0.992, 1)';
+          updateTurnShadow(direction, 0.18, true);
+          afterTwoFrames(function() {
+            stage.style.transition = 'transform 250ms cubic-bezier(0.2, 0.72, 0.18, 1), opacity 240ms ease-out, filter 240ms ease-out';
+            stage.style.opacity = '1';
+            stage.style.filter = 'none';
+            stage.style.transform = 'translate3d(0,0,0)';
+            if (turnShadow) {
+              turnShadow.style.transition = 'opacity 220ms ease-out';
+              turnShadow.style.opacity = '0';
+            }
+            window.setTimeout(function() {
+              clearStageAnimationState();
+              pageAnimationBusy = false;
+            }, 250);
+          });
+          return;
+        }
+
+        const incomingDistance = pageTurnAxis === 'horizontal' ? 12 : 16;
+        const incomingShift = direction > 0 ? incomingDistance : -incomingDistance;
+        stage.style.transformOrigin = 'center center';
+        stage.style.transition = 'none';
+        stage.style.opacity = '0.985';
+        stage.style.filter = 'blur(0.45px)';
+        stage.style.transform = directionalTransform(incomingShift);
+        updateTurnShadow(direction, 0.08, true);
+        afterTwoFrames(function() {
+          stage.style.transition = 'transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1), opacity 220ms ease-out, filter 220ms ease-out';
+          stage.style.opacity = '1';
+          stage.style.filter = 'none';
+          stage.style.transform = 'translate3d(0,0,0)';
+          if (turnShadow) {
+            turnShadow.style.transition = 'opacity 200ms ease-out';
+            turnShadow.style.opacity = '0';
+          }
+          window.setTimeout(function() {
+            clearStageAnimationState();
+            pageAnimationBusy = false;
+          }, 220);
+        });
       }
 
       function goToPage(targetPage, animate) {
@@ -1209,6 +1497,13 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         updatePagedMetrics();
       };
 
+      window.readerPlayBoundaryTransition = function(direction) {
+        if (!pagedMode) {
+          return;
+        }
+        playBoundaryTransition(direction >= 0 ? 1 : -1);
+      };
+
       window.readerHandleTapZone = function(zone) {
         if (zone === 'left') {
           handlePageTurn(-1);
@@ -1266,7 +1561,10 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         window.setTimeout(() => target.classList.add('reader-anchor-pulse'), 40);
       };
 
-      updatePagedMetrics();
+      afterStableLayout(function() {
+        updatePagedMetrics();
+        sendReady();
+      });
     })();
   </script>
 </body>
@@ -1434,6 +1732,137 @@ font-family: ${_fontStackCss()};
 
   GlobalKey _fallbackKeyForAnchor(String anchor) {
     return _fallbackAnchorKeys.putIfAbsent(anchor, GlobalKey.new);
+  }
+}
+
+class _ReaderLoadingOverlay extends StatelessWidget {
+  const _ReaderLoadingOverlay({
+    required this.chapter,
+    required this.annotations,
+    required this.preferences,
+    required this.palette,
+    required this.pagedMode,
+    required this.onHighlight,
+    required this.onAnnotate,
+    required this.onOpenAnnotations,
+    required this.keyForAnchor,
+  });
+
+  final BookContentChapter chapter;
+  final List<AnnotationView> annotations;
+  final ReaderPreferences preferences;
+  final AppReaderPalette palette;
+  final bool pagedMode;
+  final Future<void> Function(
+    AnnotationSelection selection,
+    AnnotationView? existingAnnotation,
+  )
+  onHighlight;
+  final Future<void> Function(
+    AnnotationSelection selection,
+    AnnotationView? existingAnnotation,
+  )
+  onAnnotate;
+  final Future<void> Function(List<AnnotationView> annotations)
+  onOpenAnnotations;
+  final GlobalKey Function(String anchor) keyForAnchor;
+
+  @override
+  Widget build(BuildContext context) {
+    if (pagedMode) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(44, 40, 44, 40),
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _ReaderLoadingBar(
+                  widthFactor: 0.36,
+                  color: palette.line.withValues(alpha: 0.55),
+                  height: 18,
+                ),
+                const SizedBox(height: 28),
+                _ReaderLoadingBar(
+                  widthFactor: 1,
+                  color: palette.line.withValues(alpha: 0.28),
+                ),
+                const SizedBox(height: 16),
+                _ReaderLoadingBar(
+                  widthFactor: 0.96,
+                  color: palette.line.withValues(alpha: 0.24),
+                ),
+                const SizedBox(height: 16),
+                _ReaderLoadingBar(
+                  widthFactor: 0.92,
+                  color: palette.line.withValues(alpha: 0.24),
+                ),
+                const SizedBox(height: 28),
+                _ReaderLoadingBar(
+                  widthFactor: 0.94,
+                  color: palette.line.withValues(alpha: 0.24),
+                ),
+                const SizedBox(height: 16),
+                _ReaderLoadingBar(
+                  widthFactor: 0.98,
+                  color: palette.line.withValues(alpha: 0.24),
+                ),
+                const SizedBox(height: 16),
+                _ReaderLoadingBar(
+                  widthFactor: 0.9,
+                  color: palette.line.withValues(alpha: 0.24),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return SingleChildScrollView(
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(28, 24, 28, 28),
+      child: Opacity(
+        opacity: 0.96,
+        child: ReaderBlocksView(
+          blocks: chapter.blocks,
+          annotations: annotations,
+          preferences: preferences,
+          onHighlight: onHighlight,
+          onAnnotate: onAnnotate,
+          onOpenAnnotations: onOpenAnnotations,
+          keyForAnchor: keyForAnchor,
+        ),
+      ),
+    );
+  }
+}
+
+class _ReaderLoadingBar extends StatelessWidget {
+  const _ReaderLoadingBar({
+    required this.widthFactor,
+    required this.color,
+    this.height = 14,
+  });
+
+  final double widthFactor;
+  final Color color;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    return FractionallySizedBox(
+      widthFactor: widthFactor,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(height / 2),
+        ),
+        child: SizedBox(height: height),
+      ),
+    );
   }
 }
 

@@ -262,6 +262,120 @@ class AdminBookmarkView {
   }
 }
 
+class AdminLibrarySourceView {
+  const AdminLibrarySourceView({
+    required this.id,
+    required this.name,
+    required this.sourceType,
+    required this.rootPath,
+    required this.baseUrl,
+    required this.remotePath,
+    required this.username,
+    required this.password,
+    required this.enabled,
+    required this.scanIntervalMinutes,
+    required this.lastScanAt,
+  });
+
+  final int id;
+  final String name;
+  final String sourceType;
+  final String? rootPath;
+  final String? baseUrl;
+  final String? remotePath;
+  final String? username;
+  final String? password;
+  final bool enabled;
+  final int scanIntervalMinutes;
+  final String? lastScanAt;
+
+  bool get isWebDav => sourceType == 'WEBDAV';
+
+  factory AdminLibrarySourceView.fromJson(Map<String, dynamic> json) {
+    return AdminLibrarySourceView(
+      id: (json['id'] as num).toInt(),
+      name: json['name'] as String? ?? '未命名扫描源',
+      sourceType: json['sourceType'] as String? ?? 'WATCHED_FOLDER',
+      rootPath: json['rootPath'] as String?,
+      baseUrl: json['baseUrl'] as String?,
+      remotePath: json['remotePath'] as String?,
+      username: json['username'] as String?,
+      password: json['password'] as String?,
+      enabled: json['enabled'] as bool? ?? true,
+      scanIntervalMinutes: (json['scanIntervalMinutes'] as num?)?.toInt() ?? 60,
+      lastScanAt: json['lastScanAt'] as String?,
+    );
+  }
+
+  AdminLibrarySourceView copyWith({
+    String? name,
+    String? sourceType,
+    String? rootPath,
+    String? baseUrl,
+    String? remotePath,
+    String? username,
+    String? password,
+    bool? enabled,
+    int? scanIntervalMinutes,
+    String? lastScanAt,
+  }) {
+    return AdminLibrarySourceView(
+      id: id,
+      name: name ?? this.name,
+      sourceType: sourceType ?? this.sourceType,
+      rootPath: rootPath ?? this.rootPath,
+      baseUrl: baseUrl ?? this.baseUrl,
+      remotePath: remotePath ?? this.remotePath,
+      username: username ?? this.username,
+      password: password ?? this.password,
+      enabled: enabled ?? this.enabled,
+      scanIntervalMinutes: scanIntervalMinutes ?? this.scanIntervalMinutes,
+      lastScanAt: lastScanAt ?? this.lastScanAt,
+    );
+  }
+}
+
+class AdminImportJobView {
+  const AdminImportJobView({
+    required this.id,
+    required this.bookId,
+    required this.bookTitle,
+    required this.sourceId,
+    required this.sourceName,
+    required this.fileId,
+    required this.status,
+    required this.message,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  final int id;
+  final int? bookId;
+  final String? bookTitle;
+  final int? sourceId;
+  final String? sourceName;
+  final int? fileId;
+  final String status;
+  final String? message;
+  final String createdAt;
+  final String updatedAt;
+
+  factory AdminImportJobView.fromJson(Map<String, dynamic> json) {
+    return AdminImportJobView(
+      id: (json['id'] as num).toInt(),
+      bookId: (json['bookId'] as num?)?.toInt(),
+      bookTitle: json['bookTitle'] as String?,
+      sourceId: (json['sourceId'] as num?)?.toInt(),
+      sourceName: json['sourceName'] as String?,
+      fileId: (json['fileId'] as num?)?.toInt(),
+      status: json['status'] as String? ?? '',
+      message: json['message'] as String?,
+      createdAt: json['createdAt'] as String? ?? '',
+      updatedAt: json['updatedAt'] as String? ?? '',
+    );
+  }
+}
+
 class AdminRoleSummary {
   const AdminRoleSummary({
     required this.role,
@@ -326,7 +440,7 @@ String adminRoleDescription(String role) {
     case 'SUPER_ADMIN':
       return '可管理用户、角色与全部后台能力';
     case 'LIBRARIAN':
-      return '可管理图书、批注与书签';
+      return '可管理图书、批注与扫描任务';
     default:
       return '仅使用阅读与同步功能';
   }

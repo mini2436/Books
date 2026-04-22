@@ -48,7 +48,13 @@ class BookService(
     }
 
     @Transactional
-    fun importDiscoveredFile(filePath: Path, sourceType: String, sourceId: Long?, actorId: Long?): BookDetailView {
+    fun importDiscoveredFile(
+        filePath: Path,
+        sourceType: String,
+        sourceId: Long?,
+        actorId: Long?,
+        sourcePathOverride: String? = null,
+    ): BookDetailView {
         // Import flow is format-driven: detect the compile-time plugin first, then persist
         // the canonical book record, file source metadata, and the reader manifest/index excerpt.
         val plugin = pluginRegistryService.findPluginFor(filePath.fileName.toString())
@@ -58,7 +64,14 @@ class BookService(
         val existing = findBookByHash(fileHash)
         if (existing != null) {
             // A repeated NAS scan should revive an existing source path instead of creating duplicates.
-            refreshExistingFileReference(existing.fileId, filePath, sourceType, sourceId, preparedImport.format)
+            refreshExistingFileReference(
+                existing.fileId,
+                filePath,
+                sourceType,
+                sourceId,
+                preparedImport.format,
+                sourcePathOverride,
+            )
             reconcileExistingImport(existing.bookId, filePath, preparedImport)
             refreshStructuredContent(existing.bookId, existing.fileId, fileHash, plugin.pluginId, filePath)
             insertImportJob(existing.bookId, sourceId, existing.fileId, "Reused existing import from ${plugin.pluginId}")
@@ -101,7 +114,7 @@ class BookService(
             .param("storagePath", filePath.toAbsolutePath().toString())
             .param("sourceType", sourceType)
             .param("sourceId", sourceId)
-            .param("sourcePath", filePath.toAbsolutePath().toString())
+            .param("sourcePath", sourcePathOverride ?: filePath.toAbsolutePath().toString())
             .param("format", preparedImport.format)
             .param("fileSize", Files.size(filePath))
             .param("now", now.toSqlTimestamp())
@@ -498,7 +511,7 @@ class BookService(
         jdbcClient.sql(
             """
             select source_path from book_files
-            where source_id = :sourceId and source_type = 'WATCHED_FOLDER'
+            where source_id = :sourceId
             """.trimIndent(),
         )
             .param("sourceId", sourceId)
@@ -522,8 +535,11 @@ class BookService(
     fun listImportJobs(): List<Map<String, Any?>> =
         jdbcClient.sql(
             """
-            select id, book_id, source_id, file_id, status, message, created_at, updated_at
-            from import_jobs
+            select ij.id, ij.book_id, b.title as book_title, ij.source_id, ls.name as source_name,
+                   ij.file_id, ij.status, ij.message, ij.created_at, ij.updated_at
+            from import_jobs ij
+            left join books b on b.id = ij.book_id
+            left join library_sources ls on ls.id = ij.source_id
             order by created_at desc
             limit 100
             """.trimIndent(),
@@ -531,8 +547,10 @@ class BookService(
             .query { rs, _ ->
                 mapOf(
                     "id" to rs.getLong("id"),
-                    "bookId" to rs.getLong("book_id"),
+                    "bookId" to rs.getObject("book_id"),
+                    "bookTitle" to rs.getString("book_title"),
                     "sourceId" to rs.getObject("source_id"),
+                    "sourceName" to rs.getString("source_name"),
                     "fileId" to rs.getLong("file_id"),
                     "status" to rs.getString("status"),
                     "message" to rs.getString("message"),
@@ -654,6 +672,7 @@ class BookService(
         sourceType: String,
         sourceId: Long?,
         format: String,
+        sourcePathOverride: String?,
     ) {
         jdbcClient.sql(
             """
@@ -672,7 +691,7 @@ class BookService(
             .param("storagePath", filePath.toAbsolutePath().toString())
             .param("sourceType", sourceType)
             .param("sourceId", sourceId)
-            .param("sourcePath", filePath.toAbsolutePath().toString())
+            .param("sourcePath", sourcePathOverride ?: filePath.toAbsolutePath().toString())
             .param("format", format)
             .param("fileSize", Files.size(filePath))
             .param("updatedAt", Instant.now().toSqlTimestamp())

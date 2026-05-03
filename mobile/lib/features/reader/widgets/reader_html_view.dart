@@ -448,25 +448,55 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
   }
 
   AnnotationSelection? _selectionFromPayload(Map<String, dynamic> payload) {
-    final blockAnchor = payload['blockAnchor'] as String? ?? '';
+    final blockAnchor =
+        payload['startBlockAnchor'] as String? ??
+        payload['blockAnchor'] as String? ??
+        '';
+    final endBlockAnchor = payload['endBlockAnchor'] as String? ?? blockAnchor;
     final startOffset = (payload['startOffset'] as num?)?.toInt();
     final endOffset = (payload['endOffset'] as num?)?.toInt();
     if (blockAnchor.isEmpty || startOffset == null || endOffset == null) {
       return null;
     }
-    final block = widget.chapter.blocks.cast<BookContentBlock?>().firstWhere(
+    final blocks = widget.chapter.blocks;
+    final block = blocks.cast<BookContentBlock?>().firstWhere(
       (item) => item?.anchor == blockAnchor,
       orElse: () => null,
     );
-    if (block == null) {
+    final endBlock = blocks.cast<BookContentBlock?>().firstWhere(
+      (item) => item?.anchor == endBlockAnchor,
+      orElse: () => null,
+    );
+    if (block == null || endBlock == null) {
       return null;
     }
     final blockText = block.renderedText;
-    final normalizedStart = startOffset < endOffset ? startOffset : endOffset;
-    final normalizedEnd = startOffset < endOffset ? endOffset : startOffset;
+    final endBlockText = endBlock.renderedText;
+    final startIndex = blocks.indexWhere((item) => item.anchor == blockAnchor);
+    final endIndex = blocks.indexWhere((item) => item.anchor == endBlockAnchor);
+    if (startIndex < 0 || endIndex < 0 || startIndex > endIndex) {
+      return null;
+    }
+
+    final sameBlock = blockAnchor == endBlockAnchor;
+    final normalizedStart = sameBlock && startOffset > endOffset
+        ? endOffset
+        : startOffset;
+    final normalizedEnd = sameBlock && startOffset > endOffset
+        ? startOffset
+        : endOffset;
     if (normalizedStart < 0 ||
-        normalizedEnd > blockText.length ||
-        normalizedStart == normalizedEnd) {
+        normalizedStart > blockText.length ||
+        normalizedEnd < 0 ||
+        normalizedEnd > endBlockText.length ||
+        (sameBlock && normalizedStart == normalizedEnd)) {
+      return null;
+    }
+
+    final selectedText = payload['selectedText'] as String?;
+    if ((selectedText == null || selectedText.isEmpty) &&
+        normalizedStart == normalizedEnd &&
+        !sameBlock) {
       return null;
     }
     return AnnotationSelection(
@@ -474,20 +504,33 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       blockText: blockText,
       startOffset: normalizedStart,
       endOffset: normalizedEnd,
+      endBlockAnchor: endBlockAnchor,
+      endBlockText: endBlockText,
+      selectedText: selectedText,
     );
   }
 
   _SelectionIntent _resolveSelectionIntent(AnnotationSelection selection) {
+    if (selection.spansMultipleBlocks) {
+      return _SelectionIntent(selection: selection, existingAnnotation: null);
+    }
+
+    final orderedBlockAnchors = widget.chapter.blocks
+        .map((block) => block.anchor)
+        .toList(growable: false);
     final blockAnnotations = widget.annotations
         .map(
           (annotation) => ResolvedAnnotation.fromAnnotation(
             annotation,
             selection.blockText,
+            currentBlockAnchor: selection.blockAnchor,
+            orderedBlockAnchors: orderedBlockAnchors,
           ),
         )
         .whereType<ResolvedAnnotation>()
         .where(
           (annotation) =>
+              !annotation.anchor.spansMultipleBlocks &&
               annotation.anchor.blockAnchor == selection.blockAnchor,
         )
         .toList();
@@ -557,8 +600,11 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       fontStyle: 'italic',
     );
     final headingSize = 30 * widget.preferences.fontScale;
+    final orderedBlockAnchors = widget.chapter.blocks
+        .map((block) => block.anchor)
+        .toList(growable: false);
     final htmlBlocks = widget.chapter.blocks
-        .map((block) => _buildBlockHtml(block))
+        .map((block) => _buildBlockHtml(block, orderedBlockAnchors))
         .join();
 
     return '''
@@ -796,6 +842,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       let pageAnimationBusy = false;
       let touchStartX = 0;
       let touchStartY = 0;
+      let touchStartAt = 0;
       let touchMoved = false;
       let touchTracking = false;
       let lastTouchHandledAt = 0;
@@ -895,6 +942,14 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         clearTurnShadow();
       }
 
+      function hasActiveDomSelection() {
+        const selection = window.getSelection();
+        return !!selection &&
+          selection.rangeCount > 0 &&
+          !selection.isCollapsed &&
+          selection.toString().length > 0;
+      }
+
       function selectionData() {
         const selection = window.getSelection();
         if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
@@ -909,18 +964,18 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
           : null;
         const startBlock = startParent ? startParent.closest('[data-block-anchor]') : null;
         const endBlock = endParent ? endParent.closest('[data-block-anchor]') : null;
-        if (!startBlock || !endBlock || startBlock !== endBlock) {
+        if (!startBlock || !endBlock) {
           return null;
         }
         const measureStart = document.createRange();
         measureStart.selectNodeContents(startBlock);
         measureStart.setEnd(range.startContainer, range.startOffset);
         const measureEnd = document.createRange();
-        measureEnd.selectNodeContents(startBlock);
+        measureEnd.selectNodeContents(endBlock);
         measureEnd.setEnd(range.endContainer, range.endOffset);
         const startOffset = measureStart.toString().length;
         const endOffset = measureEnd.toString().length;
-        if (startOffset === endOffset) {
+        if (startBlock === endBlock && startOffset === endOffset) {
           return null;
         }
         const rects = Array.from(range.getClientRects())
@@ -947,8 +1002,14 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         });
         return {
           blockAnchor: startBlock.dataset.blockAnchor,
-          startOffset: Math.min(startOffset, endOffset),
-          endOffset: Math.max(startOffset, endOffset),
+          startBlockAnchor: startBlock.dataset.blockAnchor,
+          endBlockAnchor: endBlock.dataset.blockAnchor,
+          startOffset: startBlock === endBlock
+            ? Math.min(startOffset, endOffset)
+            : startOffset,
+          endOffset: startBlock === endBlock
+            ? Math.max(startOffset, endOffset)
+            : endOffset,
           selectedText: range.toString(),
           top: rect.top,
           left: rect.left,
@@ -1398,6 +1459,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         touchMoved = false;
         touchStartX = touch.clientX;
         touchStartY = touch.clientY;
+        touchStartAt = Date.now();
       }, { passive: true });
       document.addEventListener('touchmove', function(event) {
         if (!touchTracking) {
@@ -1415,24 +1477,32 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       document.addEventListener('touchcancel', function() {
         touchTracking = false;
         touchMoved = false;
+        touchStartAt = 0;
       }, { passive: true });
       document.addEventListener('touchend', function(event) {
         const touch = event.changedTouches && event.changedTouches.length > 0
           ? event.changedTouches[0]
           : null;
-        scheduleSelectionRefresh(60);
-        if (!currentSelection) {
+        const touchDuration = touchStartAt > 0 ? Date.now() - touchStartAt : 0;
+        const selectionGesture = touchDuration >= 280;
+        const domSelectionActive = hasActiveDomSelection();
+        scheduleSelectionRefresh(selectionGesture ? 20 : 60);
+        if (!currentSelection && !domSelectionActive && !selectionGesture) {
           if (touchTracking && !touchMoved && touch) {
             lastTouchHandledAt = Date.now();
             handleDocumentTap(event.target, touch.clientX);
           }
           touchTracking = false;
           touchMoved = false;
+          touchStartAt = 0;
           return;
         }
-        scheduleNativeSelectionClear(260);
+        if (currentSelection || domSelectionActive) {
+          scheduleNativeSelectionClear(260);
+        }
         touchTracking = false;
         touchMoved = false;
+        touchStartAt = 0;
       }, { passive: true });
       document.addEventListener('mouseup', function() {
         scheduleSelectionRefresh(20);
@@ -1470,6 +1540,8 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
           send({
             type: action,
             blockAnchor: currentSelection.blockAnchor,
+            startBlockAnchor: currentSelection.startBlockAnchor || currentSelection.blockAnchor,
+            endBlockAnchor: currentSelection.endBlockAnchor || currentSelection.blockAnchor,
             startOffset: currentSelection.startOffset,
             endOffset: currentSelection.endOffset,
             selectedText: currentSelection.selectedText
@@ -1572,14 +1644,19 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
 ''';
   }
 
-  String _buildBlockHtml(BookContentBlock block) {
+  String _buildBlockHtml(
+    BookContentBlock block,
+    List<String> orderedBlockAnchors,
+  ) {
     final blockText = block.renderedText;
     final blockAnnotations =
         widget.annotations
             .where(
               (annotation) =>
-                  AnnotationAnchor.parse(annotation.anchor).blockAnchor ==
-                  block.anchor,
+                  AnnotationAnchor.parse(annotation.anchor).affectsBlock(
+                    currentBlockAnchor: block.anchor,
+                    orderedBlockAnchors: orderedBlockAnchors,
+                  ),
             )
             .toList()
           ..sort((left, right) => right.updatedAt.compareTo(left.updatedAt));
@@ -1605,7 +1682,11 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         : '';
     final content = switch (block.type) {
       'divider' => _escapeHtml(blockText.isEmpty ? '···' : blockText),
-      _ => _buildAnnotatedInlineHtml(block, blockAnnotations),
+      _ => _buildAnnotatedInlineHtml(
+        block,
+        blockAnnotations,
+        orderedBlockAnchors,
+      ),
     };
 
     final tag = switch (block.type) {
@@ -1624,6 +1705,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
   String _buildAnnotatedInlineHtml(
     BookContentBlock block,
     List<AnnotationView> annotations,
+    List<String> orderedBlockAnchors,
   ) {
     final blockText = block.renderedText;
     final explicit =
@@ -1632,6 +1714,8 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
               final resolved = ResolvedAnnotation.fromAnnotation(
                 annotation,
                 blockText,
+                currentBlockAnchor: block.anchor,
+                orderedBlockAnchors: orderedBlockAnchors,
               );
               if (resolved == null || !resolved.anchor.hasExplicitRange) {
                 return null;

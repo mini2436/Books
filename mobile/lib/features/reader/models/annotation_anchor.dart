@@ -31,12 +31,24 @@ class AnnotationAnchor {
     required this.startOffset,
     required this.endOffset,
     required this.underlineStyle,
+    this.endBlockAnchor,
   });
 
   final String blockAnchor;
   final int? startOffset;
   final int? endOffset;
   final AnnotationUnderlineStyle underlineStyle;
+  final String? endBlockAnchor;
+
+  String get effectiveEndBlockAnchor {
+    final candidate = endBlockAnchor;
+    if (candidate == null || candidate.isEmpty) {
+      return blockAnchor;
+    }
+    return candidate;
+  }
+
+  bool get spansMultipleBlocks => effectiveEndBlockAnchor != blockAnchor;
 
   bool get hasExplicitRange => startOffset != null && endOffset != null;
 
@@ -47,6 +59,7 @@ class AnnotationAnchor {
         startOffset: null,
         endOffset: null,
         underlineStyle: AnnotationUnderlineStyle.none,
+        endBlockAnchor: null,
       );
     }
 
@@ -60,6 +73,9 @@ class AnnotationAnchor {
               rawAnchor,
           startOffset: (decoded['startOffset'] as num?)?.toInt(),
           endOffset: (decoded['endOffset'] as num?)?.toInt(),
+          endBlockAnchor:
+              decoded['endBlockAnchor'] as String? ??
+              decoded['endAnchor'] as String?,
           underlineStyle: AnnotationUnderlineStyle.fromValue(
             decoded['underlineStyle'] as String?,
           ),
@@ -74,6 +90,7 @@ class AnnotationAnchor {
       startOffset: null,
       endOffset: null,
       underlineStyle: AnnotationUnderlineStyle.none,
+      endBlockAnchor: null,
     );
   }
 
@@ -81,20 +98,28 @@ class AnnotationAnchor {
     String? blockAnchor,
     int? startOffset,
     int? endOffset,
+    String? endBlockAnchor,
     AnnotationUnderlineStyle? underlineStyle,
     bool replaceOffsets = false,
+    bool replaceEndBlockAnchor = false,
   }) {
     return AnnotationAnchor(
       blockAnchor: blockAnchor ?? this.blockAnchor,
-      startOffset: replaceOffsets ? startOffset : startOffset ?? this.startOffset,
+      startOffset: replaceOffsets
+          ? startOffset
+          : startOffset ?? this.startOffset,
       endOffset: replaceOffsets ? endOffset : endOffset ?? this.endOffset,
       underlineStyle: underlineStyle ?? this.underlineStyle,
+      endBlockAnchor: replaceEndBlockAnchor
+          ? endBlockAnchor
+          : endBlockAnchor ?? this.endBlockAnchor,
     );
   }
 
   String serialize() {
     if (!hasExplicitRange &&
         underlineStyle == AnnotationUnderlineStyle.none &&
+        !spansMultipleBlocks &&
         blockAnchor.isNotEmpty) {
       return blockAnchor;
     }
@@ -103,6 +128,7 @@ class AnnotationAnchor {
       'blockAnchor': blockAnchor,
       if (startOffset != null) 'startOffset': startOffset,
       if (endOffset != null) 'endOffset': endOffset,
+      if (spansMultipleBlocks) 'endBlockAnchor': effectiveEndBlockAnchor,
       if (underlineStyle != AnnotationUnderlineStyle.none)
         'underlineStyle': underlineStyle.value,
     });
@@ -144,13 +170,80 @@ class AnnotationAnchor {
     }
     return AnnotationTextRange(start: start, end: end);
   }
+
+  bool affectsBlock({
+    required String currentBlockAnchor,
+    required List<String> orderedBlockAnchors,
+  }) {
+    if (!spansMultipleBlocks) {
+      return currentBlockAnchor == blockAnchor;
+    }
+
+    final currentIndex = orderedBlockAnchors.indexOf(currentBlockAnchor);
+    final startIndex = orderedBlockAnchors.indexOf(blockAnchor);
+    final endIndex = orderedBlockAnchors.indexOf(effectiveEndBlockAnchor);
+    if (currentIndex < 0 || startIndex < 0 || endIndex < 0) {
+      return currentBlockAnchor == blockAnchor ||
+          currentBlockAnchor == effectiveEndBlockAnchor;
+    }
+
+    final lowerBound = startIndex < endIndex ? startIndex : endIndex;
+    final upperBound = startIndex < endIndex ? endIndex : startIndex;
+    return currentIndex >= lowerBound && currentIndex <= upperBound;
+  }
+
+  AnnotationTextRange? rangeForBlock({
+    required String currentBlockAnchor,
+    required String blockText,
+    required List<String> orderedBlockAnchors,
+  }) {
+    if (!hasExplicitRange) {
+      return null;
+    }
+    if (!spansMultipleBlocks) {
+      if (currentBlockAnchor != blockAnchor) {
+        return null;
+      }
+      return normalizedRangeIn(blockText);
+    }
+    if (!affectsBlock(
+      currentBlockAnchor: currentBlockAnchor,
+      orderedBlockAnchors: orderedBlockAnchors,
+    )) {
+      return null;
+    }
+
+    final currentIndex = orderedBlockAnchors.indexOf(currentBlockAnchor);
+    final startIndex = orderedBlockAnchors.indexOf(blockAnchor);
+    final endIndex = orderedBlockAnchors.indexOf(effectiveEndBlockAnchor);
+    if (currentIndex < 0 || startIndex < 0 || endIndex < 0) {
+      if (currentBlockAnchor == blockAnchor) {
+        return AnnotationTextRange(
+          start: normalizedStart(blockText),
+          end: blockText.length,
+        );
+      }
+      if (currentBlockAnchor == effectiveEndBlockAnchor) {
+        return AnnotationTextRange(start: 0, end: normalizedEnd(blockText));
+      }
+      return null;
+    }
+
+    if (currentIndex == startIndex) {
+      return AnnotationTextRange(
+        start: normalizedStart(blockText),
+        end: blockText.length,
+      );
+    }
+    if (currentIndex == endIndex) {
+      return AnnotationTextRange(start: 0, end: normalizedEnd(blockText));
+    }
+    return AnnotationTextRange(start: 0, end: blockText.length);
+  }
 }
 
 class AnnotationTextRange {
-  const AnnotationTextRange({
-    required this.start,
-    required this.end,
-  });
+  const AnnotationTextRange({required this.start, required this.end});
 
   final int start;
   final int end;
@@ -171,26 +264,47 @@ class AnnotationSelection {
     required this.blockText,
     required this.startOffset,
     required this.endOffset,
-  });
+    this.endBlockAnchor,
+    this.endBlockText,
+    String? selectedText,
+  }) : _selectedText = selectedText;
 
   final String blockAnchor;
   final String blockText;
   final int startOffset;
   final int endOffset;
+  final String? endBlockAnchor;
+  final String? endBlockText;
+  final String? _selectedText;
 
-  String get selectedText => blockText.substring(startOffset, endOffset);
+  String get effectiveEndBlockAnchor {
+    final candidate = endBlockAnchor;
+    if (candidate == null || candidate.isEmpty) {
+      return blockAnchor;
+    }
+    return candidate;
+  }
+
+  String get effectiveEndBlockText => endBlockText ?? blockText;
+
+  bool get spansMultipleBlocks => effectiveEndBlockAnchor != blockAnchor;
+
+  String get selectedText =>
+      _selectedText ??
+      (spansMultipleBlocks
+          ? blockText.substring(startOffset)
+          : blockText.substring(startOffset, endOffset));
 
   AnnotationTextRange get range =>
       AnnotationTextRange(start: startOffset, end: endOffset);
 
-  String toAnchorString({
-    required AnnotationUnderlineStyle underlineStyle,
-  }) {
+  String toAnchorString({required AnnotationUnderlineStyle underlineStyle}) {
     return AnnotationAnchor(
       blockAnchor: blockAnchor,
       startOffset: startOffset,
       endOffset: endOffset,
       underlineStyle: underlineStyle,
+      endBlockAnchor: spansMultipleBlocks ? effectiveEndBlockAnchor : null,
     ).serialize();
   }
 }
@@ -208,16 +322,26 @@ class ResolvedAnnotation {
 
   static ResolvedAnnotation? fromAnnotation(
     AnnotationView annotation,
-    String blockText,
-  ) {
+    String blockText, {
+    required String currentBlockAnchor,
+    required List<String> orderedBlockAnchors,
+  }) {
     final parsed = AnnotationAnchor.parse(annotation.anchor);
     if (parsed.blockAnchor.isEmpty) {
+      return null;
+    }
+    final range = parsed.rangeForBlock(
+      currentBlockAnchor: currentBlockAnchor,
+      blockText: blockText,
+      orderedBlockAnchors: orderedBlockAnchors,
+    );
+    if (range == null || range.length <= 0) {
       return null;
     }
     return ResolvedAnnotation(
       annotation: annotation,
       anchor: parsed,
-      range: parsed.normalizedRangeIn(blockText),
+      range: range,
     );
   }
 }

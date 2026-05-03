@@ -41,10 +41,16 @@ class ReaderBlocksView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = AppReaderPalette.of(context);
+    final orderedBlockAnchors = blocks
+        .map((block) => block.anchor)
+        .toList(growable: false);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: blocks.map((block) {
-        final blockAnnotations = _annotationsForBlock(block);
+        final blockAnnotations = _annotationsForBlock(
+          block,
+          orderedBlockAnchors,
+        );
         final highlightColor = _blockHighlightColor(blockAnnotations, palette);
         Widget blockView;
         switch (block.type) {
@@ -53,7 +59,7 @@ class ReaderBlocksView extends StatelessWidget {
               padding: const EdgeInsets.only(bottom: 22),
               child: _BlockHighlightFrame(
                 highlightColor: highlightColor,
-                  child: Text(
+                child: Text(
                   block.renderedText,
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.w700,
@@ -89,10 +95,11 @@ class ReaderBlocksView extends StatelessWidget {
                 ),
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-                child: _SelectableBlockText(
+                  child: _SelectableBlockText(
                     text: block.renderedText,
                     anchor: block.anchor,
                     annotations: blockAnnotations,
+                    orderedBlockAnchors: orderedBlockAnchors,
                     preferences: preferences,
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                       color: palette.inkSecondary,
@@ -115,6 +122,7 @@ class ReaderBlocksView extends StatelessWidget {
                   text: block.renderedText,
                   anchor: block.anchor,
                   annotations: blockAnnotations,
+                  orderedBlockAnchors: orderedBlockAnchors,
                   preferences: preferences,
                   style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                     color: palette.ink,
@@ -139,19 +147,36 @@ class ReaderBlocksView extends StatelessWidget {
     );
   }
 
-  List<AnnotationView> _annotationsForBlock(BookContentBlock block) {
+  List<AnnotationView> _annotationsForBlock(
+    BookContentBlock block,
+    List<String> orderedBlockAnchors,
+  ) {
     final blockText = block.renderedText;
     return annotations.where((annotation) {
       final parsedAnchor = AnnotationAnchor.parse(annotation.anchor);
-      return parsedAnchor.blockAnchor == block.anchor;
-    }).toList()
-      ..sort((left, right) {
-        final leftAnchor = AnnotationAnchor.parse(left.anchor);
-        final rightAnchor = AnnotationAnchor.parse(right.anchor);
-        final leftRange = leftAnchor.normalizedRangeIn(blockText);
-        final rightRange = rightAnchor.normalizedRangeIn(blockText);
-        return leftRange.start.compareTo(rightRange.start);
-      });
+      return parsedAnchor.affectsBlock(
+        currentBlockAnchor: block.anchor,
+        orderedBlockAnchors: orderedBlockAnchors,
+      );
+    }).toList()..sort((left, right) {
+      final leftAnchor = AnnotationAnchor.parse(left.anchor);
+      final rightAnchor = AnnotationAnchor.parse(right.anchor);
+      final leftRange =
+          leftAnchor.rangeForBlock(
+            currentBlockAnchor: block.anchor,
+            blockText: blockText,
+            orderedBlockAnchors: orderedBlockAnchors,
+          ) ??
+          const AnnotationTextRange(start: 0, end: 0);
+      final rightRange =
+          rightAnchor.rangeForBlock(
+            currentBlockAnchor: block.anchor,
+            blockText: blockText,
+            orderedBlockAnchors: orderedBlockAnchors,
+          ) ??
+          const AnnotationTextRange(start: 0, end: 0);
+      return leftRange.start.compareTo(rightRange.start);
+    });
   }
 
   Color? _blockHighlightColor(
@@ -178,10 +203,7 @@ class ReaderBlocksView extends StatelessWidget {
 }
 
 class _BlockHighlightFrame extends StatelessWidget {
-  const _BlockHighlightFrame({
-    required this.child,
-    this.highlightColor,
-  });
+  const _BlockHighlightFrame({required this.child, this.highlightColor});
 
   final Widget child;
   final Color? highlightColor;
@@ -210,6 +232,7 @@ class _SelectableBlockText extends StatelessWidget {
     required this.text,
     required this.anchor,
     required this.annotations,
+    required this.orderedBlockAnchors,
     required this.preferences,
     required this.style,
     required this.onHighlight,
@@ -219,6 +242,7 @@ class _SelectableBlockText extends StatelessWidget {
   final String text;
   final String anchor;
   final List<AnnotationView> annotations;
+  final List<String> orderedBlockAnchors;
   final ReaderPreferences preferences;
   final TextStyle? style;
   final Future<void> Function(
@@ -235,7 +259,14 @@ class _SelectableBlockText extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final resolvedAnnotations = annotations
-        .map((annotation) => ResolvedAnnotation.fromAnnotation(annotation, text))
+        .map(
+          (annotation) => ResolvedAnnotation.fromAnnotation(
+            annotation,
+            text,
+            currentBlockAnchor: anchor,
+            orderedBlockAnchors: orderedBlockAnchors,
+          ),
+        )
         .whereType<ResolvedAnnotation>()
         .toList();
     final baseStyle = (style ?? const TextStyle()).copyWith(
@@ -290,10 +321,7 @@ class _SelectableBlockText extends StatelessWidget {
                       normalizedSelection,
                       resolvedAnnotations,
                     );
-                    onHighlight(
-                      intent.selection,
-                      intent.existingAnnotation,
-                    );
+                    onHighlight(intent.selection, intent.existingAnnotation);
                   },
                 ),
                 ContextMenuButtonItem(
@@ -308,10 +336,7 @@ class _SelectableBlockText extends StatelessWidget {
                       normalizedSelection,
                       resolvedAnnotations,
                     );
-                    onAnnotate(
-                      intent.selection,
-                      intent.existingAnnotation,
-                    );
+                    onAnnotate(intent.selection, intent.existingAnnotation);
                   },
                 ),
               ],
@@ -359,16 +384,21 @@ class _SelectableBlockText extends StatelessWidget {
     AnnotationSelection selection,
     List<ResolvedAnnotation> resolvedAnnotations,
   ) {
-    final containing = resolvedAnnotations
-        .where(
-          (annotation) => annotation.anchor.containsRange(
-            start: selection.startOffset,
-            end: selection.endOffset,
-            text: text,
-          ),
-        )
-        .toList()
-      ..sort((left, right) => left.range.length.compareTo(right.range.length));
+    final containing =
+        resolvedAnnotations
+            .where(
+              (annotation) =>
+                  !annotation.anchor.spansMultipleBlocks &&
+                  annotation.anchor.containsRange(
+                    start: selection.startOffset,
+                    end: selection.endOffset,
+                    text: text,
+                  ),
+            )
+            .toList()
+          ..sort(
+            (left, right) => left.range.length.compareTo(right.range.length),
+          );
     if (containing.isNotEmpty) {
       return _SelectionIntent(
         selection: selection,
@@ -376,16 +406,21 @@ class _SelectableBlockText extends StatelessWidget {
       );
     }
 
-    final overlapping = resolvedAnnotations
-        .where(
-          (annotation) => annotation.anchor.overlapsOrTouches(
-            start: selection.startOffset,
-            end: selection.endOffset,
-            text: text,
-          ),
-        )
-        .toList()
-      ..sort((left, right) => left.range.start.compareTo(right.range.start));
+    final overlapping =
+        resolvedAnnotations
+            .where(
+              (annotation) =>
+                  !annotation.anchor.spansMultipleBlocks &&
+                  annotation.anchor.overlapsOrTouches(
+                    start: selection.startOffset,
+                    end: selection.endOffset,
+                    text: text,
+                  ),
+            )
+            .toList()
+          ..sort(
+            (left, right) => left.range.start.compareTo(right.range.start),
+          );
     if (overlapping.isNotEmpty) {
       final target = overlapping.first;
       final expandedRange = selection.range.union(target.range);
@@ -459,11 +494,15 @@ class _AnnotationPainter extends CustomPainter {
         lineRects: mergedBoxes,
         canvasHeight: size.height,
       );
-      final lineColor = annotation.annotation.color == null ||
+      final lineColor =
+          annotation.annotation.color == null ||
               annotation.annotation.color!.isEmpty
           ? const Color(0xFFC3924A)
-          : Color(int.parse('0xFF${annotation.annotation.color!.substring(1)}'));
-      final highlightColor = annotation.annotation.color == null ||
+          : Color(
+              int.parse('0xFF${annotation.annotation.color!.substring(1)}'),
+            );
+      final highlightColor =
+          annotation.annotation.color == null ||
               annotation.annotation.color!.isEmpty
           ? const Color(0x33C3924A)
           : lineColor.withValues(alpha: 0.22);
@@ -548,17 +587,18 @@ class _AnnotationPainter extends CustomPainter {
   }
 
   List<Rect> _mergeBoxes(List<TextBox> boxes) {
-    final rects = boxes
-        .map((box) => box.toRect())
-        .where((rect) => rect.width > 0 && rect.height > 0)
-        .toList()
-      ..sort((left, right) {
-        final topCompare = left.top.compareTo(right.top);
-        if (topCompare != 0) {
-          return topCompare;
-        }
-        return left.left.compareTo(right.left);
-      });
+    final rects =
+        boxes
+            .map((box) => box.toRect())
+            .where((rect) => rect.width > 0 && rect.height > 0)
+            .toList()
+          ..sort((left, right) {
+            final topCompare = left.top.compareTo(right.top);
+            if (topCompare != 0) {
+              return topCompare;
+            }
+            return left.left.compareTo(right.left);
+          });
     if (rects.isEmpty) {
       return const [];
     }
@@ -566,17 +606,14 @@ class _AnnotationPainter extends CustomPainter {
     final merged = <Rect>[];
     final groupedByLine = <List<Rect>>[];
     for (final rect in rects) {
-      final existingLine = groupedByLine.cast<List<Rect>?>().firstWhere(
-        (line) {
-          if (line == null || line.isEmpty) {
-            return false;
-          }
-          final probe = line.first;
-          return (rect.top - probe.top).abs() < 1.5 &&
-              (rect.bottom - probe.bottom).abs() < 1.5;
-        },
-        orElse: () => null,
-      );
+      final existingLine = groupedByLine.cast<List<Rect>?>().firstWhere((line) {
+        if (line == null || line.isEmpty) {
+          return false;
+        }
+        final probe = line.first;
+        return (rect.top - probe.top).abs() < 1.5 &&
+            (rect.bottom - probe.bottom).abs() < 1.5;
+      }, orElse: () => null);
       if (existingLine != null) {
         existingLine.add(rect);
       } else {
@@ -596,9 +633,7 @@ class _AnnotationPainter extends CustomPainter {
         lineRight = math.max(lineRight, rect.right);
         lineBottom = math.max(lineBottom, rect.bottom);
       }
-      merged.add(
-        Rect.fromLTRB(lineLeft, lineTop, lineRight, lineBottom),
-      );
+      merged.add(Rect.fromLTRB(lineLeft, lineTop, lineRight, lineBottom));
     }
     return merged;
   }
@@ -617,8 +652,9 @@ class _AnnotationPainter extends CustomPainter {
       final previousGap = previous == null
           ? 0.0
           : math.max(0.0, rect.top - previous.bottom);
-      final nextGap =
-          next == null ? 0.0 : math.max(0.0, next.top - rect.bottom);
+      final nextGap = next == null
+          ? 0.0
+          : math.max(0.0, next.top - rect.bottom);
       final topPadding = previous == null
           ? 0.7
           : math.min(1.6, math.max(0.35, previousGap * 0.38));

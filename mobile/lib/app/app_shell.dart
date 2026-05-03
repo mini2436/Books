@@ -17,6 +17,7 @@ class AppShell extends ConsumerWidget {
   ) {
     return _AnimatedBranchContainer(
       currentIndex: navigationShell.currentIndex,
+      axis: Responsive.isTablet(context) ? Axis.vertical : Axis.horizontal,
       children: children,
     );
   }
@@ -121,10 +122,12 @@ class AppShell extends ConsumerWidget {
 class _AnimatedBranchContainer extends StatefulWidget {
   const _AnimatedBranchContainer({
     required this.currentIndex,
+    required this.axis,
     required this.children,
   });
 
   final int currentIndex;
+  final Axis axis;
   final List<Widget> children;
 
   @override
@@ -145,7 +148,7 @@ class _AnimatedBranchContainerState extends State<_AnimatedBranchContainer>
     _previousIndex = widget.currentIndex;
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 340),
+      duration: const Duration(milliseconds: 280),
     );
     _animation = CurvedAnimation(
       parent: _controller,
@@ -175,37 +178,106 @@ class _AnimatedBranchContainerState extends State<_AnimatedBranchContainer>
 
   @override
   Widget build(BuildContext context) {
-    final stackItems = List<Widget>.generate(widget.children.length, (index) {
-      final isActive = index == widget.currentIndex;
-      return _BranchContainer(
-        isActive: isActive,
-        child: widget.children[index],
-      );
-    });
+    return ClipRect(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final extent = widget.axis == Axis.horizontal
+              ? constraints.maxWidth
+              : constraints.maxHeight;
+          final distance = extent.isFinite && extent > 0 ? extent * 0.12 : 48.0;
 
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        IndexedStack(index: widget.currentIndex, children: stackItems),
-        IgnorePointer(
-          child: AnimatedBuilder(
-            animation: _animation,
-            builder: (context, _) {
-              if (!_controller.isAnimating) {
-                return const SizedBox.shrink();
-              }
-              return _PageTurnOverlay(
-                progress: _animation.value,
-                forward: _forward,
-                previousIndex: _previousIndex,
-                currentIndex: widget.currentIndex,
-              );
-            },
-          ),
-        ),
-      ],
+          final paintOrder = <int>[
+            if (_controller.isAnimating &&
+                _previousIndex != widget.currentIndex)
+              _previousIndex,
+            widget.currentIndex,
+            ...List<int>.generate(
+              widget.children.length,
+              (index) => index,
+            ).where(
+              (index) =>
+                  index != widget.currentIndex && index != _previousIndex,
+            ),
+          ];
+
+          final stackItems = paintOrder.map((index) {
+            final isVisible =
+                index == widget.currentIndex ||
+                (_controller.isAnimating && index == _previousIndex);
+            return _BranchContainer(
+              isActive: isVisible,
+              child: AnimatedBuilder(
+                animation: _animation,
+                child: widget.children[index],
+                builder: (context, child) {
+                  final transition = _transitionFor(
+                    index: index,
+                    distance: distance,
+                  );
+                  if (transition == null) {
+                    return child!;
+                  }
+                  return Opacity(
+                    opacity: transition.opacity,
+                    child: Transform.translate(
+                      offset: transition.offset,
+                      child: child,
+                    ),
+                  );
+                },
+              ),
+            );
+          }).toList();
+
+          return Stack(fit: StackFit.expand, children: stackItems);
+        },
+      ),
     );
   }
+
+  _BranchTransition? _transitionFor({
+    required int index,
+    required double distance,
+  }) {
+    if (!_controller.isAnimating) {
+      return index == widget.currentIndex
+          ? const _BranchTransition(offset: Offset.zero, opacity: 1)
+          : null;
+    }
+
+    final progress = _animation.value;
+    final direction = _forward ? 1.0 : -1.0;
+    final horizontal = widget.axis == Axis.horizontal;
+
+    if (index == widget.currentIndex) {
+      final incomingFactor = (1 - progress) * direction;
+      return _BranchTransition(
+        offset: horizontal
+            ? Offset(distance * incomingFactor, 0)
+            : Offset(0, distance * incomingFactor),
+        opacity: 0.76 + (progress * 0.24),
+      );
+    }
+
+    if (index == _previousIndex) {
+      final outgoingFactor = -progress * direction;
+      return _BranchTransition(
+        offset: horizontal
+            ? Offset(distance * outgoingFactor, 0)
+            : Offset(0, distance * outgoingFactor),
+        opacity: 1 - (progress * 0.32),
+      );
+    }
+
+    return null;
+  }
+}
+
+class _BranchTransition {
+  const _BranchTransition({required this.offset, required this.opacity});
+
+  final Offset offset;
+  final double opacity;
 }
 
 class _BranchContainer extends StatelessWidget {
@@ -220,126 +292,5 @@ class _BranchContainer extends StatelessWidget {
       offstage: !isActive,
       child: TickerMode(enabled: isActive, child: child),
     );
-  }
-}
-
-class _PageTurnOverlay extends StatelessWidget {
-  const _PageTurnOverlay({
-    required this.progress,
-    required this.forward,
-    required this.previousIndex,
-    required this.currentIndex,
-  });
-
-  final double progress;
-  final bool forward;
-  final int previousIndex;
-  final int currentIndex;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final surface = theme.colorScheme.surface;
-    final shadowStrength = (1 - progress) * 0.20;
-    final highlightStrength = (1 - progress) * 0.12;
-    final sweep = 0.22 + ((1 - progress) * 0.26);
-    final alignment = forward ? Alignment.centerRight : Alignment.centerLeft;
-    final begin = forward ? Alignment.centerRight : Alignment.centerLeft;
-    final end = forward ? Alignment.centerLeft : Alignment.centerRight;
-
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        Positioned.fill(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: begin,
-                end: end,
-                colors: [
-                  Colors.black.withValues(alpha: shadowStrength * 0.55),
-                  Colors.transparent,
-                ],
-                stops: const [0, 0.32],
-              ),
-            ),
-          ),
-        ),
-        Align(
-          alignment: alignment,
-          child: FractionallySizedBox(
-            widthFactor: sweep,
-            heightFactor: 1,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: begin,
-                  end: end,
-                  colors: [
-                    surface.withValues(alpha: highlightStrength),
-                    Colors.white.withValues(alpha: highlightStrength * 0.9),
-                    Colors.black.withValues(alpha: shadowStrength),
-                    Colors.transparent,
-                  ],
-                  stops: const [0, 0.18, 0.48, 1],
-                ),
-              ),
-            ),
-          ),
-        ),
-        Positioned.fill(
-          child: CustomPaint(
-            painter: _PageTurnEdgePainter(
-              progress: progress,
-              forward: forward,
-              color: Colors.black.withValues(alpha: shadowStrength * 1.1),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _PageTurnEdgePainter extends CustomPainter {
-  _PageTurnEdgePainter({
-    required this.progress,
-    required this.forward,
-    required this.color,
-  });
-
-  final double progress;
-  final bool forward;
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final edgeX = forward
-        ? size.width * (1 - progress * 0.92)
-        : size.width * (progress * 0.92);
-    final rect = Rect.fromLTWH(
-      forward ? edgeX - 28 : edgeX,
-      0,
-      28,
-      size.height,
-    );
-    final paint = Paint()
-      ..shader = LinearGradient(
-        begin: forward ? Alignment.centerRight : Alignment.centerLeft,
-        end: forward ? Alignment.centerLeft : Alignment.centerRight,
-        colors: [
-          color,
-          color.withValues(alpha: color.a * 0.35),
-          Colors.transparent,
-        ],
-      ).createShader(rect);
-    canvas.drawRect(rect, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _PageTurnEdgePainter oldDelegate) {
-    return oldDelegate.progress != progress ||
-        oldDelegate.forward != forward ||
-        oldDelegate.color != color;
   }
 }

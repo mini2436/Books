@@ -5,10 +5,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../models/auth_models.dart';
 
 class SessionStorage {
-  SessionStorage()
-    : _storage = const FlutterSecureStorage(
-        aOptions: AndroidOptions(encryptedSharedPreferences: true),
-      );
+  SessionStorage() : _storage = const FlutterSecureStorage();
 
   final FlutterSecureStorage _storage;
 

@@ -1,5 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../models/sync_models.dart';
 
@@ -52,7 +55,7 @@ class OfflineQueueService {
   }
 
   Future<Database> _open() async {
-    final path = p.join(await getDatabasesPath(), 'private_reader_mobile.db');
+    final path = await _databasePath();
     return openDatabase(
       path,
       version: 1,
@@ -68,4 +71,19 @@ class OfflineQueueService {
       },
     );
   }
+
+  Future<String> _databasePath() async {
+    if (_usesFfiDatabase) {
+      sqfliteFfiInit();
+      databaseFactory = databaseFactoryFfi;
+      final supportDirectory = await getApplicationSupportDirectory();
+      return p.join(supportDirectory.path, 'private_reader_mobile.db');
+    }
+    return p.join(await getDatabasesPath(), 'private_reader_mobile.db');
+  }
+
+  bool get _usesFfiDatabase =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.windows ||
+          defaultTargetPlatform == TargetPlatform.linux);
 }

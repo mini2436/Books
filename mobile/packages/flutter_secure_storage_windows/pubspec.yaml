@@ -1,0 +1,24 @@
+name: flutter_secure_storage_windows
+description: Local Dart-only Windows implementation for flutter_secure_storage.
+version: 4.1.0
+publish_to: none
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+  flutter: '>=3.19.0'
+
+dependencies:
+  ffi: ^2.0.0
+  flutter:
+    sdk: flutter
+  flutter_secure_storage_platform_interface: ^2.0.0
+  path: ^1.8.0
+  path_provider: ^2.0.0
+  win32: ^5.5.4
+
+flutter:
+  plugin:
+    implements: flutter_secure_storage
+    platforms:
+      windows:
+        dartPluginClass: FlutterSecureStorageWindows

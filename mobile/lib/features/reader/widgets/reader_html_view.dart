@@ -14,6 +14,21 @@ import '../reader_controller.dart';
 import '../models/annotation_anchor.dart';
 import 'reader_blocks.dart';
 
+const List<String> _webAnnotationColors = [
+  '#C3924A',
+  '#7A4A24',
+  '#4A6B3F',
+  '#9C3C34',
+  '#C86B3C',
+  '#D0A43F',
+  '#437A7D',
+  '#5A63A3',
+  '#7E4A9E',
+  '#2D6A4F',
+  '#B85C7A',
+  '#6E727A',
+];
+
 class ReaderHtmlView extends StatefulWidget {
   const ReaderHtmlView({
     super.key,
@@ -27,6 +42,7 @@ class ReaderHtmlView extends StatefulWidget {
     required this.anchorJumpVersion,
     required this.onHighlight,
     required this.onAnnotate,
+    required this.onSaveAnnotation,
     required this.onOpenAnnotations,
     required this.onPageBoundaryPrevious,
     required this.onPageBoundaryNext,
@@ -56,6 +72,14 @@ class ReaderHtmlView extends StatefulWidget {
     AnnotationView? existingAnnotation,
   )
   onAnnotate;
+  final Future<void> Function(
+    AnnotationSelection selection,
+    AnnotationView? existingAnnotation, {
+    required String? noteText,
+    required String color,
+    required AnnotationUnderlineStyle underlineStyle,
+  })
+  onSaveAnnotation;
   final Future<void> Function(List<AnnotationView> annotations)
   onOpenAnnotations;
   final Future<void> Function() onPageBoundaryPrevious;
@@ -78,14 +102,27 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
   int _lastAnchorJumpVersion = -1;
   final Map<String, GlobalKey> _fallbackAnchorKeys = <String, GlobalKey>{};
   final List<String> _pendingTapZones = <String>[];
+  final ScrollController _fallbackScrollController = ScrollController();
   Timer? _blankPageGuard;
 
-  bool get _allowFlutterFallback => !widget.pagedMode;
+  bool get _forceFlutterReader =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.windows ||
+          defaultTargetPlatform == TargetPlatform.linux);
+
+  bool get _allowFlutterFallback => _forceFlutterReader || !widget.pagedMode;
 
   @override
   void initState() {
     super.initState();
     _lastHtml = _buildHtml();
+    if (_forceFlutterReader) {
+      _useFlutterFallback = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollFallbackToFocusedAnchor(force: true);
+      });
+      return;
+    }
     _controller =
         WebViewController.fromPlatformCreationParams(
             const PlatformWebViewControllerCreationParams(),
@@ -128,6 +165,20 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     super.didUpdateWidget(oldWidget);
     final chapterChanged = oldWidget.chapter.anchor != widget.chapter.anchor;
     final nextHtml = _buildHtml();
+    if (_forceFlutterReader) {
+      _lastHtml = nextHtml;
+      if (chapterChanged ||
+          widget.anchorJumpVersion != oldWidget.anchorJumpVersion ||
+          widget.focusedAnchor != oldWidget.focusedAnchor) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _scrollFallbackToFocusedAnchor(force: chapterChanged);
+        });
+      }
+      if (widget.viewportTapZoneVersion != oldWidget.viewportTapZoneVersion) {
+        _handleViewportTapZone();
+      }
+      return;
+    }
     if (nextHtml != _lastHtml) {
       _lastHtml = nextHtml;
       _pageReady = false;
@@ -160,17 +211,29 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
   @override
   Widget build(BuildContext context) {
     if (_useFlutterFallback) {
-      return SingleChildScrollView(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: ReaderBlocksView(
-          blocks: widget.chapter.blocks,
-          annotations: widget.annotations,
-          preferences: widget.preferences,
-          keyForAnchor: _fallbackKeyForAnchor,
-          onHighlight: widget.onHighlight,
-          onAnnotate: widget.onAnnotate,
-          onOpenAnnotations: widget.onOpenAnnotations,
-        ),
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          return GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTapUp: (details) => _handleFallbackViewportTap(
+              details.localPosition.dx,
+              constraints.maxWidth,
+            ),
+            child: SingleChildScrollView(
+              controller: _fallbackScrollController,
+              padding: const EdgeInsets.only(bottom: 12),
+              child: ReaderBlocksView(
+                blocks: widget.chapter.blocks,
+                annotations: widget.annotations,
+                preferences: widget.preferences,
+                keyForAnchor: _fallbackKeyForAnchor,
+                onHighlight: widget.onHighlight,
+                onAnnotate: widget.onAnnotate,
+                onOpenAnnotations: widget.onOpenAnnotations,
+              ),
+            ),
+          );
+        },
       );
     }
     return DecoratedBox(
@@ -205,6 +268,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
   @override
   void dispose() {
     _blankPageGuard?.cancel();
+    _fallbackScrollController.dispose();
     super.dispose();
   }
 
@@ -234,6 +298,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         break;
       case 'highlight':
       case 'annotate':
+      case 'saveAnnotation':
         final selection = _selectionFromPayload(payload);
         if (selection == null) {
           return;
@@ -241,8 +306,23 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         final intent = _resolveSelectionIntent(selection);
         if (payload['type'] == 'highlight') {
           await widget.onHighlight(intent.selection, intent.existingAnnotation);
-        } else {
+        } else if (payload['type'] == 'annotate') {
           await widget.onAnnotate(intent.selection, intent.existingAnnotation);
+        } else {
+          final rawNote = payload['noteText'] as String?;
+          final noteText = rawNote == null || rawNote.trim().isEmpty
+              ? null
+              : rawNote.trim();
+          final color = payload['color'] as String?;
+          await widget.onSaveAnnotation(
+            intent.selection,
+            intent.existingAnnotation,
+            noteText: noteText,
+            color: _normalizeAnnotationColor(color),
+            underlineStyle: AnnotationUnderlineStyle.fromValue(
+              payload['underlineStyle'] as String?,
+            ),
+          );
         }
         unawaited(_clearSelectionUi());
         break;
@@ -270,6 +350,10 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
   }
 
   Future<void> _handleExternalTapZone(String zone) async {
+    if (_useFlutterFallback) {
+      await _handleFallbackTapZone(zone);
+      return;
+    }
     if (!_pageReady) {
       if (zone == 'center') {
         widget.onMenuRequest();
@@ -281,6 +365,110 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     final escapedZone = jsonEncode(zone);
     await _controller.runJavaScript(
       'window.readerHandleTapZone($escapedZone);',
+    );
+  }
+
+  void _handleFallbackViewportTap(double localDx, double width) {
+    if (width <= 0 || !widget.pagedMode) {
+      widget.onToggleUi();
+      return;
+    }
+    final ratio = localDx / width;
+    if (ratio <= 0.32) {
+      unawaited(_handleFallbackTapZone('left'));
+      return;
+    }
+    if (ratio >= 0.68) {
+      unawaited(_handleFallbackTapZone('right'));
+      return;
+    }
+    unawaited(_handleFallbackTapZone('center'));
+  }
+
+  Future<void> _handleFallbackTapZone(String zone) async {
+    switch (zone) {
+      case 'left':
+        await _turnFallbackPage(-1);
+        return;
+      case 'right':
+        await _turnFallbackPage(1);
+        return;
+      case 'center':
+        widget.onToggleUi();
+        return;
+    }
+  }
+
+  Future<void> _turnFallbackPage(int direction) async {
+    if (!_fallbackScrollController.hasClients) {
+      if (direction < 0) {
+        await widget.onPageBoundaryPrevious();
+      } else {
+        await widget.onPageBoundaryNext();
+      }
+      return;
+    }
+
+    final position = _fallbackScrollController.position;
+    const boundaryTolerance = 4.0;
+    if (direction < 0 &&
+        position.pixels <= position.minScrollExtent + boundaryTolerance) {
+      await widget.onPageBoundaryPrevious();
+      return;
+    }
+    if (direction > 0 &&
+        position.pixels >= position.maxScrollExtent - boundaryTolerance) {
+      await widget.onPageBoundaryNext();
+      return;
+    }
+
+    final pageStep = (position.viewportDimension * 0.92).clamp(
+      120.0,
+      double.infinity,
+    );
+    final target = (position.pixels + direction * pageStep).clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    await _fallbackScrollController.animateTo(
+      target,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  Future<void> _scrollFallbackToFocusedAnchor({bool force = false}) async {
+    if (!_useFlutterFallback ||
+        !_fallbackScrollController.hasClients ||
+        (!force && _lastAnchorJumpVersion == widget.anchorJumpVersion)) {
+      return;
+    }
+    _lastAnchorJumpVersion = widget.anchorJumpVersion;
+
+    final rawAnchor = widget.focusedAnchor ?? '';
+    if (rawAnchor == readerChapterEndMarker) {
+      _fallbackScrollController.jumpTo(
+        _fallbackScrollController.position.maxScrollExtent,
+      );
+      return;
+    }
+    if (rawAnchor == readerChapterStartMarker || rawAnchor.isEmpty) {
+      _fallbackScrollController.jumpTo(
+        _fallbackScrollController.position.minScrollExtent,
+      );
+      return;
+    }
+
+    final anchor = AnnotationAnchor.parse(rawAnchor).blockAnchor;
+    final targetContext = _fallbackAnchorKeys[anchor]?.currentContext;
+    if (targetContext == null) {
+      return;
+    }
+    await Scrollable.ensureVisible(
+      targetContext,
+      alignment: 0.2,
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOutCubic,
     );
   }
 
@@ -375,7 +563,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     );
     if (!_allowFlutterFallback) {
       developer.log(
-        'Paged tablet mode keeps WebView active; suppressing Flutter fallback.',
+        'Paged reader mode keeps WebView active; suppressing Flutter fallback.',
         name: 'ReaderHtmlView',
       );
       return;
@@ -769,24 +957,135 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       position: fixed;
       z-index: 2147483647;
       display: none;
-      gap: 8px;
-      padding: 8px;
-      border-radius: 999px;
-      background: rgba(24, 24, 28, 0.94);
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22);
+      max-width: calc(100vw - 24px);
+      border-radius: 16px;
+      background: var(--reader-bg-soft);
+      background: color-mix(in srgb, var(--reader-bg) 88%, #111 12%);
+      border: 1px solid var(--reader-line);
+      border: 1px solid color-mix(in srgb, var(--reader-line) 78%, transparent);
+      box-shadow: 0 14px 34px rgba(0, 0, 0, 0.22);
+      overflow: hidden;
+      color: var(--reader-ink);
+      transform: translateY(0);
+    }
+    .reader-quickbar {
+      display: flex;
+      gap: 6px;
+      padding: 6px;
+    }
+    .reader-toolbar button,
+    .reader-toolbar textarea {
+      font-family: ${_fontStackCss()};
     }
     .reader-toolbar button {
       border: 0;
-      border-radius: 999px;
-      padding: 8px 14px;
+      border-radius: 12px;
+      padding: 9px 14px;
       font-size: 14px;
-      color: #fff;
+      color: var(--reader-ink);
       background: transparent;
+    }
+    .reader-toolbar button:disabled {
+      opacity: 0.54;
+    }
+    .reader-toolbar button:active {
+      transform: translateY(1px);
     }
     .reader-toolbar button.primary {
       background: ${_cssColor(widget.palette.accent)};
       color: ${_cssColor(widget.palette.background)};
       font-weight: 600;
+    }
+    .reader-composer {
+      display: none;
+      width: min(340px, calc(100vw - 24px));
+      padding: 12px;
+      gap: 10px;
+    }
+    .reader-toolbar.composing .reader-quickbar {
+      display: none;
+    }
+    .reader-toolbar.composing .reader-composer {
+      display: grid;
+    }
+    .reader-composer-quote {
+      max-height: 64px;
+      overflow: hidden;
+      padding: 10px;
+      border-radius: 12px;
+      background: var(--reader-bg-soft);
+      color: var(--reader-ink-secondary);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .reader-composer textarea {
+      width: 100%;
+      min-height: 92px;
+      resize: none;
+      border: 1px solid var(--reader-line);
+      border-radius: 12px;
+      padding: 10px 12px;
+      background: var(--reader-bg);
+      color: var(--reader-ink);
+      font-size: 15px;
+      line-height: 1.45;
+      outline: none;
+    }
+    .reader-composer textarea:focus {
+      border-color: var(--reader-accent);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--reader-accent) 22%, transparent);
+    }
+    .reader-composer-label {
+      margin: 0;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--reader-ink-secondary);
+    }
+    .reader-color-row,
+    .reader-underline-row,
+    .reader-action-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .reader-color-row {
+      overflow-x: auto;
+      scrollbar-width: none;
+      padding-bottom: 1px;
+    }
+    .reader-color-row::-webkit-scrollbar {
+      display: none;
+    }
+    .reader-color-button {
+      flex: 0 0 auto;
+      width: 26px;
+      height: 26px;
+      padding: 0 !important;
+      border-radius: 999px !important;
+      border: 2px solid transparent !important;
+      box-shadow: inset 0 0 0 1px rgba(0,0,0,0.12);
+    }
+    .reader-color-button.selected {
+      border-color: var(--reader-ink) !important;
+      box-shadow: 0 0 0 2px var(--reader-bg), inset 0 0 0 1px rgba(0,0,0,0.12);
+    }
+    .reader-underline-row {
+      flex-wrap: wrap;
+    }
+    .reader-underline-row button {
+      padding: 7px 10px;
+      border: 1px solid var(--reader-line);
+      background: var(--reader-bg-soft);
+      font-size: 13px;
+    }
+    .reader-underline-row button.selected {
+      border-color: var(--reader-accent);
+      color: var(--reader-accent);
+      font-weight: 700;
+    }
+    .reader-action-row {
+      justify-content: flex-end;
+      padding-top: 2px;
     }
     .reader-selection-overlay {
       position: fixed;
@@ -817,8 +1116,22 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
   <div id="reader-page-turn-shadow" class="reader-page-turn-shadow"></div>
   <div id="reader-selection-overlay" class="reader-selection-overlay"></div>
   <div id="reader-toolbar" class="reader-toolbar">
-    <button type="button" data-action="highlight">高亮</button>
-    <button type="button" class="primary" data-action="annotate">批注</button>
+    <div class="reader-quickbar">
+      <button type="button" data-action="highlight">高亮</button>
+      <button type="button" class="primary" data-action="compose">批注</button>
+    </div>
+    <div class="reader-composer">
+      <div id="reader-composer-quote" class="reader-composer-quote"></div>
+      <textarea id="reader-composer-note" placeholder="写下批注"></textarea>
+      <p class="reader-composer-label">颜色</p>
+      <div id="reader-color-row" class="reader-color-row"></div>
+      <p class="reader-composer-label">下划线</p>
+      <div id="reader-underline-row" class="reader-underline-row"></div>
+      <div class="reader-action-row">
+        <button type="button" data-action="cancelCompose">取消</button>
+        <button type="button" class="primary" data-action="saveAnnotation">保存</button>
+      </div>
+    </div>
   </div>
   <script>
     (function() {
@@ -828,10 +1141,25 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       const turnShadow = document.getElementById('reader-page-turn-shadow');
       const toolbar = document.getElementById('reader-toolbar');
       const overlay = document.getElementById('reader-selection-overlay');
+      const quotePreview = document.getElementById('reader-composer-quote');
+      const noteInput = document.getElementById('reader-composer-note');
+      const colorRow = document.getElementById('reader-color-row');
+      const underlineRow = document.getElementById('reader-underline-row');
       const pagedMode = ${widget.pagedMode ? 'true' : 'false'};
       const pageTurnAxis = ${jsonEncode(widget.preferences.tabletPageTurnAxis.storageValue)};
       const pageTurnAnimation = ${jsonEncode(widget.preferences.tabletPageTurnAnimation.storageValue)};
+      const annotationColors = ${jsonEncode(_webAnnotationColors)};
+      const defaultAnnotationColor = ${jsonEncode(_defaultAnnotationColor(widget.preferences.themeMode))};
+      const underlineOptions = [
+        { value: 'none', label: '无线条' },
+        { value: 'solid', label: '直线' },
+        { value: 'dotted', label: '点线' },
+        { value: 'wavy', label: '波浪线' }
+      ];
       let currentSelection = null;
+      let composerOpen = false;
+      let selectedColor = defaultAnnotationColor;
+      let selectedUnderline = 'none';
       let nativeSelectionClearTimer = null;
       let preservingSelectionUi = false;
       let readySent = false;
@@ -1013,7 +1341,10 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
           selectedText: range.toString(),
           top: rect.top,
           left: rect.left,
+          right: rect.right,
+          bottom: rect.bottom,
           width: rect.right - rect.left,
+          height: rect.bottom - rect.top,
           rects
         };
       }
@@ -1356,22 +1687,171 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         }, delay);
       }
 
-      function placeToolbar(data) {
+      function viewportMetrics() {
+        const visualViewport = window.visualViewport;
+        if (!visualViewport) {
+          return {
+            width: window.innerWidth || document.documentElement.clientWidth || 1,
+            height: window.innerHeight || document.documentElement.clientHeight || 1,
+            offsetLeft: 0,
+            offsetTop: 0
+          };
+        }
+        return {
+          width: visualViewport.width,
+          height: visualViewport.height,
+          offsetLeft: visualViewport.offsetLeft,
+          offsetTop: visualViewport.offsetTop
+        };
+      }
+
+      function clamp(value, min, max) {
+        return Math.max(min, Math.min(max, value));
+      }
+
+      function selectionPayload() {
+        if (!currentSelection) {
+          return null;
+        }
+        return {
+          blockAnchor: currentSelection.blockAnchor,
+          startBlockAnchor: currentSelection.startBlockAnchor || currentSelection.blockAnchor,
+          endBlockAnchor: currentSelection.endBlockAnchor || currentSelection.blockAnchor,
+          startOffset: currentSelection.startOffset,
+          endOffset: currentSelection.endOffset,
+          selectedText: currentSelection.selectedText
+        };
+      }
+
+      function sendSelectionAction(type, extras) {
+        const payload = selectionPayload();
+        if (!payload) {
+          return;
+        }
+        send(Object.assign({ type: type }, payload, extras || {}));
+      }
+
+      function setSelectedColor(color) {
+        selectedColor = color || defaultAnnotationColor;
+        if (!colorRow) {
+          return;
+        }
+        Array.from(colorRow.querySelectorAll('button[data-color]')).forEach(function(button) {
+          button.classList.toggle('selected', button.dataset.color === selectedColor);
+        });
+      }
+
+      function setSelectedUnderline(style) {
+        selectedUnderline = style || 'none';
+        if (!underlineRow) {
+          return;
+        }
+        Array.from(underlineRow.querySelectorAll('button[data-underline]')).forEach(function(button) {
+          button.classList.toggle('selected', button.dataset.underline === selectedUnderline);
+        });
+      }
+
+      function buildComposerControls() {
+        if (colorRow && colorRow.children.length === 0) {
+          annotationColors.forEach(function(color) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'reader-color-button';
+            button.dataset.color = color;
+            button.style.background = color;
+            button.setAttribute('aria-label', '选择颜色 ' + color);
+            colorRow.appendChild(button);
+          });
+        }
+        if (underlineRow && underlineRow.children.length === 0) {
+          underlineOptions.forEach(function(option) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.dataset.underline = option.value;
+            button.textContent = option.label;
+            underlineRow.appendChild(button);
+          });
+        }
+        setSelectedColor(selectedColor);
+        setSelectedUnderline(selectedUnderline);
+      }
+
+      function placeToolbar(data, mode) {
         if (!toolbar) return;
-        const estimatedWidth = 154;
-        const left = Math.max(12, Math.min(window.innerWidth - estimatedWidth - 12, data.left + (data.width / 2) - (estimatedWidth / 2)));
-        const top = Math.max(12, data.top - 52);
+        const metrics = viewportMetrics();
+        const safe = 12;
+        toolbar.style.display = 'block';
+        toolbar.style.visibility = 'hidden';
+        toolbar.classList.toggle('composing', mode === 'composer');
+        if (mode !== 'composer') {
+          toolbar.style.width = '';
+        }
+        const rect = toolbar.getBoundingClientRect();
+        const width = Math.min(rect.width || (mode === 'composer' ? 340 : 158), metrics.width - (safe * 2));
+        const height = rect.height || (mode === 'composer' ? 300 : 46);
+        const centered = data.left + (data.width / 2) - (width / 2);
+        const left = metrics.offsetLeft + clamp(centered, safe, metrics.width - width - safe);
+        const above = data.top - height - 10;
+        const below = data.bottom + 10;
+        const topWithinVisualViewport = metrics.offsetTop + safe;
+        const bottomWithinVisualViewport = metrics.offsetTop + metrics.height - height - safe;
+        const top = above >= topWithinVisualViewport
+          ? above
+          : clamp(below, topWithinVisualViewport, bottomWithinVisualViewport);
+        toolbar.style.width = mode === 'composer' ? width + 'px' : '';
         toolbar.style.left = left + 'px';
         toolbar.style.top = top + 'px';
-        toolbar.style.display = 'flex';
+        toolbar.style.visibility = 'visible';
+      }
+
+      function showQuickbar(data) {
+        if (!toolbar) return;
+        composerOpen = false;
+        toolbar.classList.remove('composing');
+        if (noteInput) {
+          noteInput.value = '';
+        }
+        placeToolbar(data, 'quickbar');
+      }
+
+      function showComposer() {
+        if (!toolbar || !currentSelection) {
+          return;
+        }
+        composerOpen = true;
+        buildComposerControls();
+        if (quotePreview) {
+          quotePreview.textContent = currentSelection.selectedText || '';
+        }
+        if (noteInput) {
+          noteInput.value = '';
+        }
+        selectedColor = defaultAnnotationColor;
+        selectedUnderline = 'none';
+        setSelectedColor(selectedColor);
+        setSelectedUnderline(selectedUnderline);
+        placeToolbar(currentSelection, 'composer');
+        window.setTimeout(function() {
+          if (!currentSelection) {
+            return;
+          }
+          if (noteInput) {
+            noteInput.focus({ preventScroll: true });
+          }
+          placeToolbar(currentSelection, 'composer');
+        }, 60);
       }
 
       function clearSelectionUi() {
         currentSelection = null;
+        composerOpen = false;
         preservingSelectionUi = false;
         cancelNativeSelectionClear();
         if (toolbar) {
           toolbar.style.display = 'none';
+          toolbar.style.visibility = 'visible';
+          toolbar.style.width = '';
+          toolbar.classList.remove('composing');
         }
         if (overlay) {
           overlay.replaceChildren();
@@ -1383,6 +1863,15 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         cancelNativeSelectionClear();
         const data = selectionData();
         if (!data) {
+          if (
+            composerOpen &&
+            currentSelection &&
+            toolbar &&
+            toolbar.contains(document.activeElement)
+          ) {
+            preservingSelectionUi = false;
+            return;
+          }
           if (preservingSelectionUi && currentSelection) {
             preservingSelectionUi = false;
             return;
@@ -1393,7 +1882,11 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         preservingSelectionUi = false;
         currentSelection = data;
         renderSelectionOverlay(data);
-        placeToolbar(data);
+        if (composerOpen) {
+          placeToolbar(data, 'composer');
+        } else {
+          showQuickbar(data);
+        }
       }
 
       function handleDocumentTap(target, clientX) {
@@ -1418,6 +1911,10 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
           ? target.closest('#reader-toolbar')
           : null;
         if (toolbarTarget) {
+          return;
+        }
+        if (currentSelection) {
+          clearSelectionUi();
           return;
         }
         if (pagedMode) {
@@ -1507,14 +2004,35 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       document.addEventListener('mouseup', function() {
         scheduleSelectionRefresh(20);
       });
-      document.addEventListener('scroll', clearSelectionUi, true);
+      document.addEventListener('scroll', function(event) {
+        if (toolbar && event.target && toolbar.contains(event.target)) {
+          return;
+        }
+        clearSelectionUi();
+      }, true);
       if (stage) {
         stage.addEventListener('scroll', clearSelectionUi, { passive: true });
       }
       window.addEventListener('resize', function() {
-        clearSelectionUi();
+        if (currentSelection) {
+          placeToolbar(currentSelection, composerOpen ? 'composer' : 'quickbar');
+        } else {
+          clearSelectionUi();
+        }
         updatePagedMetrics();
       });
+      if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', function() {
+          if (currentSelection) {
+            placeToolbar(currentSelection, composerOpen ? 'composer' : 'quickbar');
+          }
+        });
+        window.visualViewport.addEventListener('scroll', function() {
+          if (currentSelection) {
+            placeToolbar(currentSelection, composerOpen ? 'composer' : 'quickbar');
+          }
+        });
+      }
       document.addEventListener('contextmenu', function(event) {
         const data = selectionData();
         if (!data) {
@@ -1523,11 +2041,24 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         event.preventDefault();
         currentSelection = data;
         renderSelectionOverlay(data);
-        placeToolbar(data);
+        showQuickbar(data);
         scheduleNativeSelectionClear(120);
       });
 
       if (toolbar) {
+        ['pointerdown', 'touchstart', 'mousedown'].forEach(function(eventName) {
+          toolbar.addEventListener(eventName, function(event) {
+            event.stopPropagation();
+            cancelNativeSelectionClear();
+            const target = event.target;
+            const editableTarget = target && typeof target.closest === 'function'
+              ? target.closest('textarea')
+              : null;
+            if (!editableTarget) {
+              event.preventDefault();
+            }
+          }, { passive: false });
+        });
         toolbar.addEventListener('click', function(event) {
           const target = event.target;
           const button = target && typeof target.closest === 'function'
@@ -1536,16 +2067,60 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
           if (!button || !currentSelection) {
             return;
           }
+          event.preventDefault();
+          event.stopPropagation();
           const action = button.dataset.action;
-          send({
-            type: action,
-            blockAnchor: currentSelection.blockAnchor,
-            startBlockAnchor: currentSelection.startBlockAnchor || currentSelection.blockAnchor,
-            endBlockAnchor: currentSelection.endBlockAnchor || currentSelection.blockAnchor,
-            startOffset: currentSelection.startOffset,
-            endOffset: currentSelection.endOffset,
-            selectedText: currentSelection.selectedText
-          });
+          if (action === 'compose') {
+            showComposer();
+            return;
+          }
+          if (action === 'cancelCompose') {
+            showQuickbar(currentSelection);
+            return;
+          }
+          if (action === 'saveAnnotation') {
+            sendSelectionAction('saveAnnotation', {
+              noteText: noteInput ? noteInput.value : '',
+              color: selectedColor,
+              underlineStyle: selectedUnderline
+            });
+            button.disabled = true;
+            window.setTimeout(function() {
+              button.disabled = false;
+            }, 900);
+            return;
+          }
+          sendSelectionAction(action);
+        });
+      }
+
+      if (colorRow) {
+        colorRow.addEventListener('click', function(event) {
+          const target = event.target;
+          const button = target && typeof target.closest === 'function'
+            ? target.closest('button[data-color]')
+            : null;
+          if (!button) {
+            return;
+          }
+          event.preventDefault();
+          event.stopPropagation();
+          setSelectedColor(button.dataset.color);
+        });
+      }
+
+      if (underlineRow) {
+        underlineRow.addEventListener('click', function(event) {
+          const target = event.target;
+          const button = target && typeof target.closest === 'function'
+            ? target.closest('button[data-underline]')
+            : null;
+          if (!button) {
+            return;
+          }
+          event.preventDefault();
+          event.stopPropagation();
+          setSelectedUnderline(button.dataset.underline);
         });
       }
 
@@ -1776,6 +2351,23 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
 
   Color _annotationBackgroundColor(AnnotationView annotation) {
     return _annotationLineColor(annotation).withValues(alpha: 0.2);
+  }
+
+  String _defaultAnnotationColor(ReaderThemeMode themeMode) {
+    return switch (themeMode) {
+      ReaderThemeMode.eyeCare => '#4A6B3F',
+      ReaderThemeMode.night => '#C3924A',
+      ReaderThemeMode.paper || ReaderThemeMode.kraft => '#7A4A24',
+    };
+  }
+
+  String _normalizeAnnotationColor(String? color) {
+    final candidate = color?.trim();
+    if (candidate == null ||
+        !RegExp(r'^#[0-9a-fA-F]{6}$').hasMatch(candidate)) {
+      return _defaultAnnotationColor(widget.preferences.themeMode);
+    }
+    return candidate.toUpperCase();
   }
 
   String _fontCss({

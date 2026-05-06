@@ -1,7 +1,10 @@
+import 'package:flutter/foundation.dart';
+
 class AppConfig {
   AppConfig._();
 
-  static const String _defaultServerAddress = '192.168.110.159';
+  static const String _mobileDefaultServerAddress = '192.168.110.159';
+  static const String _desktopDefaultServerAddress = 'localhost';
   static const int defaultPort = 8080;
 
   static String get defaultServerAddress {
@@ -9,7 +12,7 @@ class AppConfig {
     if (override.isNotEmpty) {
       return normalizeAddress(override);
     }
-    return _defaultServerAddress;
+    return _platformDefaultServerAddress;
   }
 
   static String get defaultApiBaseUrl => normalizeBaseUrl(defaultServerAddress);
@@ -25,12 +28,12 @@ class AppConfig {
 
   static String normalizeBaseUrl(String input) {
     final trimmed = input.trim();
-    final candidate = trimmed.isEmpty ? _defaultServerAddress : trimmed;
+    final candidate = trimmed.isEmpty ? defaultServerAddress : trimmed;
     final withScheme = candidate.contains('://')
         ? candidate
         : 'http://$candidate';
     final parsed = Uri.parse(withScheme);
-    final host = parsed.host.isEmpty ? _defaultServerAddress : parsed.host;
+    final host = parsed.host.isEmpty ? defaultServerAddress : parsed.host;
     final scheme = parsed.scheme.isEmpty ? 'http' : parsed.scheme;
     final pathSegments = parsed.pathSegments
         .where((segment) => segment.isNotEmpty)
@@ -44,5 +47,15 @@ class AppConfig {
     );
 
     return normalized.toString();
+  }
+
+  static String get _platformDefaultServerAddress {
+    if (!kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.windows ||
+            defaultTargetPlatform == TargetPlatform.linux ||
+            defaultTargetPlatform == TargetPlatform.macOS)) {
+      return _desktopDefaultServerAddress;
+    }
+    return _mobileDefaultServerAddress;
   }
 }

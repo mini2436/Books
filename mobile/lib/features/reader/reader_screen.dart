@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/models/book_models.dart';
@@ -54,6 +55,8 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     final preferences = ref.watch(readerPreferencesControllerProvider).value;
     final palette = AppReaderPalette.of(context);
     final tablet = Responsive.isTablet(context);
+    final desktop = Responsive.isDesktop(context);
+    final wideReader = tablet || desktop;
 
     if (controller.isLoading && controller.currentChapter == null) {
       return Scaffold(
@@ -93,7 +96,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
 
     final chapter = controller.currentChapter;
     void handleChromeToggle() {
-      if (tablet && controller.uiVisible) {
+      if (wideReader && controller.uiVisible) {
         setState(() {
           _tabletPanel = null;
         });
@@ -102,7 +105,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     }
 
     void handleTabletMenuRequest() {
-      if (!tablet) {
+      if (!wideReader) {
         controller.toggleUi();
         return;
       }
@@ -123,8 +126,8 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
             preferences: preferences,
             palette: palette,
             uiVisible: controller.uiVisible,
-            pagedMode: tablet,
-            dualColumn: tablet,
+            pagedMode: wideReader,
+            dualColumn: wideReader,
             focusedAnchor: controller.focusedAnchor,
             anchorJumpVersion: controller.anchorJumpVersion,
             onHighlight: (selection, existingAnnotation) async {
@@ -154,6 +157,31 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                   selection: selection,
                   annotation: existingAnnotation,
                 ),
+            onSaveAnnotation:
+                (
+                  selection,
+                  existingAnnotation, {
+                  required noteText,
+                  required color,
+                  required underlineStyle,
+                }) async {
+                  if (existingAnnotation == null) {
+                    await controller.addAnnotation(
+                      selection: selection,
+                      noteText: noteText,
+                      color: color,
+                      underlineStyle: underlineStyle,
+                    );
+                    return;
+                  }
+                  await controller.updateAnnotation(
+                    annotation: existingAnnotation,
+                    noteText: noteText ?? existingAnnotation.noteText,
+                    color: color,
+                    selection: selection,
+                    underlineStyle: underlineStyle,
+                  );
+                },
             onOpenAnnotations: (annotations) =>
                 _openAnnotationsFromReader(controller, annotations),
             onPageBoundaryPrevious: controller.previousChapterFromPageBoundary,
@@ -164,92 +192,117 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
             viewportTapZoneVersion: _viewportTapZoneVersion,
           );
 
-    if (tablet) {
-      return Scaffold(
-        body: SafeArea(
-          child: Stack(
-            children: [
-              Positioned.fill(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(28, 20, 28, 20),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(28),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(color: palette.background),
-                      child: Stack(
-                        children: [
-                          Positioned.fill(child: body),
-                          if (controller.hasPendingChapterLoad)
-                            const Positioned(
-                              top: 0,
-                              left: 0,
-                              right: 0,
-                              child: LinearProgressIndicator(),
-                            ),
-                        ],
+    if (wideReader) {
+      return CallbackShortcuts(
+        bindings: <ShortcutActivator, VoidCallback>{
+          const SingleActivator(LogicalKeyboardKey.arrowLeft): () =>
+              _dispatchViewportTapZone('left'),
+          const SingleActivator(LogicalKeyboardKey.arrowRight): () =>
+              _dispatchViewportTapZone('right'),
+          const SingleActivator(LogicalKeyboardKey.space): () =>
+              _dispatchViewportTapZone('center'),
+          const SingleActivator(LogicalKeyboardKey.keyM):
+              handleTabletMenuRequest,
+          const SingleActivator(LogicalKeyboardKey.escape): () {
+            if (_tabletPanel != null) {
+              setState(() => _tabletPanel = null);
+              return;
+            }
+            if (!controller.uiVisible) {
+              controller.setUiVisible(true);
+            }
+          },
+        },
+        child: Focus(
+          autofocus: true,
+          child: Scaffold(
+            body: SafeArea(
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(28, 20, 28, 20),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(28),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(color: palette.background),
+                          child: Stack(
+                            children: [
+                              Positioned.fill(child: body),
+                              if (controller.hasPendingChapterLoad)
+                                const Positioned(
+                                  top: 0,
+                                  left: 0,
+                                  right: 0,
+                                  child: LinearProgressIndicator(),
+                                ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ),
-              Positioned(
-                top: 18,
-                left: 24,
-                right: 28,
-                child: _TabletChromeVisibility(
-                  visible: controller.uiVisible,
-                  offset: const Offset(0, -0.06),
-                  child: _TabletReaderHeader(
-                    detail: detail,
+                  Positioned(
+                    top: 18,
+                    left: 24,
+                    right: 28,
+                    child: _TabletChromeVisibility(
+                      visible: controller.uiVisible,
+                      offset: const Offset(0, -0.06),
+                      child: _TabletReaderHeader(
+                        detail: detail,
+                        controller: controller,
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    right: 20,
+                    top: 112,
+                    child: _TabletChromeVisibility(
+                      visible: controller.uiVisible,
+                      offset: const Offset(0.08, 0),
+                      child: _TabletReaderDock(
+                        activePanel: _tabletPanel,
+                        onSelectPanel: _toggleTabletPanel,
+                        onAddBookmark: controller.addBookmark,
+                        bookmarkDisabled: controller.hasCurrentChapterBookmark,
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    left: 28,
+                    bottom: 24,
+                    child: _TabletChromeVisibility(
+                      visible: controller.uiVisible,
+                      offset: const Offset(-0.08, 0),
+                      child: _TabletReaderProgressChip(
+                        controller: controller,
+                        onPreviousPage: () => _dispatchViewportTapZone('left'),
+                        onToggleChrome: () =>
+                            _dispatchViewportTapZone('center'),
+                        onNextPage: () => _dispatchViewportTapZone('right'),
+                      ),
+                    ),
+                  ),
+                  _TabletReaderPanelScrim(
+                    visible: _tabletPanel != null,
+                    onTap: () => setState(() => _tabletPanel = null),
+                  ),
+                  _TabletReaderPanelHost(
+                    panel: _tabletPanel,
                     controller: controller,
+                    onClose: () => setState(() => _tabletPanel = null),
+                    onEditAnnotation: (annotation) => _openAnnotationComposer(
+                      controller,
+                      annotation: annotation,
+                    ),
                   ),
-                ),
+                ],
               ),
-              Positioned(
-                right: 20,
-                top: 112,
-                child: _TabletChromeVisibility(
-                  visible: controller.uiVisible,
-                  offset: const Offset(0.08, 0),
-                  child: _TabletReaderDock(
-                    activePanel: _tabletPanel,
-                    onSelectPanel: _toggleTabletPanel,
-                    onAddBookmark: controller.addBookmark,
-                    bookmarkDisabled: controller.hasCurrentChapterBookmark,
-                  ),
-                ),
-              ),
-              Positioned(
-                left: 28,
-                bottom: 24,
-                child: _TabletChromeVisibility(
-                  visible: controller.uiVisible,
-                  offset: const Offset(-0.08, 0),
-                  child: _TabletReaderProgressChip(
-                    controller: controller,
-                    onPreviousPage: () => _dispatchViewportTapZone('left'),
-                    onToggleChrome: () => _dispatchViewportTapZone('center'),
-                    onNextPage: () => _dispatchViewportTapZone('right'),
-                  ),
-                ),
-              ),
-               _TabletReaderPanelScrim(
-                 visible: _tabletPanel != null,
-                 onTap: () => setState(() => _tabletPanel = null),
-               ),
-               _TabletReaderPanelHost(
-                 panel: _tabletPanel,
-                 controller: controller,
-                 onClose: () => setState(() => _tabletPanel = null),
-                 onEditAnnotation: (annotation) => _openAnnotationComposer(
-                   controller,
-                   annotation: annotation,
-                 ),
-               ),
-             ],
-           ),
-         ),
-       );
+            ),
+          ),
+        ),
+      );
     }
 
     return Scaffold(
@@ -640,7 +693,8 @@ class _AnnotationComposerSheetState extends State<_AnnotationComposerSheet> {
                                 color.toLowerCase() ==
                                 _selectedColor.toLowerCase();
                             return GestureDetector(
-                              onTap: () => setState(() => _selectedColor = color),
+                              onTap: () =>
+                                  setState(() => _selectedColor = color),
                               child: AnimatedContainer(
                                 duration: const Duration(milliseconds: 160),
                                 width: 36,
@@ -675,7 +729,9 @@ class _AnnotationComposerSheetState extends State<_AnnotationComposerSheet> {
                       SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         child: Row(
-                          children: AnnotationUnderlineStyle.values.map((style) {
+                          children: AnnotationUnderlineStyle.values.map((
+                            style,
+                          ) {
                             return Padding(
                               padding: const EdgeInsets.only(right: 10),
                               child: _UnderlineOptionChip(
@@ -721,9 +777,7 @@ class _AnnotationComposerSheetState extends State<_AnnotationComposerSheet> {
                               height: 18,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : Text(
-                              widget.annotation == null ? '保存批注' : '更新批注',
-                            ),
+                          : Text(widget.annotation == null ? '保存批注' : '更新批注'),
                     ),
                   ),
                 ],
@@ -1240,7 +1294,9 @@ class _MobileReaderBottomBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = AppReaderPalette.of(context);
     final chapterCount = controller.content?.chapters.length ?? 0;
-    final chapterNumber = chapterCount == 0 ? 0 : controller.currentChapterIndex + 1;
+    final chapterNumber = chapterCount == 0
+        ? 0
+        : controller.currentChapterIndex + 1;
     final progress = controller.progressPercent.clamp(0, 100);
 
     return Padding(
@@ -1285,7 +1341,9 @@ class _MobileReaderBottomBar extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      chapterCount <= 0 ? '正在计算章节进度' : '第 $chapterNumber / $chapterCount 章',
+                      chapterCount <= 0
+                          ? '正在计算章节进度'
+                          : '第 $chapterNumber / $chapterCount 章',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: palette.inkSecondary,
                       ),
@@ -1311,10 +1369,7 @@ class _MobileReaderBottomBar extends StatelessWidget {
 }
 
 class _TabletReaderPanelScrim extends StatelessWidget {
-  const _TabletReaderPanelScrim({
-    required this.visible,
-    required this.onTap,
-  });
+  const _TabletReaderPanelScrim({required this.visible, required this.onTap});
 
   final bool visible;
   final VoidCallback onTap;
@@ -1374,12 +1429,18 @@ class _TabletReaderPanelHost extends StatelessWidget {
                 ? key.value
                 : null;
             final alignLeft = panelValue == _TabletReaderPanel.toc;
-            final slide = Tween<Offset>(
-              begin: alignLeft ? const Offset(-0.08, 0) : const Offset(0.08, 0),
-              end: Offset.zero,
-            ).animate(
-              CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
-            );
+            final slide =
+                Tween<Offset>(
+                  begin: alignLeft
+                      ? const Offset(-0.08, 0)
+                      : const Offset(0.08, 0),
+                  end: Offset.zero,
+                ).animate(
+                  CurvedAnimation(
+                    parent: animation,
+                    curve: Curves.easeOutCubic,
+                  ),
+                );
             return FadeTransition(
               opacity: animation,
               child: SlideTransition(position: slide, child: child),
@@ -1519,7 +1580,10 @@ class _ReaderLeftPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = AppReaderPalette.of(context);
     final chapters = controller.content?.chapters ?? const [];
-    final compactTileDensity = const VisualDensity(horizontal: -2, vertical: -3);
+    final compactTileDensity = const VisualDensity(
+      horizontal: -2,
+      vertical: -3,
+    );
 
     return ColoredBox(
       color: palette.panel,
@@ -1584,15 +1648,15 @@ class _ReaderLeftPanel extends StatelessWidget {
                   bookmark.label ?? bookmark.location,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
                 ),
                 subtitle: Text(
                   bookmark.updatedAt.split('T').first,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: palette.inkTertiary,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: palette.inkTertiary),
                 ),
                 onTap: () => controller.jumpToAnchor(bookmark.location),
               ),

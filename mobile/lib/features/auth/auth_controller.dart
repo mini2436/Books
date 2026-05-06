@@ -138,13 +138,17 @@ class AuthController extends ChangeNotifier {
         return;
       }
 
-      _session = stored;
-      _isBootstrapping = false;
-      notifyListeners();
-      unawaited(refreshSession());
-      return;
+      final refreshed = await _apiClient.refresh(stored.refreshToken);
+      _session = refreshed;
+      _errorMessage = null;
+      await _sessionStorage.saveSession(refreshed);
+    } on ApiException {
+      _session = null;
+      _errorMessage = '登录状态已过期，请重新登录。';
+      await _sessionStorage.clear();
     } catch (_) {
       _session = null;
+      _errorMessage = null;
       await _sessionStorage.clear();
     } finally {
       _isBootstrapping = false;
@@ -167,6 +171,7 @@ class AuthController extends ChangeNotifier {
       return refreshed;
     } on ApiException {
       _session = null;
+      _errorMessage = '登录状态已过期，请重新登录。';
       await _sessionStorage.clear();
       notifyListeners();
       return null;

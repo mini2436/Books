@@ -23,6 +23,8 @@ dependencies:
   sqflite_common_ffi: ^2.4.0+3
   sqlite3_flutter_libs: ^0.6.0+eol
   webview_flutter: ^4.13.1
+  webview_windows:
+    path: packages/webview_windows
 
 dependency_overrides:
   flutter_secure_storage_windows:

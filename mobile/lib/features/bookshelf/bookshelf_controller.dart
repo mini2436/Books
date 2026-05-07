@@ -38,12 +38,26 @@ class BookshelfController extends ChangeNotifier {
   bool _isLoading = false;
   String? _error;
   int _pendingCount = 0;
+  String _searchQuery = '';
 
   List<BookSummary> get books => _books;
+  List<BookSummary> get visibleBooks {
+    final normalizedQuery = _normalizedSearchQuery;
+    if (normalizedQuery.isEmpty) {
+      return _books;
+    }
+    return _books
+        .where((book) => _matchesSearch(book, normalizedQuery))
+        .toList();
+  }
+
   bool get isLoading => _isLoading;
   String? get error => _error;
   int get pendingCount => _pendingCount;
   String get serviceBaseUrl => _apiClient.baseUrl;
+  String get searchQuery => _searchQuery;
+  bool get hasSearchQuery => _normalizedSearchQuery.isNotEmpty;
+  int get visibleBookCount => visibleBooks.length;
 
   Future<void> refresh() async {
     if (!_authController.isAuthenticated) {
@@ -105,4 +119,39 @@ class BookshelfController extends ChangeNotifier {
       notifyListeners();
     }
   }
+
+  void updateSearchQuery(String value) {
+    if (value == _searchQuery) {
+      return;
+    }
+    _searchQuery = value;
+    notifyListeners();
+  }
+
+  void clearSearchQuery() {
+    if (_searchQuery.isEmpty) {
+      return;
+    }
+    _searchQuery = '';
+    notifyListeners();
+  }
+
+  String get _normalizedSearchQuery => _normalizeForSearch(_searchQuery);
+
+  bool _matchesSearch(BookSummary book, String normalizedQuery) {
+    final candidates = [
+      book.title,
+      book.author,
+      book.description,
+      book.format,
+      book.pluginId,
+    ];
+    return candidates
+        .whereType<String>()
+        .map(_normalizeForSearch)
+        .any((candidate) => candidate.contains(normalizedQuery));
+  }
+
+  String _normalizeForSearch(String input) =>
+      input.toLowerCase().replaceAll(RegExp(r'\s+'), '');
 }

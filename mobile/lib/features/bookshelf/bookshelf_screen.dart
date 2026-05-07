@@ -10,12 +10,29 @@ import 'bookshelf_controller.dart';
 class BookshelfScreen extends ConsumerWidget {
   const BookshelfScreen({super.key});
 
+  static const double _phoneCoverAspectRatio = 0.64;
+  static const double _wideCoverAspectRatio = 0.68;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = ref.watch(bookshelfControllerProvider);
     final auth = ref.watch(authControllerProvider);
     final palette = AppReaderPalette.of(context);
-    final columns = Responsive.bookshelfColumns(context);
+    final tablet = Responsive.isTablet(context);
+    final columns = tablet ? Responsive.bookshelfColumns(context) : 2;
+    final visibleBooks = controller.visibleBooks;
+    final gridGap = tablet ? 20.0 : 16.0;
+    final horizontalPadding = tablet ? 24.0 : 16.0;
+    final viewportWidth = MediaQuery.sizeOf(context).width;
+    final availableWidth =
+        viewportWidth - (horizontalPadding * 2) - (gridGap * (columns - 1));
+    final tileWidth = availableWidth / columns;
+    final coverAspectRatio = tablet
+        ? _wideCoverAspectRatio
+        : _phoneCoverAspectRatio;
+    final imageHeight = tileWidth / coverAspectRatio;
+    final tileHeight = imageHeight + (tablet ? 98 : 102);
+    final childAspectRatio = tileWidth / tileHeight;
 
     return Scaffold(
       body: SafeArea(
@@ -84,20 +101,58 @@ class BookshelfScreen extends ConsumerWidget {
                         ],
                       ),
                       const SizedBox(height: 20),
-                      Wrap(
-                        spacing: 12,
-                        runSpacing: 12,
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _SummaryChip(
-                            label: '藏书',
-                            value: controller.books.length.toString(),
+                          Expanded(
+                            child: SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              physics: const BouncingScrollPhysics(),
+                              child: Row(
+                                children: [
+                                  _SummaryChip(
+                                    label: '藏书',
+                                    value: controller.books.length.toString(),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  _SummaryChip(
+                                    label: '待同步',
+                                    value: controller.pendingCount.toString(),
+                                  ),
+                                  if (controller.hasSearchQuery) ...[
+                                    const SizedBox(width: 12),
+                                    _SummaryChip(
+                                      label: '结果',
+                                      value: visibleBooks.length.toString(),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
                           ),
-                          _SummaryChip(
-                            label: '待同步',
-                            value: controller.pendingCount.toString(),
+                          const SizedBox(width: 12),
+                          SizedBox(
+                            width: tablet ? 260 : 156,
+                            child: _BookshelfSearchBar(
+                              query: controller.searchQuery,
+                              onChanged: ref
+                                  .read(bookshelfControllerProvider)
+                                  .updateSearchQuery,
+                              onClear: ref
+                                  .read(bookshelfControllerProvider)
+                                  .clearSearchQuery,
+                            ),
                           ),
                         ],
                       ),
+                      if (controller.hasSearchQuery) ...[
+                        const SizedBox(height: 10),
+                        _SearchResultHint(
+                          query: controller.searchQuery,
+                          totalCount: controller.books.length,
+                          visibleCount: visibleBooks.length,
+                        ),
+                      ],
                       if (controller.error != null) ...[
                         const SizedBox(height: 14),
                         _BookshelfErrorBanner(
@@ -140,20 +195,34 @@ class BookshelfScreen extends ConsumerWidget {
                     ),
                   ),
                 )
+              else if (visibleBooks.isEmpty)
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: _BookshelfEmptyState(
+                    title: '没有找到匹配的书',
+                    message: '试试换个关键词，按书名、作者或简介片段继续找。',
+                    onRetry: controller.hasSearchQuery
+                        ? controller.clearSearchQuery
+                        : null,
+                    actionLabel: controller.hasSearchQuery ? '清空搜索' : '重新加载',
+                  ),
+                )
               else
                 SliverPadding(
                   padding: EdgeInsets.fromLTRB(
-                    Responsive.isTablet(context) ? 24 : 16,
+                    horizontalPadding,
                     8,
-                    Responsive.isTablet(context) ? 24 : 16,
+                    horizontalPadding,
                     24,
                   ),
                   sliver: SliverGrid(
                     delegate: SliverChildBuilderDelegate((context, index) {
-                      final book = controller.books[index];
+                      final book = visibleBooks[index];
                       return _BookTile(
                         title: book.title,
-                        subtitle: book.author ?? book.format.toUpperCase(),
+                        author: book.author,
+                        description: book.description,
+                        coverAspectRatio: coverAspectRatio,
                         imageUrl: auth.accessToken == null
                             ? null
                             : ref
@@ -167,12 +236,12 @@ class BookshelfScreen extends ConsumerWidget {
                         badge: book.format.toUpperCase(),
                         onTap: () => context.push('/reader/${book.id}'),
                       );
-                    }, childCount: controller.books.length),
+                    }, childCount: visibleBooks.length),
                     gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: columns,
-                      crossAxisSpacing: Responsive.isTablet(context) ? 20 : 16,
-                      mainAxisSpacing: Responsive.isTablet(context) ? 20 : 16,
-                      childAspectRatio: 0.56,
+                      crossAxisSpacing: gridGap,
+                      mainAxisSpacing: gridGap,
+                      childAspectRatio: childAspectRatio,
                     ),
                   ),
                 ),
@@ -225,10 +294,17 @@ class _BookshelfErrorBanner extends StatelessWidget {
 }
 
 class _BookshelfEmptyState extends StatelessWidget {
-  const _BookshelfEmptyState({required this.message, this.onRetry});
+  const _BookshelfEmptyState({
+    this.title = '书架暂时没加载出来',
+    required this.message,
+    this.onRetry,
+    this.actionLabel = '重新加载',
+  });
 
+  final String title;
   final String message;
   final VoidCallback? onRetry;
+  final String actionLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -249,7 +325,7 @@ class _BookshelfEmptyState extends StatelessWidget {
               ),
               const SizedBox(height: 16),
               Text(
-                '书架暂时没加载出来',
+                title,
                 textAlign: TextAlign.center,
                 style: Theme.of(
                   context,
@@ -265,11 +341,12 @@ class _BookshelfEmptyState extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 16),
-              FilledButton.icon(
-                onPressed: onRetry,
-                icon: const Icon(Icons.refresh),
-                label: const Text('重新加载'),
-              ),
+              if (onRetry != null)
+                FilledButton.icon(
+                  onPressed: onRetry,
+                  icon: const Icon(Icons.refresh),
+                  label: Text(actionLabel),
+                ),
             ],
           ),
         ),
@@ -318,26 +395,151 @@ class _SummaryChip extends StatelessWidget {
   }
 }
 
+class _SearchResultHint extends StatelessWidget {
+  const _SearchResultHint({
+    required this.query,
+    required this.totalCount,
+    required this.visibleCount,
+  });
+
+  final String query;
+  final int totalCount;
+  final int visibleCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppReaderPalette.of(context);
+
+    return Row(
+      children: [
+        Icon(Icons.manage_search_rounded, size: 16, color: palette.inkTertiary),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            '“$query” 共找到 $visibleCount / $totalCount 本',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: palette.inkTertiary),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _BookshelfSearchBar extends StatefulWidget {
+  const _BookshelfSearchBar({
+    required this.query,
+    required this.onChanged,
+    required this.onClear,
+  });
+
+  final String query;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClear;
+
+  @override
+  State<_BookshelfSearchBar> createState() => _BookshelfSearchBarState();
+}
+
+class _BookshelfSearchBarState extends State<_BookshelfSearchBar> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.query);
+  }
+
+  @override
+  void didUpdateWidget(covariant _BookshelfSearchBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.query == _controller.text) {
+      return;
+    }
+    _controller.value = TextEditingValue(
+      text: widget.query,
+      selection: TextSelection.collapsed(offset: widget.query.length),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppReaderPalette.of(context);
+
+    return TextField(
+      controller: _controller,
+      onChanged: widget.onChanged,
+      textInputAction: TextInputAction.search,
+      decoration: InputDecoration(
+        hintText: '搜索书名、作者、简介',
+        prefixIcon: const Icon(Icons.search_rounded),
+        suffixIcon: widget.query.isEmpty
+            ? null
+            : IconButton(
+                onPressed: widget.onClear,
+                icon: const Icon(Icons.close_rounded),
+                tooltip: '清空搜索',
+              ),
+        filled: true,
+        fillColor: palette.backgroundSoft,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 18,
+          vertical: 14,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: BorderSide(color: palette.accent.withValues(alpha: 0.28)),
+        ),
+      ),
+    );
+  }
+}
+
 class _BookTile extends StatelessWidget {
   const _BookTile({
     required this.title,
-    required this.subtitle,
     required this.badge,
     required this.onTap,
+    required this.coverAspectRatio,
+    this.author,
+    this.description,
     this.imageUrl,
     this.headers,
   });
 
   final String title;
-  final String subtitle;
   final String badge;
   final VoidCallback onTap;
+  final double coverAspectRatio;
+  final String? author;
+  final String? description;
   final String? imageUrl;
   final Map<String, String>? headers;
 
   @override
   Widget build(BuildContext context) {
     final palette = AppReaderPalette.of(context);
+    final secondaryLine = (author ?? '').trim().isNotEmpty
+        ? author!.trim()
+        : badge;
+    final tertiaryLine = (description ?? '').trim();
 
     return InkWell(
       borderRadius: BorderRadius.circular(16),
@@ -345,23 +547,34 @@ class _BookTile extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
+          AspectRatio(
+            aspectRatio: coverAspectRatio,
             child: Stack(
               children: [
                 Positioned.fill(
                   child: DecoratedBox(
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(10),
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF6B4328), Color(0xFF8D5A36)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: Colors.black.withValues(alpha: 0.08),
                       ),
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF6A4426), Color(0xFF2E221B)],
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.14),
+                          blurRadius: 18,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
                     ),
                     child: imageUrl == null
                         ? _BookFallback(title: title)
                         : ClipRRect(
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.circular(14),
                             child: Image.network(
                               imageUrl!,
                               headers: headers,
@@ -370,6 +583,53 @@ class _BookTile extends StatelessWidget {
                                   _BookFallback(title: title),
                             ),
                           ),
+                  ),
+                ),
+                Positioned(
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        borderRadius: const BorderRadius.horizontal(
+                          left: Radius.circular(14),
+                        ),
+                        gradient: LinearGradient(
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                          colors: [
+                            Colors.white.withValues(alpha: 0.28),
+                            Colors.white.withValues(alpha: 0.08),
+                            Colors.transparent,
+                          ],
+                          stops: const [0, 0.18, 1],
+                        ),
+                      ),
+                      child: const SizedBox(width: 10),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: 10,
+                  right: 10,
+                  bottom: 10,
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.transparent,
+                            Colors.black.withValues(alpha: 0.08),
+                            Colors.black.withValues(alpha: 0.22),
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const SizedBox(height: 42),
+                    ),
                   ),
                 ),
                 Positioned(
@@ -404,19 +664,34 @@ class _BookTile extends StatelessWidget {
             title,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: Theme.of(
-              context,
-            ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+              height: 1.25,
+            ),
           ),
           const SizedBox(height: 4),
           Text(
-            subtitle,
+            secondaryLine,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: palette.inkTertiary),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: palette.inkSecondary,
+              fontWeight: (author ?? '').trim().isNotEmpty
+                  ? FontWeight.w500
+                  : FontWeight.w600,
+            ),
           ),
+          if (tertiaryLine.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text(
+              tertiaryLine,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: palette.inkSecondary),
+            ),
+          ],
         ],
       ),
     );
@@ -431,10 +706,18 @@ class _BookFallback extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Container(
+            width: 22,
+            height: 5,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.38),
+              borderRadius: BorderRadius.circular(999),
+            ),
+          ),
           const Spacer(),
           Text(
             title,
@@ -444,6 +727,7 @@ class _BookFallback extends StatelessWidget {
               color: Colors.white,
               fontWeight: FontWeight.w700,
               height: 1.35,
+              fontSize: 16,
             ),
           ),
         ],

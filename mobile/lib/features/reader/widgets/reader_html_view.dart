@@ -5,6 +5,7 @@ import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:webview_windows/webview_windows.dart' as windows_webview;
 
 import '../../../data/models/book_models.dart';
 import '../../../data/models/sync_models.dart';
@@ -46,6 +47,7 @@ class ReaderHtmlView extends StatefulWidget {
     required this.onAnnotate,
     required this.onSaveAnnotation,
     required this.onOpenAnnotations,
+    required this.onVisibleAnchorChanged,
     required this.onPageBoundaryPrevious,
     required this.onPageBoundaryNext,
     required this.onToggleUi,
@@ -86,6 +88,7 @@ class ReaderHtmlView extends StatefulWidget {
   onSaveAnnotation;
   final Future<void> Function(List<AnnotationView> annotations)
   onOpenAnnotations;
+  final ValueChanged<String> onVisibleAnchorChanged;
   final Future<void> Function() onPageBoundaryPrevious;
   final Future<void> Function() onPageBoundaryNext;
   final VoidCallback onToggleUi;
@@ -99,6 +102,9 @@ class ReaderHtmlView extends StatefulWidget {
 
 class _ReaderHtmlViewState extends State<ReaderHtmlView> {
   late final WebViewController _controller;
+  windows_webview.WebviewController? _windowsController;
+  StreamSubscription<dynamic>? _windowsWebMessageSubscription;
+  StreamSubscription<windows_webview.LoadingState>? _windowsLoadingSubscription;
   late String _lastHtml;
   bool _pageReady = false;
   bool _useFlutterFallback = false;
@@ -108,15 +114,20 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
   String? _pendingViewportSnapshotJson;
   final Map<String, GlobalKey> _fallbackAnchorKeys = <String, GlobalKey>{};
   final List<String> _pendingTapZones = <String>[];
+  final GlobalKey _fallbackViewportKey = GlobalKey();
   final ScrollController _fallbackScrollController = ScrollController();
   Timer? _blankPageGuard;
+  Timer? _fallbackAnchorReportTimer;
+  bool _fallbackScrollListenerAttached = false;
+
+  bool get _useWindowsWebView =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
 
   bool get _forceFlutterReader =>
-      !kIsWeb &&
-      (defaultTargetPlatform == TargetPlatform.windows ||
-          defaultTargetPlatform == TargetPlatform.linux);
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.linux;
 
-  bool get _allowFlutterFallback => _forceFlutterReader || !widget.pagedMode;
+  bool get _allowFlutterFallback =>
+      !_useWindowsWebView && (_forceFlutterReader || !widget.pagedMode);
 
   @override
   void initState() {
@@ -124,9 +135,15 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     _lastHtml = _buildHtml();
     if (_forceFlutterReader) {
       _useFlutterFallback = true;
+      _attachFallbackScrollListener();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _scrollFallbackToFocusedAnchor(force: true);
+        _reportFallbackVisibleAnchor();
       });
+      return;
+    }
+    if (_useWindowsWebView) {
+      unawaited(_initializeWindowsWebView());
       return;
     }
     _controller =
@@ -144,10 +161,10 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
                 );
               },
               onPageFinished: (_) async {
-                await _controller.runJavaScript(
+                await _runReaderJavaScript(
                   'if (window.readerSetChromeVisible) { window.readerSetChromeVisible(${widget.uiVisible ? 'true' : 'false'}); }',
                 );
-                await _controller.runJavaScript(
+                await _runReaderJavaScript(
                   'if (window.readerApplyLayout) { window.readerApplyLayout(); }',
                 );
               },
@@ -166,6 +183,43 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     _armBlankPageGuard();
   }
 
+  Future<void> _initializeWindowsWebView() async {
+    final controller = windows_webview.WebviewController();
+    _windowsController = controller;
+    try {
+      await controller.initialize();
+      if (!mounted) {
+        controller.dispose();
+        return;
+      }
+      await controller.setBackgroundColor(widget.palette.background);
+      _windowsWebMessageSubscription = controller.webMessage.listen(
+        _handleWindowsBridgeMessage,
+        onError: (error, stackTrace) {
+          developer.log(
+            'Windows WebView bridge message failed',
+            name: 'ReaderHtmlView',
+            error: error,
+            stackTrace: stackTrace is StackTrace ? stackTrace : null,
+          );
+        },
+      );
+      _windowsLoadingSubscription = controller.loadingState.listen((state) {
+        if (state == windows_webview.LoadingState.navigationCompleted) {
+          unawaited(_handlePageReady());
+        }
+      });
+      await controller.loadStringContent(_lastHtml);
+      _armBlankPageGuard();
+    } catch (error, stackTrace) {
+      _handleWebViewFailure(
+        reason: 'Windows WebView initialization failed',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+  }
+
   @override
   void didUpdateWidget(covariant ReaderHtmlView oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -179,6 +233,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
           widget.focusedAnchor != oldWidget.focusedAnchor) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _scrollFallbackToFocusedAnchor(force: chapterChanged);
+          _reportFallbackVisibleAnchor();
         });
       }
       if (widget.viewportTapZoneVersion != oldWidget.viewportTapZoneVersion) {
@@ -206,7 +261,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       _handleViewportTapZone();
     }
     if (widget.uiVisible != oldWidget.uiVisible) {
-      _controller.runJavaScript(
+      _runReaderJavaScript(
         'window.readerSetChromeVisible(${widget.uiVisible ? 'true' : 'false'});',
       );
     }
@@ -218,6 +273,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       return LayoutBuilder(
         builder: (context, constraints) {
           return GestureDetector(
+            key: _fallbackViewportKey,
             behavior: HitTestBehavior.translucent,
             onTapUp: (details) => _handleFallbackViewportTap(
               details.localPosition.dx,
@@ -247,7 +303,11 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       decoration: BoxDecoration(color: widget.palette.background),
       child: Stack(
         children: [
-          Positioned.fill(child: WebViewWidget(controller: _controller)),
+          Positioned.fill(
+            child: _useWindowsWebView
+                ? _buildWindowsWebView()
+                : WebViewWidget(controller: _controller),
+          ),
           if (!_pageReady)
             Positioned.fill(
               child: AbsorbPointer(
@@ -274,9 +334,38 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     );
   }
 
+  Widget _buildWindowsWebView() {
+    final controller = _windowsController;
+    if (controller == null) {
+      return ColoredBox(color: widget.palette.background);
+    }
+    return windows_webview.Webview(controller);
+  }
+
+  Future<void> _runReaderJavaScript(String script) async {
+    final windowsController = _windowsController;
+    if (_useWindowsWebView && windowsController != null) {
+      await windowsController.executeScript(script);
+      return;
+    }
+    await _controller.runJavaScript(script);
+  }
+
+  Future<dynamic> _runReaderJavaScriptReturningResult(String script) async {
+    final windowsController = _windowsController;
+    if (_useWindowsWebView && windowsController != null) {
+      return windowsController.executeScript(script);
+    }
+    return _controller.runJavaScriptReturningResult(script);
+  }
+
   @override
   void dispose() {
     _blankPageGuard?.cancel();
+    _fallbackAnchorReportTimer?.cancel();
+    unawaited(_windowsWebMessageSubscription?.cancel());
+    unawaited(_windowsLoadingSubscription?.cancel());
+    unawaited(_windowsController?.dispose());
     _fallbackScrollController.dispose();
     super.dispose();
   }
@@ -289,6 +378,30 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       return;
     }
 
+    await _handleBridgePayload(payload);
+  }
+
+  Future<void> _handleWindowsBridgeMessage(dynamic message) async {
+    Map<String, dynamic> payload;
+    try {
+      if (message is String) {
+        final decoded = jsonDecode(message);
+        if (decoded is String) {
+          payload = jsonDecode(decoded) as Map<String, dynamic>;
+        } else {
+          payload = Map<String, dynamic>.from(decoded as Map);
+        }
+      } else {
+        payload = Map<String, dynamic>.from(message as Map);
+      }
+    } catch (_) {
+      return;
+    }
+
+    await _handleBridgePayload(payload);
+  }
+
+  Future<void> _handleBridgePayload(Map<String, dynamic> payload) async {
     switch (payload['type']) {
       case 'ready':
         await _handlePageReady();
@@ -348,6 +461,12 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
           await widget.onOpenAnnotations(tapped);
         }
         break;
+      case 'visibleAnchor':
+        final anchor = payload['anchor'] as String?;
+        if (anchor != null && anchor.isNotEmpty) {
+          widget.onVisibleAnchorChanged(anchor);
+        }
+        break;
     }
   }
 
@@ -355,7 +474,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     if (!_pageReady) {
       return;
     }
-    await _controller.runJavaScript('window.readerClearSelectionUi();');
+    await _runReaderJavaScript('window.readerClearSelectionUi();');
   }
 
   Future<void> _handleExternalTapZone(String zone) async {
@@ -372,9 +491,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       return;
     }
     final escapedZone = jsonEncode(zone);
-    await _controller.runJavaScript(
-      'window.readerHandleTapZone($escapedZone);',
-    );
+    await _runReaderJavaScript('window.readerHandleTapZone($escapedZone);');
   }
 
   void _handleFallbackViewportTap(double localDx, double width) {
@@ -434,9 +551,17 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       _pendingTapZones.clear();
     });
     _blankPageGuard?.cancel();
-    _controller
-      ..setBackgroundColor(widget.palette.background)
-      ..loadHtmlString(_lastHtml);
+    if (_useWindowsWebView) {
+      final windowsController = _windowsController;
+      if (windowsController != null) {
+        await windowsController.setBackgroundColor(widget.palette.background);
+        await windowsController.loadStringContent(_lastHtml);
+      }
+    } else {
+      _controller
+        ..setBackgroundColor(widget.palette.background)
+        ..loadHtmlString(_lastHtml);
+    }
     _armBlankPageGuard();
   }
 
@@ -464,7 +589,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
 
   Future<void> _replaceReaderRoot(String rootHtml) async {
     try {
-      await _controller.runJavaScript(
+      await _runReaderJavaScript(
         'if (window.readerReplaceRootHtml) { window.readerReplaceRootHtml(${jsonEncode(rootHtml)}); }',
       );
     } catch (_) {
@@ -474,7 +599,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
 
   Future<String?> _captureViewportSnapshotJson() async {
     try {
-      final result = await _controller.runJavaScriptReturningResult(
+      final result = await _runReaderJavaScriptReturningResult(
         'window.readerCaptureViewport ? window.readerCaptureViewport() : null;',
       );
       final raw = result.toString();
@@ -503,7 +628,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     if (snapshotJson == null || snapshotJson.isEmpty || !_pageReady) {
       return;
     }
-    await _controller.runJavaScript(
+    await _runReaderJavaScript(
       'if (window.readerRestoreViewport) { window.readerRestoreViewport(${jsonEncode(snapshotJson)}); }',
     );
   }
@@ -544,6 +669,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       duration: const Duration(milliseconds: 260),
       curve: Curves.easeOutCubic,
     );
+    _reportFallbackVisibleAnchor();
   }
 
   Future<void> _scrollFallbackToFocusedAnchor({bool force = false}) async {
@@ -579,6 +705,54 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       duration: const Duration(milliseconds: 240),
       curve: Curves.easeOutCubic,
     );
+    _reportFallbackVisibleAnchor();
+  }
+
+  void _scheduleFallbackAnchorReport() {
+    _fallbackAnchorReportTimer?.cancel();
+    _fallbackAnchorReportTimer = Timer(
+      const Duration(milliseconds: 120),
+      _reportFallbackVisibleAnchor,
+    );
+  }
+
+  void _reportFallbackVisibleAnchor() {
+    if (!_useFlutterFallback || !mounted) {
+      return;
+    }
+    final viewportBox =
+        _fallbackViewportKey.currentContext?.findRenderObject() as RenderBox?;
+    if (viewportBox == null || !viewportBox.hasSize) {
+      return;
+    }
+    final viewportTop = viewportBox.localToGlobal(Offset.zero).dy;
+    final viewportBottom = viewportTop + viewportBox.size.height;
+    final probeY = viewportTop + viewportBox.size.height * 0.18;
+
+    String? bestAnchor;
+    double? bestScore;
+    for (final block in widget.chapter.blocks) {
+      final blockBox =
+          _fallbackAnchorKeys[block.anchor]?.currentContext?.findRenderObject()
+              as RenderBox?;
+      if (blockBox == null || !blockBox.hasSize) {
+        continue;
+      }
+      final blockTop = blockBox.localToGlobal(Offset.zero).dy;
+      final blockBottom = blockTop + blockBox.size.height;
+      if (blockBottom < viewportTop || blockTop > viewportBottom) {
+        continue;
+      }
+      final score = (blockTop - probeY).abs();
+      if (bestScore == null || score < bestScore) {
+        bestScore = score;
+        bestAnchor = block.anchor;
+      }
+    }
+
+    if (bestAnchor != null && bestAnchor.isNotEmpty) {
+      widget.onVisibleAnchorChanged(bestAnchor);
+    }
   }
 
   Future<void> _handlePageReady() async {
@@ -621,7 +795,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       return;
     }
     try {
-      final result = await _controller.runJavaScriptReturningResult('''
+      final result = await _runReaderJavaScriptReturningResult('''
         (function() {
           var root = document.getElementById("reader-root");
           if (!root || !root.innerText) {
@@ -684,6 +858,18 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     setState(() {
       _useFlutterFallback = true;
     });
+    _attachFallbackScrollListener();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _reportFallbackVisibleAnchor();
+    });
+  }
+
+  void _attachFallbackScrollListener() {
+    if (_fallbackScrollListenerAttached) {
+      return;
+    }
+    _fallbackScrollController.addListener(_scheduleFallbackAnchorReport);
+    _fallbackScrollListenerAttached = true;
   }
 
   Future<void> _flushPendingTapZones() async {
@@ -709,7 +895,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     if (rawAnchor == readerChapterEndMarker ||
         rawAnchor == readerChapterStartMarker) {
       final boundary = rawAnchor == readerChapterEndMarker ? 'end' : 'start';
-      await _controller.runJavaScript(
+      await _runReaderJavaScript(
         'window.readerScrollToBoundary(${jsonEncode(boundary)});',
       );
       return;
@@ -719,9 +905,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       return;
     }
     final escapedAnchor = jsonEncode(anchor);
-    await _controller.runJavaScript(
-      'window.readerScrollToAnchor($escapedAnchor);',
-    );
+    await _runReaderJavaScript('window.readerScrollToAnchor($escapedAnchor);');
   }
 
   int? _boundaryAnimationDirectionForAnchor(String? anchor) {
@@ -740,7 +924,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     if (!_pageReady || !widget.pagedMode || direction == null) {
       return;
     }
-    await _controller.runJavaScript(
+    await _runReaderJavaScript(
       'window.readerPlayBoundaryTransition(${direction >= 0 ? 1 : -1});',
     );
   }
@@ -1302,7 +1486,19 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
   </div>
   <script>
     (function() {
-      const bridge = window.ReaderBridge;
+      const bridge = window.ReaderBridge || (
+        window.chrome && window.chrome.webview
+          ? {
+              postMessage: function(message) {
+                try {
+                  window.chrome.webview.postMessage(JSON.parse(message));
+                } catch (_) {
+                  window.chrome.webview.postMessage(message);
+                }
+              }
+            }
+          : null
+      );
       const stage = document.getElementById('reader-stage');
       const root = document.getElementById('reader-root');
       const turnShadow = document.getElementById('reader-page-turn-shadow');
@@ -1343,6 +1539,8 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       let lastTouchHandledAt = 0;
       let selectionRefreshTimer = null;
       let lastToolbarTouchActionAt = 0;
+      let progressAnchorTimer = null;
+      let lastProgressAnchor = '';
 
       function send(payload) {
         if (!bridge || !bridge.postMessage) return;
@@ -1355,6 +1553,69 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         }
         readySent = true;
         send({ type: 'ready' });
+      }
+
+      function currentViewportAnchor() {
+        const blocks = Array.from(document.querySelectorAll('[data-block-anchor]'));
+        if (blocks.length === 0) {
+          return '';
+        }
+        const viewportRect = stage
+          ? stage.getBoundingClientRect()
+          : {
+              top: 0,
+              left: 0,
+              right: window.innerWidth || document.documentElement.clientWidth || 1,
+              bottom: window.innerHeight || document.documentElement.clientHeight || 1,
+              width: window.innerWidth || document.documentElement.clientWidth || 1,
+              height: window.innerHeight || document.documentElement.clientHeight || 1
+            };
+        const probeY = viewportRect.top + (viewportRect.height * 0.18);
+        const probeX = viewportRect.left + (viewportRect.width * 0.12);
+        let best = null;
+        blocks.forEach(function(block) {
+          const anchor = block.dataset.blockAnchor || '';
+          if (!anchor) {
+            return;
+          }
+          const rects = Array.from(block.getClientRects())
+            .filter(function(rect) {
+              return rect.width > 0 &&
+                rect.height > 0 &&
+                rect.right >= viewportRect.left &&
+                rect.left <= viewportRect.right &&
+                rect.bottom >= viewportRect.top &&
+                rect.top <= viewportRect.bottom;
+            });
+          rects.forEach(function(rect) {
+            const yDistance = Math.abs(rect.top - probeY);
+            const xDistance = Math.abs(rect.left - probeX);
+            const score = yDistance * 10000 + xDistance;
+            if (!best || score < best.score) {
+              best = { anchor: anchor, score: score };
+            }
+          });
+        });
+        return best ? best.anchor : '';
+      }
+
+      function reportCurrentViewportAnchor() {
+        const anchor = currentViewportAnchor();
+        if (!anchor || anchor === lastProgressAnchor) {
+          return;
+        }
+        lastProgressAnchor = anchor;
+        send({ type: 'visibleAnchor', anchor: anchor });
+      }
+
+      function scheduleViewportAnchorReport(delay) {
+        if (progressAnchorTimer) {
+          window.clearTimeout(progressAnchorTimer);
+        }
+        progressAnchorTimer = window.setTimeout(function() {
+          progressAnchorTimer = null;
+          reportCurrentViewportAnchor();
+        }, delay || 90);
       }
 
       function afterStableLayout(callback) {
@@ -1730,6 +1991,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
           const bounds = pageBounds();
           currentOffset = Math.min(bounds.maxOffset, currentPage * pageSpan);
           applyPagedOffset();
+          scheduleViewportAnchorReport(120);
         };
         if (!animate) {
           commit();
@@ -1798,6 +2060,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
           top: nextTop,
           behavior: 'smooth',
         });
+        scheduleViewportAnchorReport(260);
         return true;
       }
 
@@ -2250,9 +2513,13 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
           return;
         }
         clearSelectionUi();
+        scheduleViewportAnchorReport(120);
       }, true);
       if (stage) {
-        stage.addEventListener('scroll', clearSelectionUi, { passive: true });
+        stage.addEventListener('scroll', function() {
+          clearSelectionUi();
+          scheduleViewportAnchorReport(120);
+        }, { passive: true });
       }
       window.addEventListener('resize', function() {
         if (currentSelection) {
@@ -2261,6 +2528,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
           clearSelectionUi();
         }
         updatePagedMetrics();
+        scheduleViewportAnchorReport(160);
       });
       if (window.visualViewport) {
         window.visualViewport.addEventListener('resize', function() {
@@ -2394,6 +2662,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
             ? snapshot.currentPage
             : 0;
           goToPage(targetPage, false);
+          scheduleViewportAnchorReport(120);
           return;
         }
         if (!stage) {
@@ -2410,6 +2679,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
           top: Math.max(0, Math.min(maxScroll, top)),
           behavior: 'auto'
         });
+        scheduleViewportAnchorReport(120);
       };
 
       window.readerReplaceRootHtml = function(nextHtml) {
@@ -2424,6 +2694,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         if (snapshotJson && window.readerRestoreViewport) {
           window.readerRestoreViewport(snapshotJson);
         }
+        scheduleViewportAnchorReport(120);
       };
 
       window.readerClearSelectionUi = function() {
@@ -2465,19 +2736,23 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
               top: Math.max(0, stage.scrollHeight - stage.clientHeight),
               behavior: 'auto',
             });
+            scheduleViewportAnchorReport(120);
             return;
           }
           if (boundary === 'start' && stage) {
             stage.scrollTo({ top: 0, behavior: 'auto' });
+            scheduleViewportAnchorReport(120);
           }
           return;
         }
         updatePagedMetrics();
         if (boundary === 'end') {
           goToPage(Math.max(0, pageCount - 1), false);
+          scheduleViewportAnchorReport(120);
           return;
         }
         goToPage(0, false);
+        scheduleViewportAnchorReport(120);
       };
 
       window.readerScrollToAnchor = function(anchor) {
@@ -2500,11 +2775,13 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         if (!pagedMode) {
           target.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
+        scheduleViewportAnchorReport(180);
         window.setTimeout(() => target.classList.add('reader-anchor-pulse'), 40);
       };
 
       afterStableLayout(function() {
         updatePagedMetrics();
+        reportCurrentViewportAnchor();
         sendReady();
       });
     })();

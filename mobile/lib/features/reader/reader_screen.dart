@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/models/book_models.dart';
@@ -56,7 +57,9 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     final palette = AppReaderPalette.of(context);
     final tablet = Responsive.isTablet(context);
     final desktop = Responsive.isDesktop(context);
-    final wideReader = tablet || desktop;
+    final windowsReader =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+    final wideReader = windowsReader || tablet || desktop;
 
     if (controller.isLoading && controller.currentChapter == null) {
       return Scaffold(
@@ -186,6 +189,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                 },
             onOpenAnnotations: (annotations) =>
                 _openAnnotationsFromReader(controller, annotations),
+            onVisibleAnchorChanged: controller.updateVisibleAnchor,
             onPageBoundaryPrevious: controller.previousChapterFromPageBoundary,
             onPageBoundaryNext: controller.nextChapterFromPageBoundary,
             onToggleUi: handleChromeToggle,
@@ -267,7 +271,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                         activePanel: _tabletPanel,
                         onSelectPanel: _toggleTabletPanel,
                         onAddBookmark: controller.addBookmark,
-                        bookmarkDisabled: controller.hasCurrentChapterBookmark,
+                        bookmarkDisabled: controller.hasCurrentLocationBookmark,
                       ),
                     ),
                   ),
@@ -1030,7 +1034,7 @@ class _TabletReaderDock extends StatelessWidget {
             ),
             _TabletDockButton(
               icon: Icons.bookmark_add_outlined,
-              tooltip: bookmarkDisabled ? '当前页已加书签' : '添加当前书签',
+              tooltip: bookmarkDisabled ? '当前位置已加书签' : '添加当前位置书签',
               onPressed: bookmarkDisabled ? null : () => onAddBookmark(),
             ),
             _TabletDockButton(
@@ -1725,7 +1729,9 @@ class _ReaderBookmarksManager extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  currentChapter?.title ?? '当前章节还在加载中',
+                  controller.currentReadingLabel.isNotEmpty
+                      ? controller.currentReadingLabel
+                      : currentChapter?.title ?? '当前位置还在加载中',
                   style: Theme.of(
                     context,
                   ).textTheme.bodyMedium?.copyWith(color: palette.inkSecondary),
@@ -1742,14 +1748,14 @@ class _ReaderBookmarksManager extends StatelessWidget {
                   ),
                   onPressed:
                       currentChapter == null ||
-                          controller.hasCurrentChapterBookmark
+                          controller.hasCurrentLocationBookmark
                       ? null
                       : controller.addBookmark,
                   icon: const Icon(Icons.bookmark_add_outlined),
                   label: Text(
-                    controller.hasCurrentChapterBookmark
-                        ? '当前页已加入书签'
-                        : '添加当前书签',
+                    controller.hasCurrentLocationBookmark
+                        ? '当前位置已加入书签'
+                        : '添加当前位置书签',
                   ),
                 ),
               ],
@@ -1781,7 +1787,7 @@ class _ReaderBookmarksManager extends StatelessWidget {
           Expanded(
             child: Center(
               child: Text(
-                '还没有书签，先为当前页加一个吧。',
+                '还没有书签，先为当前位置加一个吧。',
                 textAlign: TextAlign.center,
                 style: Theme.of(
                   context,

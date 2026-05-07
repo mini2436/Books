@@ -88,27 +88,53 @@ class ReaderController extends ChangeNotifier {
   int currentChapterIndex = 0;
   String? focusedAnchor;
   int anchorJumpVersion = 0;
+  String? _currentVisibleAnchor;
   Timer? _progressTimer;
 
   bool get isSupported => detail?.supportsStructuredReader == true;
 
   BookContentChapter? get currentChapter => _chapterCache[currentChapterIndex];
-  bool get hasCurrentChapterBookmark {
-    final chapter = currentChapter;
-    if (chapter == null) {
+  bool get hasCurrentLocationBookmark {
+    final location = currentReadingLocation;
+    if (location.isEmpty) {
       return false;
     }
     return bookmarks.any(
-      (bookmark) => !bookmark.deleted && bookmark.location == chapter.anchor,
+      (bookmark) => !bookmark.deleted && bookmark.location == location,
     );
   }
 
+  String get currentReadingLocation {
+    final visibleAnchor = AnnotationAnchor.parse(
+      _currentVisibleAnchor ?? '',
+    ).blockAnchor;
+    if (visibleAnchor.isNotEmpty) {
+      return visibleAnchor;
+    }
+    return currentChapter?.anchor ?? '';
+  }
+
+  String get currentReadingLabel => _labelForLocation(currentReadingLocation);
+
   double get progressPercent {
     final chapterCount = content?.chapters.length ?? 0;
-    if (chapterCount <= 1) {
+    if (chapterCount <= 0) {
       return 0;
     }
-    return ((currentChapterIndex + 1) / chapterCount) * 100;
+    final chapter = currentChapter;
+    if (chapter == null || chapter.blocks.isEmpty) {
+      return (currentChapterIndex / chapterCount) * 100;
+    }
+    final currentAnchor = AnnotationAnchor.parse(
+      currentReadingLocation,
+    ).blockAnchor;
+    final blockIndex = chapter.blocks.indexWhere(
+      (block) => block.anchor == currentAnchor,
+    );
+    final blockProgress = blockIndex < 0
+        ? 0.0
+        : (blockIndex + 1) / chapter.blocks.length;
+    return ((currentChapterIndex + blockProgress) / chapterCount) * 100;
   }
 
   bool get isCurrentChapterLoading =>
@@ -172,6 +198,9 @@ class ReaderController extends ChangeNotifier {
       currentChapterIndex = await _resolveChapterIndex(initialLocation) ?? 0;
       if (initialLocation != null && initialLocation.isNotEmpty) {
         focusedAnchor = initialLocation;
+        _currentVisibleAnchor = AnnotationAnchor.parse(
+          initialLocation,
+        ).blockAnchor;
         anchorJumpVersion += 1;
       }
       await openChapter(currentChapterIndex, persistProgress: false);
@@ -195,11 +224,20 @@ class ReaderController extends ChangeNotifier {
 
     await _fetchChapter(chapterIndex);
     currentChapterIndex = chapterIndex;
+    final chapter = currentChapter;
     final targetAnchor = switch (position) {
       ReaderChapterOpenPosition.preserve => null,
       ReaderChapterOpenPosition.start => readerChapterStartMarker,
       ReaderChapterOpenPosition.end => readerChapterEndMarker,
     };
+    if (position == ReaderChapterOpenPosition.start) {
+      _currentVisibleAnchor = _firstReadableAnchor(chapter);
+    } else if (position == ReaderChapterOpenPosition.end) {
+      _currentVisibleAnchor = _lastReadableAnchor(chapter);
+    } else if (chapter != null &&
+        !_chapterContainsAnchor(chapter, currentReadingLocation)) {
+      _currentVisibleAnchor = _firstReadableAnchor(chapter);
+    }
     if (targetAnchor == null) {
       notifyListeners();
     }
@@ -235,6 +273,7 @@ class ReaderController extends ChangeNotifier {
     if (chapterIndex == null) {
       return;
     }
+    _currentVisibleAnchor = AnnotationAnchor.parse(anchor).blockAnchor;
     focusedAnchor = anchor;
     anchorJumpVersion += 1;
     notifyListeners();
@@ -242,19 +281,19 @@ class ReaderController extends ChangeNotifier {
   }
 
   Future<void> addBookmark() async {
-    final chapter = currentChapter;
-    if (chapter == null) {
+    final location = currentReadingLocation;
+    if (location.isEmpty) {
       return;
     }
-    if (hasCurrentChapterBookmark) {
+    if (hasCurrentLocationBookmark) {
       return;
     }
 
     final mutation = BookmarkMutation(
       bookId: bookId,
       action: 'CREATE',
-      location: chapter.anchor,
-      label: chapter.title,
+      location: location,
+      label: _labelForLocation(location),
       updatedAt: DateTime.now().toUtc().toIso8601String(),
     );
 
@@ -269,8 +308,8 @@ class ReaderController extends ChangeNotifier {
         BookmarkView(
           id: DateTime.now().millisecondsSinceEpoch,
           bookId: bookId,
-          location: chapter.anchor,
-          label: chapter.title,
+          location: location,
+          label: mutation.label,
           deleted: false,
           updatedAt: mutation.updatedAt,
         ),
@@ -289,8 +328,8 @@ class ReaderController extends ChangeNotifier {
         BookmarkView(
           id: -DateTime.now().millisecondsSinceEpoch,
           bookId: bookId,
-          location: chapter.anchor,
-          label: chapter.title,
+          location: location,
+          label: mutation.label,
           deleted: false,
           updatedAt: mutation.updatedAt,
         ),
@@ -469,6 +508,21 @@ class ReaderController extends ChangeNotifier {
   void setInspectorTab(ReaderInspectorTab tab) {
     inspectorTab = tab;
     notifyListeners();
+  }
+
+  void updateVisibleAnchor(String anchor) {
+    final parsedAnchor = AnnotationAnchor.parse(anchor).blockAnchor;
+    final chapter = currentChapter;
+    if (parsedAnchor.isEmpty ||
+        chapter == null ||
+        !_chapterContainsAnchor(chapter, parsedAnchor) ||
+        parsedAnchor == _currentVisibleAnchor) {
+      return;
+    }
+
+    _currentVisibleAnchor = parsedAnchor;
+    notifyListeners();
+    _scheduleProgressWrite();
   }
 
   @override
@@ -676,8 +730,8 @@ class ReaderController extends ChangeNotifier {
   }
 
   void _scheduleProgressWrite() {
-    final chapter = currentChapter;
-    if (chapter == null) {
+    final location = currentReadingLocation;
+    if (location.isEmpty) {
       return;
     }
 
@@ -685,7 +739,7 @@ class ReaderController extends ChangeNotifier {
     _progressTimer = Timer(const Duration(milliseconds: 900), () async {
       final mutation = ReadingProgressMutation(
         bookId: bookId,
-        location: chapter.anchor,
+        location: location,
         progressPercent: progressPercent,
         updatedAt: DateTime.now().toUtc().toIso8601String(),
       );
@@ -710,6 +764,42 @@ class ReaderController extends ChangeNotifier {
 
   String _localId(String prefix) =>
       '$prefix-${DateTime.now().microsecondsSinceEpoch}';
+
+  String _firstReadableAnchor(BookContentChapter? chapter) {
+    if (chapter == null) {
+      return '';
+    }
+    return chapter.blocks.isEmpty
+        ? chapter.anchor
+        : chapter.blocks.first.anchor;
+  }
+
+  String _lastReadableAnchor(BookContentChapter? chapter) {
+    if (chapter == null) {
+      return '';
+    }
+    return chapter.blocks.isEmpty ? chapter.anchor : chapter.blocks.last.anchor;
+  }
+
+  String _labelForLocation(String location) {
+    final chapter = currentChapter;
+    if (chapter == null) {
+      return location;
+    }
+    final anchor = AnnotationAnchor.parse(location).blockAnchor;
+    final block = chapter.blocks.cast<BookContentBlock?>().firstWhere(
+      (item) => item?.anchor == anchor,
+      orElse: () => null,
+    );
+    final excerpt = block?.renderedText.trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (excerpt == null || excerpt.isEmpty || anchor == chapter.anchor) {
+      return chapter.title;
+    }
+    final clipped = excerpt.length > 28
+        ? '${excerpt.substring(0, 28)}...'
+        : excerpt;
+    return '${chapter.title} · $clipped';
+  }
 
   Future<void> _refreshBookmarks() async {
     final refreshed = await _authController.runAuthorized(

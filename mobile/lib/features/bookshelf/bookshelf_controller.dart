@@ -59,10 +59,6 @@ class BookshelfController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      developer.log(
-        'Refreshing bookshelf from ${_apiClient.baseUrl}',
-        name: 'BookshelfController',
-      );
       final nextBooks = await _authController.runAuthorized(
         (accessToken) => _apiClient.listMyBooks(accessToken),
       );
@@ -79,10 +75,6 @@ class BookshelfController extends ChangeNotifier {
       }
       _books = nextBooks;
       _pendingCount = count;
-      developer.log(
-        'Bookshelf loaded ${nextBooks.length} books from ${_apiClient.baseUrl}',
-        name: 'BookshelfController',
-      );
     } catch (error, stackTrace) {
       _error = '书架加载失败，请检查服务地址、登录状态或网络后重试。\n当前服务：${_apiClient.baseUrl}\n$error';
       developer.log(

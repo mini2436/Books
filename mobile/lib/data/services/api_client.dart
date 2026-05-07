@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 import 'package:path/path.dart' as path;
 
@@ -481,6 +483,24 @@ class ApiClient {
     );
 
     return BookContentChapter.fromJson(data);
+  }
+
+  Future<Uint8List> downloadBookResource(
+    String accessToken,
+    int bookId,
+    String resourceId,
+  ) async {
+    final data = await _request<List<int>>(
+      () => _dio.get<List<int>>(
+        '/api/me/books/$bookId/content/resources/$resourceId',
+        options: Options(
+          headers: _headers(accessToken),
+          responseType: ResponseType.bytes,
+        ),
+      ),
+    );
+
+    return Uint8List.fromList(data);
   }
 
   Future<List<AnnotationView>> listAnnotations(

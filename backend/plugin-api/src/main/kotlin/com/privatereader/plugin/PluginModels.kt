@@ -21,6 +21,11 @@ data class CoverExtractionResult(
     val bytes: ByteArray,
 )
 
+data class BookResource(
+    val mimeType: String,
+    val bytes: ByteArray,
+)
+
 data class ReadingManifest(
     val format: String,
     val toc: List<ManifestTocItem>,
@@ -38,6 +43,7 @@ data class IndexableContent(
 
 data class StructuredBookContent(
     val chapters: List<StructuredBookChapter>,
+    val contentModel: String = "UNIFIED_V1",
 )
 
 data class StructuredBookChapter(
@@ -61,6 +67,7 @@ enum class StructuredBlockType(
     PARAGRAPH("paragraph"),
     QUOTE("quote"),
     DIVIDER("divider"),
+    IMAGE("image"),
     ;
 
     companion object {

@@ -33,6 +33,8 @@ class ReaderHtmlView extends StatefulWidget {
   const ReaderHtmlView({
     super.key,
     required this.chapter,
+    required this.imageResources,
+    required this.failedImageResourceIds,
     required this.annotations,
     required this.preferences,
     required this.palette,
@@ -54,6 +56,8 @@ class ReaderHtmlView extends StatefulWidget {
   });
 
   final BookContentChapter chapter;
+  final Map<String, Uint8List> imageResources;
+  final Set<String> failedImageResourceIds;
   final List<AnnotationView> annotations;
   final ReaderPreferences preferences;
   final AppReaderPalette palette;
@@ -100,6 +104,8 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
   bool _useFlutterFallback = false;
   int? _pendingBoundaryAnimationDirection;
   int _lastAnchorJumpVersion = -1;
+  int _reloadGeneration = 0;
+  String? _pendingViewportSnapshotJson;
   final Map<String, GlobalKey> _fallbackAnchorKeys = <String, GlobalKey>{};
   final List<String> _pendingTapZones = <String>[];
   final ScrollController _fallbackScrollController = ScrollController();
@@ -164,7 +170,8 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
   void didUpdateWidget(covariant ReaderHtmlView oldWidget) {
     super.didUpdateWidget(oldWidget);
     final chapterChanged = oldWidget.chapter.anchor != widget.chapter.anchor;
-    final nextHtml = _buildHtml();
+    final nextRootHtml = _buildRootHtml();
+    final nextHtml = _buildHtml(rootHtml: nextRootHtml);
     if (_forceFlutterReader) {
       _lastHtml = nextHtml;
       if (chapterChanged ||
@@ -179,19 +186,16 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       }
       return;
     }
-    if (nextHtml != _lastHtml) {
+    if (nextHtml != _lastHtml &&
+        _canPatchReaderRoot(oldWidget) &&
+        _pageReady &&
+        !_useFlutterFallback) {
       _lastHtml = nextHtml;
-      _pageReady = false;
-      _useFlutterFallback = false;
-      _pendingBoundaryAnimationDirection = chapterChanged
-          ? _boundaryAnimationDirectionForAnchor(widget.focusedAnchor)
-          : null;
-      _pendingTapZones.clear();
-      _blankPageGuard?.cancel();
-      _controller
-        ..setBackgroundColor(widget.palette.background)
-        ..loadHtmlString(_lastHtml);
-      _armBlankPageGuard();
+      unawaited(_replaceReaderRoot(nextRootHtml));
+      return;
+    }
+    if (nextHtml != _lastHtml) {
+      unawaited(_reloadHtml(nextHtml, chapterChanged: chapterChanged));
       return;
     }
     if (widget.anchorJumpVersion != oldWidget.anchorJumpVersion ||
@@ -224,6 +228,9 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
               padding: const EdgeInsets.only(bottom: 12),
               child: ReaderBlocksView(
                 blocks: widget.chapter.blocks,
+                imageResources: widget.imageResources,
+                failedImageResourceIds: widget.failedImageResourceIds,
+                constrainImagesToViewport: widget.pagedMode,
                 annotations: widget.annotations,
                 preferences: widget.preferences,
                 keyForAnchor: _fallbackKeyForAnchor,
@@ -248,6 +255,8 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
                   color: widget.palette.background,
                   child: _ReaderLoadingOverlay(
                     chapter: widget.chapter,
+                    imageResources: widget.imageResources,
+                    failedImageResourceIds: widget.failedImageResourceIds,
                     annotations: widget.annotations,
                     preferences: widget.preferences,
                     palette: widget.palette,
@@ -399,6 +408,106 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     }
   }
 
+  Future<void> _reloadHtml(
+    String nextHtml, {
+    required bool chapterChanged,
+  }) async {
+    final generation = ++_reloadGeneration;
+    String? viewportSnapshotJson;
+    if (!chapterChanged && _pageReady && !_useFlutterFallback) {
+      viewportSnapshotJson = await _captureViewportSnapshotJson();
+      if (!mounted || generation != _reloadGeneration) {
+        return;
+      }
+    }
+
+    setState(() {
+      _lastHtml = nextHtml;
+      _pageReady = false;
+      _useFlutterFallback = false;
+      _pendingViewportSnapshotJson = chapterChanged
+          ? null
+          : viewportSnapshotJson;
+      _pendingBoundaryAnimationDirection = chapterChanged
+          ? _boundaryAnimationDirectionForAnchor(widget.focusedAnchor)
+          : null;
+      _pendingTapZones.clear();
+    });
+    _blankPageGuard?.cancel();
+    _controller
+      ..setBackgroundColor(widget.palette.background)
+      ..loadHtmlString(_lastHtml);
+    _armBlankPageGuard();
+  }
+
+  bool _canPatchReaderRoot(ReaderHtmlView oldWidget) {
+    return oldWidget.chapter.anchor == widget.chapter.anchor &&
+        oldWidget.pagedMode == widget.pagedMode &&
+        oldWidget.dualColumn == widget.dualColumn &&
+        oldWidget.preferences.themeMode == widget.preferences.themeMode &&
+        oldWidget.preferences.fontScale == widget.preferences.fontScale &&
+        oldWidget.preferences.lineHeight == widget.preferences.lineHeight &&
+        oldWidget.preferences.fontFamily == widget.preferences.fontFamily &&
+        oldWidget.preferences.tabletPageTurnAxis ==
+            widget.preferences.tabletPageTurnAxis &&
+        oldWidget.preferences.tabletPageTurnAnimation ==
+            widget.preferences.tabletPageTurnAnimation &&
+        oldWidget.palette.background == widget.palette.background &&
+        oldWidget.palette.backgroundSoft == widget.palette.backgroundSoft &&
+        oldWidget.palette.ink == widget.palette.ink &&
+        oldWidget.palette.inkSecondary == widget.palette.inkSecondary &&
+        oldWidget.palette.accent == widget.palette.accent &&
+        oldWidget.palette.line == widget.palette.line &&
+        oldWidget.palette.selection == widget.palette.selection &&
+        oldWidget.palette.mask == widget.palette.mask;
+  }
+
+  Future<void> _replaceReaderRoot(String rootHtml) async {
+    try {
+      await _controller.runJavaScript(
+        'if (window.readerReplaceRootHtml) { window.readerReplaceRootHtml(${jsonEncode(rootHtml)}); }',
+      );
+    } catch (_) {
+      // The next rebuild will fall back to a full document reload if patching fails.
+    }
+  }
+
+  Future<String?> _captureViewportSnapshotJson() async {
+    try {
+      final result = await _controller.runJavaScriptReturningResult(
+        'window.readerCaptureViewport ? window.readerCaptureViewport() : null;',
+      );
+      final raw = result.toString();
+      if (raw == 'null' || raw.isEmpty) {
+        return null;
+      }
+      return _decodeJavaScriptStringResult(raw);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _decodeJavaScriptStringResult(String raw) {
+    if (raw.length >= 2 && raw.startsWith('"') && raw.endsWith('"')) {
+      final decoded = jsonDecode(raw);
+      if (decoded is String) {
+        return decoded;
+      }
+    }
+    return raw;
+  }
+
+  Future<void> _restorePendingViewport() async {
+    final snapshotJson = _pendingViewportSnapshotJson;
+    _pendingViewportSnapshotJson = null;
+    if (snapshotJson == null || snapshotJson.isEmpty || !_pageReady) {
+      return;
+    }
+    await _controller.runJavaScript(
+      'if (window.readerRestoreViewport) { window.readerRestoreViewport(${jsonEncode(snapshotJson)}); }',
+    );
+  }
+
   Future<void> _turnFallbackPage(int direction) async {
     if (!_fallbackScrollController.hasClients) {
       if (direction < 0) {
@@ -486,6 +595,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     setState(() {
       _pageReady = true;
     });
+    await _restorePendingViewport();
     await _scrollToFocusedAnchor();
     await _playPendingBoundaryAnimation();
     await _flushPendingTapZones();
@@ -773,7 +883,16 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     return _SelectionIntent(selection: selection, existingAnnotation: null);
   }
 
-  String _buildHtml() {
+  String _buildRootHtml() {
+    final orderedBlockAnchors = widget.chapter.blocks
+        .map((block) => block.anchor)
+        .toList(growable: false);
+    return widget.chapter.blocks
+        .map((block) => _buildBlockHtml(block, orderedBlockAnchors))
+        .join();
+  }
+
+  String _buildHtml({String? rootHtml}) {
     final bodyClasses = <String>[
       if (widget.pagedMode) 'reader-paged',
       if (widget.dualColumn) 'reader-dual-column',
@@ -788,12 +907,19 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       fontStyle: 'italic',
     );
     final headingSize = 30 * widget.preferences.fontScale;
-    final orderedBlockAnchors = widget.chapter.blocks
-        .map((block) => block.anchor)
-        .toList(growable: false);
-    final htmlBlocks = widget.chapter.blocks
-        .map((block) => _buildBlockHtml(block, orderedBlockAnchors))
-        .join();
+    final htmlBlocks = rootHtml ?? _buildRootHtml();
+    final toolbarBackground = _cssColor(
+      Color.alphaBlend(
+        widget.palette.ink.withValues(alpha: 0.08),
+        widget.palette.background,
+      ),
+    );
+    final toolbarBorder = _cssColor(
+      widget.palette.line.withValues(alpha: 0.86),
+    );
+    final toolbarFocusShadow = _cssColor(
+      widget.palette.accent.withValues(alpha: 0.22),
+    );
 
     return '''
 <!DOCTYPE html>
@@ -811,6 +937,9 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       --reader-line: ${_cssColor(widget.palette.line)};
       --reader-selection: ${_cssColor(widget.palette.selection)};
       --reader-mask: ${_cssColor(widget.palette.mask)};
+      --reader-toolbar-bg: $toolbarBackground;
+      --reader-toolbar-border: $toolbarBorder;
+      --reader-toolbar-focus: $toolbarFocusShadow;
     }
     * { box-sizing: border-box; }
     html, body {
@@ -916,27 +1045,61 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       margin: 24px 0;
       font-size: ${((17 * widget.preferences.fontScale) * 0.95).toStringAsFixed(2)}px;
     }
+    .reader-block[data-type="image"] {
+      margin: 18px 0;
+      white-space: normal;
+      text-align: center;
+      break-inside: avoid;
+      page-break-inside: avoid;
+      -webkit-column-break-inside: avoid;
+    }
+    .reader-image {
+      display: block;
+      width: 100%;
+      max-width: 100%;
+      height: auto;
+      object-fit: contain;
+      border-radius: 8px;
+    }
+    body.reader-paged .reader-block[data-type="image"] {
+      max-height: calc(100vh - 72px);
+    }
+    body.reader-paged .reader-image {
+      width: auto;
+      max-height: calc(100vh - 112px);
+      margin: 0 auto;
+    }
+    .reader-image-caption {
+      margin-top: 8px;
+      color: var(--reader-ink-secondary);
+      font-size: ${((17 * widget.preferences.fontScale) * 0.78).toStringAsFixed(2)}px;
+      line-height: 1.35;
+    }
+    .reader-image-placeholder {
+      display: grid;
+      place-items: center;
+      min-height: 180px;
+      border: 1px solid var(--reader-line);
+      border-radius: 8px;
+      background: var(--reader-bg-soft);
+      color: var(--reader-ink-secondary);
+      font-size: ${((17 * widget.preferences.fontScale) * 0.82).toStringAsFixed(2)}px;
+    }
     .reader-block.legacy-highlight {
       padding: 6px 10px;
       border-radius: 14px;
     }
     .annot {
       --annot-bg: transparent;
-      --annot-gap: 0.14em;
       border-radius: 4px;
       box-decoration-break: clone;
       -webkit-box-decoration-break: clone;
       cursor: pointer;
       background-color: transparent !important;
-      background-image: linear-gradient(
-        to bottom,
-        transparent 0,
-        transparent var(--annot-gap),
-        var(--annot-bg) var(--annot-gap),
-        var(--annot-bg) calc(100% - var(--annot-gap)),
-        transparent calc(100% - var(--annot-gap)),
-        transparent 100%
-      );
+      background-image: linear-gradient(var(--annot-bg), var(--annot-bg)) !important;
+      background-repeat: no-repeat;
+      background-size: 100% 58%;
+      background-position: 0 64%;
     }
     .annot.has-underline {
       text-decoration-line: underline;
@@ -960,13 +1123,15 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       max-width: calc(100vw - 24px);
       border-radius: 16px;
       background: var(--reader-bg-soft);
-      background: color-mix(in srgb, var(--reader-bg) 88%, #111 12%);
-      border: 1px solid var(--reader-line);
-      border: 1px solid color-mix(in srgb, var(--reader-line) 78%, transparent);
+      background-color: var(--reader-toolbar-bg);
+      border: 1px solid var(--reader-toolbar-border);
       box-shadow: 0 14px 34px rgba(0, 0, 0, 0.22);
       overflow: hidden;
       color: var(--reader-ink);
       transform: translateY(0);
+      pointer-events: auto;
+      touch-action: manipulation;
+      isolation: isolate;
     }
     .reader-quickbar {
       display: flex;
@@ -1001,6 +1166,8 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       width: min(340px, calc(100vw - 24px));
       padding: 12px;
       gap: 10px;
+      background: var(--reader-toolbar-bg);
+      color: var(--reader-ink);
     }
     .reader-toolbar.composing .reader-quickbar {
       display: none;
@@ -1033,7 +1200,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     }
     .reader-composer textarea:focus {
       border-color: var(--reader-accent);
-      box-shadow: 0 0 0 3px color-mix(in srgb, var(--reader-accent) 22%, transparent);
+      box-shadow: 0 0 0 3px var(--reader-toolbar-focus);
     }
     .reader-composer-label {
       margin: 0;
@@ -1175,6 +1342,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       let touchTracking = false;
       let lastTouchHandledAt = 0;
       let selectionRefreshTimer = null;
+      let lastToolbarTouchActionAt = 0;
 
       function send(payload) {
         if (!bridge || !bridge.postMessage) return;
@@ -1731,6 +1899,35 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         send(Object.assign({ type: type }, payload, extras || {}));
       }
 
+      function handleToolbarAction(action, button) {
+        if (!action || !currentSelection) {
+          return;
+        }
+        if (action === 'compose') {
+          showComposer();
+          return;
+        }
+        if (action === 'cancelCompose') {
+          showQuickbar(currentSelection);
+          return;
+        }
+        if (action === 'saveAnnotation') {
+          sendSelectionAction('saveAnnotation', {
+            noteText: noteInput ? noteInput.value : '',
+            color: selectedColor,
+            underlineStyle: selectedUnderline
+          });
+          if (button) {
+            button.disabled = true;
+            window.setTimeout(function() {
+              button.disabled = false;
+            }, 900);
+          }
+          return;
+        }
+        sendSelectionAction(action);
+      }
+
       function setSelectedColor(color) {
         selectedColor = color || defaultAnnotationColor;
         if (!colorRow) {
@@ -1774,6 +1971,47 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         }
         setSelectedColor(selectedColor);
         setSelectedUnderline(selectedUnderline);
+      }
+
+      function toolbarContainsTarget(target) {
+        return !!(
+          toolbar &&
+          target &&
+          typeof target.closest === 'function' &&
+          target.closest('#reader-toolbar')
+        );
+      }
+
+      function handleColorButtonEvent(event) {
+        const target = event.target;
+        const button = target && typeof target.closest === 'function'
+          ? target.closest('button[data-color]')
+          : null;
+        if (!button) {
+          return false;
+        }
+        lastTouchHandledAt = Date.now();
+        event.preventDefault();
+        event.stopPropagation();
+        cancelNativeSelectionClear();
+        setSelectedColor(button.dataset.color);
+        return true;
+      }
+
+      function handleUnderlineButtonEvent(event) {
+        const target = event.target;
+        const button = target && typeof target.closest === 'function'
+          ? target.closest('button[data-underline]')
+          : null;
+        if (!button) {
+          return false;
+        }
+        lastTouchHandledAt = Date.now();
+        event.preventDefault();
+        event.stopPropagation();
+        cancelNativeSelectionClear();
+        setSelectedUnderline(button.dataset.underline);
+        return true;
       }
 
       function placeToolbar(data, mode) {
@@ -1907,10 +2145,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         if (selection && !selection.isCollapsed) {
           return;
         }
-        const toolbarTarget = target && typeof target.closest === 'function'
-          ? target.closest('#reader-toolbar')
-          : null;
-        if (toolbarTarget) {
+        if (toolbarContainsTarget(target)) {
           return;
         }
         if (currentSelection) {
@@ -1977,6 +2212,12 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         touchStartAt = 0;
       }, { passive: true });
       document.addEventListener('touchend', function(event) {
+        if (toolbarContainsTarget(event.target)) {
+          touchTracking = false;
+          touchMoved = false;
+          touchStartAt = 0;
+          return;
+        }
         const touch = event.changedTouches && event.changedTouches.length > 0
           ? event.changedTouches[0]
           : null;
@@ -2059,7 +2300,24 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
             }
           }, { passive: false });
         });
+        toolbar.addEventListener('touchend', function(event) {
+          const target = event.target;
+          const button = target && typeof target.closest === 'function'
+            ? target.closest('button[data-action]')
+            : null;
+          if (!button || !currentSelection) {
+            return;
+          }
+          lastTouchHandledAt = Date.now();
+          lastToolbarTouchActionAt = lastTouchHandledAt;
+          event.preventDefault();
+          event.stopPropagation();
+          handleToolbarAction(button.dataset.action, button);
+        }, { passive: false });
         toolbar.addEventListener('click', function(event) {
+          if (Date.now() - lastToolbarTouchActionAt < 400) {
+            return;
+          }
           const target = event.target;
           const button = target && typeof target.closest === 'function'
             ? target.closest('button[data-action]')
@@ -2069,58 +2327,31 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
           }
           event.preventDefault();
           event.stopPropagation();
-          const action = button.dataset.action;
-          if (action === 'compose') {
-            showComposer();
-            return;
-          }
-          if (action === 'cancelCompose') {
-            showQuickbar(currentSelection);
-            return;
-          }
-          if (action === 'saveAnnotation') {
-            sendSelectionAction('saveAnnotation', {
-              noteText: noteInput ? noteInput.value : '',
-              color: selectedColor,
-              underlineStyle: selectedUnderline
-            });
-            button.disabled = true;
-            window.setTimeout(function() {
-              button.disabled = false;
-            }, 900);
-            return;
-          }
-          sendSelectionAction(action);
+          handleToolbarAction(button.dataset.action, button);
         });
       }
 
       if (colorRow) {
+        colorRow.addEventListener('touchend', function(event) {
+          handleColorButtonEvent(event);
+        }, { passive: false });
         colorRow.addEventListener('click', function(event) {
-          const target = event.target;
-          const button = target && typeof target.closest === 'function'
-            ? target.closest('button[data-color]')
-            : null;
-          if (!button) {
+          if (Date.now() - lastTouchHandledAt < 400) {
             return;
           }
-          event.preventDefault();
-          event.stopPropagation();
-          setSelectedColor(button.dataset.color);
+          handleColorButtonEvent(event);
         });
       }
 
       if (underlineRow) {
+        underlineRow.addEventListener('touchend', function(event) {
+          handleUnderlineButtonEvent(event);
+        }, { passive: false });
         underlineRow.addEventListener('click', function(event) {
-          const target = event.target;
-          const button = target && typeof target.closest === 'function'
-            ? target.closest('button[data-underline]')
-            : null;
-          if (!button) {
+          if (Date.now() - lastTouchHandledAt < 400) {
             return;
           }
-          event.preventDefault();
-          event.stopPropagation();
-          setSelectedUnderline(button.dataset.underline);
+          handleUnderlineButtonEvent(event);
         });
       }
 
@@ -2130,6 +2361,70 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         }
         handleDocumentTap(event.target, event.clientX);
       });
+
+      window.readerCaptureViewport = function() {
+        const maxScroll = stage
+          ? Math.max(0, stage.scrollHeight - stage.clientHeight)
+          : 0;
+        return JSON.stringify({
+          pagedMode: pagedMode,
+          currentPage: currentPage,
+          currentOffset: currentOffset,
+          pageCount: pageCount,
+          scrollTop: stage ? stage.scrollTop : 0,
+          scrollRatio: maxScroll <= 0 || !stage ? 0 : stage.scrollTop / maxScroll
+        });
+      };
+
+      window.readerRestoreViewport = function(snapshotJson) {
+        if (!snapshotJson) {
+          return;
+        }
+        let snapshot;
+        try {
+          snapshot = typeof snapshotJson === 'string'
+            ? JSON.parse(snapshotJson)
+            : snapshotJson;
+        } catch (_) {
+          return;
+        }
+        updatePagedMetrics();
+        if (pagedMode) {
+          const targetPage = Number.isFinite(snapshot.currentPage)
+            ? snapshot.currentPage
+            : 0;
+          goToPage(targetPage, false);
+          return;
+        }
+        if (!stage) {
+          return;
+        }
+        const maxScroll = Math.max(0, stage.scrollHeight - stage.clientHeight);
+        const ratio = Number.isFinite(snapshot.scrollRatio)
+          ? Math.max(0, Math.min(1, snapshot.scrollRatio))
+          : null;
+        const top = ratio === null
+          ? (Number.isFinite(snapshot.scrollTop) ? snapshot.scrollTop : 0)
+          : ratio * maxScroll;
+        stage.scrollTo({
+          top: Math.max(0, Math.min(maxScroll, top)),
+          behavior: 'auto'
+        });
+      };
+
+      window.readerReplaceRootHtml = function(nextHtml) {
+        if (!root || typeof nextHtml !== 'string') {
+          return;
+        }
+        const snapshotJson = window.readerCaptureViewport
+          ? window.readerCaptureViewport()
+          : null;
+        root.innerHTML = nextHtml;
+        updatePagedMetrics();
+        if (snapshotJson && window.readerRestoreViewport) {
+          window.readerRestoreViewport(snapshotJson);
+        }
+      };
 
       window.readerClearSelectionUi = function() {
         clearNativeSelectionOnly();
@@ -2223,6 +2518,10 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     BookContentBlock block,
     List<String> orderedBlockAnchors,
   ) {
+    if (block.isImage) {
+      return _buildImageBlockHtml(block);
+    }
+
     final blockText = block.renderedText;
     final blockAnnotations =
         widget.annotations
@@ -2275,6 +2574,23 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         ? ' legacy-highlight'
         : '';
     return '<$tag class="reader-block$extraClass" data-type="${_escapeHtml(block.type)}" data-block-anchor="${_escapeHtml(block.anchor)}" data-anchor="${_escapeHtml(block.anchor)}"$legacyStyle>$content</$tag>';
+  }
+
+  String _buildImageBlockHtml(BookContentBlock block) {
+    final resourceId = block.resourceId;
+    final bytes = resourceId == null ? null : widget.imageResources[resourceId];
+    final failed =
+        resourceId == null ||
+        widget.failedImageResourceIds.contains(resourceId);
+    final caption = (block.imageCaption ?? block.imageAlt ?? '').trim();
+    final captionHtml = caption.isEmpty
+        ? ''
+        : '<figcaption class="reader-image-caption">${_escapeHtml(caption)}</figcaption>';
+    final mediaType = block.imageMediaType ?? 'image/png';
+    final imageHtml = bytes == null
+        ? '<div class="reader-image-placeholder">${failed ? '图片无法加载' : '图片加载中'}</div>'
+        : '<img class="reader-image" src="data:${_escapeHtml(mediaType)};base64,${base64Encode(bytes)}" alt="${_escapeHtml(block.imageAlt ?? caption)}"/>';
+    return '<figure class="reader-block" data-type="image" data-block-anchor="${_escapeHtml(block.anchor)}" data-anchor="${_escapeHtml(block.anchor)}">$imageHtml$captionHtml</figure>';
   }
 
   String _buildAnnotatedInlineHtml(
@@ -2350,7 +2666,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
   }
 
   Color _annotationBackgroundColor(AnnotationView annotation) {
-    return _annotationLineColor(annotation).withValues(alpha: 0.2);
+    return _annotationLineColor(annotation).withValues(alpha: 0.14);
   }
 
   String _defaultAnnotationColor(ReaderThemeMode themeMode) {
@@ -2414,6 +2730,8 @@ font-family: ${_fontStackCss()};
 class _ReaderLoadingOverlay extends StatelessWidget {
   const _ReaderLoadingOverlay({
     required this.chapter,
+    required this.imageResources,
+    required this.failedImageResourceIds,
     required this.annotations,
     required this.preferences,
     required this.palette,
@@ -2425,6 +2743,8 @@ class _ReaderLoadingOverlay extends StatelessWidget {
   });
 
   final BookContentChapter chapter;
+  final Map<String, Uint8List> imageResources;
+  final Set<String> failedImageResourceIds;
   final List<AnnotationView> annotations;
   final ReaderPreferences preferences;
   final AppReaderPalette palette;
@@ -2504,6 +2824,9 @@ class _ReaderLoadingOverlay extends StatelessWidget {
         opacity: 0.96,
         child: ReaderBlocksView(
           blocks: chapter.blocks,
+          imageResources: imageResources,
+          failedImageResourceIds: failedImageResourceIds,
+          constrainImagesToViewport: pagedMode,
           annotations: annotations,
           preferences: preferences,
           onHighlight: onHighlight,

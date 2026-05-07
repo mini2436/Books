@@ -122,6 +122,8 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
         ? const Center(child: CircularProgressIndicator())
         : ReaderHtmlView(
             chapter: chapter,
+            imageResources: controller.imageResourceBytes,
+            failedImageResourceIds: controller.failedImageResourceIds,
             annotations: controller.annotations,
             preferences: preferences,
             palette: palette,
@@ -452,43 +454,53 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     final existingAnchor = annotation == null
         ? null
         : AnnotationAnchor.parse(annotation.anchor);
+    final palette = AppReaderPalette.of(context);
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      builder: (context) => _AnnotationComposerSheet(
-        selectedText: selection?.selectedText ?? annotation?.quoteText ?? '',
-        annotation: annotation,
-        defaultColor: _defaultAnnotationColor(
-          ref.read(readerPreferencesControllerProvider).themeMode,
-        ),
-        initialUnderlineStyle:
-            existingAnchor?.underlineStyle ?? AnnotationUnderlineStyle.none,
-        onSubmit:
-            ({
-              required noteText,
-              required color,
-              required underlineStyle,
-            }) async {
-              if (annotation == null) {
-                if (selection == null) {
-                  return;
+      backgroundColor: palette.background,
+      barrierColor: palette.mask,
+      clipBehavior: Clip.antiAlias,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => Material(
+        color: palette.background,
+        child: _AnnotationComposerSheet(
+          selectedText: selection?.selectedText ?? annotation?.quoteText ?? '',
+          annotation: annotation,
+          defaultColor: _defaultAnnotationColor(
+            ref.read(readerPreferencesControllerProvider).themeMode,
+          ),
+          initialUnderlineStyle:
+              existingAnchor?.underlineStyle ?? AnnotationUnderlineStyle.none,
+          onSubmit:
+              ({
+                required noteText,
+                required color,
+                required underlineStyle,
+              }) async {
+                if (annotation == null) {
+                  if (selection == null) {
+                    return;
+                  }
+                  await controller.addAnnotation(
+                    selection: selection,
+                    noteText: noteText,
+                    color: color,
+                    underlineStyle: underlineStyle,
+                  );
+                } else {
+                  await controller.updateAnnotation(
+                    annotation: annotation,
+                    noteText: noteText,
+                    color: color,
+                    selection: selection,
+                    underlineStyle: underlineStyle,
+                  );
                 }
-                await controller.addAnnotation(
-                  selection: selection,
-                  noteText: noteText,
-                  color: color,
-                  underlineStyle: underlineStyle,
-                );
-              } else {
-                await controller.updateAnnotation(
-                  annotation: annotation,
-                  noteText: noteText,
-                  color: color,
-                  selection: selection,
-                  underlineStyle: underlineStyle,
-                );
-              }
-            },
+              },
+        ),
       ),
     );
   }
@@ -504,43 +516,53 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       await _openAnnotationComposer(controller, annotation: annotations.first);
       return;
     }
+    final palette = AppReaderPalette.of(context);
     await showModalBottomSheet<void>(
       context: context,
-      builder: (context) => SafeArea(
-        child: ListView.separated(
-          shrinkWrap: true,
-          padding: const EdgeInsets.fromLTRB(16, 18, 16, 24),
-          itemBuilder: (context, index) {
-            final annotation = annotations[index];
-            return ListTile(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-              title: Text(
-                annotation.quoteText?.trim().isNotEmpty == true
-                    ? annotation.quoteText!
-                    : '高亮片段',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              subtitle: Text(
-                annotation.noteText?.trim().isNotEmpty == true
-                    ? annotation.noteText!
-                    : '点击编辑这条批注',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              onTap: () async {
-                Navigator.of(context).pop();
-                await _openAnnotationComposer(
-                  controller,
-                  annotation: annotation,
-                );
-              },
-            );
-          },
-          separatorBuilder: (_, _) => const SizedBox(height: 8),
-          itemCount: annotations.length,
+      backgroundColor: palette.background,
+      barrierColor: palette.mask,
+      clipBehavior: Clip.antiAlias,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => Material(
+        color: palette.background,
+        child: SafeArea(
+          child: ListView.separated(
+            shrinkWrap: true,
+            padding: const EdgeInsets.fromLTRB(16, 18, 16, 24),
+            itemBuilder: (context, index) {
+              final annotation = annotations[index];
+              return ListTile(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                title: Text(
+                  annotation.quoteText?.trim().isNotEmpty == true
+                      ? annotation.quoteText!
+                      : '高亮片段',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                subtitle: Text(
+                  annotation.noteText?.trim().isNotEmpty == true
+                      ? annotation.noteText!
+                      : '点击编辑这条批注',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                onTap: () async {
+                  Navigator.of(context).pop();
+                  await _openAnnotationComposer(
+                    controller,
+                    annotation: annotation,
+                  );
+                },
+              );
+            },
+            separatorBuilder: (_, _) => const SizedBox(height: 8),
+            itemCount: annotations.length,
+          ),
         ),
       ),
     );

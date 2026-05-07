@@ -74,6 +74,9 @@ class ReaderController extends ChangeNotifier {
   BookContent? content;
   final Map<int, BookContentChapter> _chapterCache = {};
   final Set<int> _loadingChapters = {};
+  final Map<String, Uint8List> imageResourceBytes = {};
+  final Set<String> loadingImageResourceIds = {};
+  final Set<String> failedImageResourceIds = {};
   List<AnnotationView> annotations = const [];
   List<BookmarkView> bookmarks = const [];
   bool isLoading = true;
@@ -205,6 +208,7 @@ class ReaderController extends ChangeNotifier {
       anchorJumpVersion += 1;
       notifyListeners();
     }
+    _pruneImageCache();
     unawaited(_prefetchNeighbors(chapterIndex));
 
     if (persistProgress) {
@@ -545,6 +549,7 @@ class ReaderController extends ChangeNotifier {
   Future<BookContentChapter> _fetchChapter(int index) async {
     final cached = _chapterCache[index];
     if (cached != null) {
+      unawaited(_prefetchImageResources(cached));
       return cached;
     }
 
@@ -556,6 +561,7 @@ class ReaderController extends ChangeNotifier {
             _apiClient.getStructuredChapter(accessToken, bookId, index),
       );
       _chapterCache[index] = chapter;
+      unawaited(_prefetchImageResources(chapter));
       return chapter;
     } finally {
       _loadingChapters.remove(index);
@@ -609,6 +615,64 @@ class ReaderController extends ChangeNotifier {
       }
       await _fetchChapter(index);
     }
+  }
+
+  Future<void> _prefetchImageResources(BookContentChapter chapter) async {
+    final resourceIds = chapter.blocks
+        .where((block) => block.isImage)
+        .map((block) => block.resourceId)
+        .whereType<String>()
+        .where((resourceId) => resourceId.isNotEmpty)
+        .toSet();
+    if (resourceIds.isEmpty) {
+      return;
+    }
+
+    for (final resourceId in resourceIds) {
+      if (imageResourceBytes.containsKey(resourceId) ||
+          loadingImageResourceIds.contains(resourceId) ||
+          failedImageResourceIds.contains(resourceId)) {
+        continue;
+      }
+      loadingImageResourceIds.add(resourceId);
+      notifyListeners();
+      try {
+        final bytes = await _authController.runAuthorized(
+          (accessToken) =>
+              _apiClient.downloadBookResource(accessToken, bookId, resourceId),
+        );
+        imageResourceBytes[resourceId] = bytes;
+        failedImageResourceIds.remove(resourceId);
+      } catch (_) {
+        failedImageResourceIds.add(resourceId);
+      } finally {
+        loadingImageResourceIds.remove(resourceId);
+        notifyListeners();
+      }
+    }
+  }
+
+  void _pruneImageCache() {
+    final keepChapterIndexes = {
+      currentChapterIndex - 1,
+      currentChapterIndex,
+      currentChapterIndex + 1,
+    };
+    final keepResourceIds = keepChapterIndexes
+        .map((index) => _chapterCache[index])
+        .whereType<BookContentChapter>()
+        .expand((chapter) => chapter.blocks)
+        .where((block) => block.isImage)
+        .map((block) => block.resourceId)
+        .whereType<String>()
+        .toSet();
+
+    imageResourceBytes.removeWhere(
+      (resourceId, _) => !keepResourceIds.contains(resourceId),
+    );
+    failedImageResourceIds.removeWhere(
+      (resourceId) => !keepResourceIds.contains(resourceId),
+    );
   }
 
   void _scheduleProgressWrite() {

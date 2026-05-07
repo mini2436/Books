@@ -194,6 +194,20 @@ class BookContentBlock {
 
   String get renderedText => text.isNotEmpty ? text : plainText;
 
+  bool get isImage => type == 'image';
+
+  String? get resourceId => meta['resourceId'] as String?;
+
+  String? get imageMediaType => meta['mediaType'] as String?;
+
+  String? get imageAlt => meta['alt'] as String?;
+
+  String? get imageCaption => meta['caption'] as String?;
+
+  int? get imageWidth => _intFromMeta(meta['width']);
+
+  int? get imageHeight => _intFromMeta(meta['height']);
+
   factory BookContentBlock.fromJson(Map<String, dynamic> json) {
     return BookContentBlock(
       blockIndex: (json['blockIndex'] as num).toInt(),
@@ -203,5 +217,20 @@ class BookContentBlock {
       plainText: json['plainText'] as String? ?? '',
       meta: (json['meta'] as Map<String, dynamic>?) ?? const {},
     );
+  }
+
+  static int? _intFromMeta(Object? value) {
+    if (value is int) {
+      return value > 0 ? value : null;
+    }
+    if (value is num) {
+      final rounded = value.round();
+      return rounded > 0 ? rounded : null;
+    }
+    if (value is String) {
+      final parsed = int.tryParse(value);
+      return parsed != null && parsed > 0 ? parsed : null;
+    }
+    return null;
   }
 }

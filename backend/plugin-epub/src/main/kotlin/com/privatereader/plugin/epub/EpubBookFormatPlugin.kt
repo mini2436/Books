@@ -2,6 +2,7 @@ package com.privatereader.plugin.epub
 
 import com.privatereader.plugin.BookFormatPlugin
 import com.privatereader.plugin.BookMetadata
+import com.privatereader.plugin.BookResource
 import com.privatereader.plugin.CoverExtractionResult
 import com.privatereader.plugin.IndexableContent
 import com.privatereader.plugin.ManifestTocItem
@@ -19,6 +20,7 @@ import org.w3c.dom.NodeList
 import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
 import java.nio.file.Path
+import java.util.Base64
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import javax.xml.XMLConstants
@@ -58,6 +60,27 @@ class EpubBookFormatPlugin : BookFormatPlugin {
         )
     }
 
+    override fun extractResource(file: Path, resourceId: String): BookResource? = ZipFile(file.toFile()).use { zip ->
+        val requestedPath = decodeResourceId(resourceId) ?: return null
+        val packagePath = readPackagePath(zip)
+        val packageDocument = readXml(zip, packagePath)
+        val packageDir = packagePath.substringBeforeLast('/', "")
+        val manifestItems = extractManifestItems(packageDocument, packageDir)
+        val resourceItem = manifestItems.values.firstOrNull { item ->
+            item.fullPath == requestedPath &&
+                item.mediaType in SUPPORTED_IMAGE_MEDIA_TYPES
+        } ?: return null
+        val entry = zip.getEntry(resourceItem.fullPath) ?: return null
+        val bytes = zip.getInputStream(entry).use { it.readBytes() }
+        if (bytes.isEmpty()) {
+            return null
+        }
+        BookResource(
+            mimeType = resourceItem.mediaType.ifBlank { inferMimeTypeFromPath(resourceItem.fullPath) },
+            bytes = bytes,
+        )
+    }
+
     override fun buildManifest(file: Path): ReadingManifest = parse(file).manifest
 
     override fun extractIndexableContent(file: Path): IndexableContent? =
@@ -69,12 +92,20 @@ class EpubBookFormatPlugin : BookFormatPlugin {
         val packageDir = packagePath.substringBeforeLast('/', "")
         val manifestItems = extractManifestItems(packageDocument, packageDir)
         val spineItems = extractSpineItems(packageDocument, manifestItems)
+        val imageItemsByPath = manifestItems.values
+            .filter { it.mediaType in SUPPORTED_IMAGE_MEDIA_TYPES }
+            .associateBy { it.fullPath }
         val tocByPath = extractToc(zip, packageDocument, manifestItems)
             .associateBy { it.href.substringBefore('#') }
 
         val chapters = spineItems.mapIndexed { chapterIndex, spineItem ->
             val document = readXml(zip, spineItem.fullPath)
-            val visibleBlocks = extractStructuredBlocks(document, chapterIndex)
+            val visibleBlocks = extractStructuredBlocks(
+                document = document,
+                chapterIndex = chapterIndex,
+                chapterPath = spineItem.fullPath,
+                imageItemsByPath = imageItemsByPath,
+            )
             val fallbackText = document.documentElement?.textContent.normalizeWhitespace()
             val chapterTitle = tocByPath[spineItem.fullPath]?.title
                 ?: visibleBlocks.firstOrNull { it.type == StructuredBlockType.HEADING }?.plainText
@@ -102,7 +133,7 @@ class EpubBookFormatPlugin : BookFormatPlugin {
             )
         }
 
-        StructuredBookContent(chapters = chapters)
+        StructuredBookContent(chapters = chapters, contentModel = STRUCTURED_CONTENT_MODEL_V2)
     }
 
     private fun parse(file: Path): ParsedEpub = ZipFile(file.toFile()).use { zip ->
@@ -358,12 +389,22 @@ class EpubBookFormatPlugin : BookFormatPlugin {
         }
     }
 
-    private fun extractStructuredBlocks(document: Document, chapterIndex: Int): List<StructuredBookBlock> {
+    private fun extractStructuredBlocks(
+        document: Document,
+        chapterIndex: Int,
+        chapterPath: String,
+        imageItemsByPath: Map<String, EpubManifestItem>,
+    ): List<StructuredBookBlock> {
         val body = document.getElementsByTagNameNS("*", "body").item(0) as? Element
         val root = body ?: document.documentElement ?: return emptyList()
         val pendingBlocks = mutableListOf<PendingBlock>()
         root.childNodes.asSequence().forEach { node ->
-            collectBlocks(node, pendingBlocks)
+            collectBlocks(
+                node = node,
+                blocks = pendingBlocks,
+                chapterPath = chapterPath,
+                imageItemsByPath = imageItemsByPath,
+            )
         }
         return pendingBlocks.mapIndexedNotNull { index, block ->
             when (block.type) {
@@ -377,7 +418,7 @@ class EpubBookFormatPlugin : BookFormatPlugin {
 
                 else -> {
                     val text = block.text.normalizeWhitespace()
-                    if (text.isBlank()) {
+                    if (text.isBlank() && block.type != StructuredBlockType.IMAGE) {
                         null
                     } else {
                         StructuredBookBlock(
@@ -393,7 +434,12 @@ class EpubBookFormatPlugin : BookFormatPlugin {
         }
     }
 
-    private fun collectBlocks(node: Node, blocks: MutableList<PendingBlock>) {
+    private fun collectBlocks(
+        node: Node,
+        blocks: MutableList<PendingBlock>,
+        chapterPath: String,
+        imageItemsByPath: Map<String, EpubManifestItem>,
+    ) {
         if (node.nodeType != Node.ELEMENT_NODE) {
             return
         }
@@ -411,33 +457,202 @@ class EpubBookFormatPlugin : BookFormatPlugin {
             }
 
             "p", "li" -> {
-                val text = element.textContent.normalizeWhitespace()
-                if (text.isNotBlank()) {
-                    blocks += PendingBlock(
-                        type = StructuredBlockType.PARAGRAPH,
-                        text = text,
-                    )
-                }
+                collectInlineBlocks(
+                    element = element,
+                    blocks = blocks,
+                    textBlockType = StructuredBlockType.PARAGRAPH,
+                    chapterPath = chapterPath,
+                    imageItemsByPath = imageItemsByPath,
+                )
             }
 
             "blockquote" -> {
-                val text = element.textContent.normalizeWhitespace()
-                if (text.isNotBlank()) {
-                    blocks += PendingBlock(
-                        type = StructuredBlockType.QUOTE,
-                        text = text,
-                    )
-                }
+                collectInlineBlocks(
+                    element = element,
+                    blocks = blocks,
+                    textBlockType = StructuredBlockType.QUOTE,
+                    chapterPath = chapterPath,
+                    imageItemsByPath = imageItemsByPath,
+                )
             }
+
+            "figure" -> collectFigureBlock(
+                element = element,
+                blocks = blocks,
+                chapterPath = chapterPath,
+                imageItemsByPath = imageItemsByPath,
+            )
+
+            "img", "image" -> imageBlockFromElement(
+                element = element,
+                chapterPath = chapterPath,
+                imageItemsByPath = imageItemsByPath,
+                caption = null,
+            )?.let { blocks += it }
 
             "hr" -> blocks += PendingBlock(type = StructuredBlockType.DIVIDER, text = "")
 
             "script", "style", "head", "nav" -> return
 
             else -> element.childNodes.asSequence().forEach { child ->
-                collectBlocks(child, blocks)
+                collectBlocks(
+                    node = child,
+                    blocks = blocks,
+                    chapterPath = chapterPath,
+                    imageItemsByPath = imageItemsByPath,
+                )
             }
         }
+    }
+
+    private fun collectInlineBlocks(
+        element: Element,
+        blocks: MutableList<PendingBlock>,
+        textBlockType: StructuredBlockType,
+        chapterPath: String,
+        imageItemsByPath: Map<String, EpubManifestItem>,
+    ) {
+        val textBuffer = StringBuilder()
+
+        fun appendVisibleText(node: Node) {
+            when (node.nodeType) {
+                Node.TEXT_NODE, Node.CDATA_SECTION_NODE -> textBuffer.append(node.textContent)
+                Node.ELEMENT_NODE -> {
+                    val childElement = node as Element
+                    when (childElement.localName?.lowercase()) {
+                        "script", "style", "head", "nav", "img", "image", "figure" -> return
+                        "br" -> textBuffer.append('\n')
+                        else -> childElement.childNodes.asSequence().forEach(::appendVisibleText)
+                    }
+                }
+            }
+        }
+
+        fun flushText() {
+            val text = textBuffer.toString().normalizeWhitespace()
+            textBuffer.clear()
+            if (text.isNotBlank()) {
+                blocks += PendingBlock(type = textBlockType, text = text)
+            }
+        }
+
+        element.childNodes.asSequence().forEach { child ->
+            if (child.nodeType == Node.ELEMENT_NODE) {
+                val childElement = child as Element
+                when (childElement.localName?.lowercase()) {
+                    "img", "image" -> {
+                        flushText()
+                        imageBlockFromElement(
+                            element = childElement,
+                            chapterPath = chapterPath,
+                            imageItemsByPath = imageItemsByPath,
+                            caption = null,
+                        )?.let { blocks += it }
+                        return@forEach
+                    }
+
+                    "figure" -> {
+                        flushText()
+                        collectFigureBlock(
+                            element = childElement,
+                            blocks = blocks,
+                            chapterPath = chapterPath,
+                            imageItemsByPath = imageItemsByPath,
+                        )
+                        return@forEach
+                    }
+                }
+            }
+            appendVisibleText(child)
+        }
+
+        flushText()
+    }
+
+    private fun collectFigureBlock(
+        element: Element,
+        blocks: MutableList<PendingBlock>,
+        chapterPath: String,
+        imageItemsByPath: Map<String, EpubManifestItem>,
+    ) {
+        val caption = element.getElementsByTagNameNS("*", "figcaption")
+            .item(0)
+            ?.textContent
+            .normalizeWhitespace()
+        val images = element.getElementsByTagNameNS("*", "img").asSequence()
+            .mapNotNull { it as? Element }
+            .toList()
+            .ifEmpty {
+                element.getElementsByTagNameNS("*", "image").asSequence()
+                    .mapNotNull { it as? Element }
+                    .toList()
+            }
+
+        if (images.isEmpty()) {
+            caption?.takeIf { it.isNotBlank() }?.let {
+                blocks += PendingBlock(type = StructuredBlockType.PARAGRAPH, text = it)
+            }
+            return
+        }
+
+        images.forEachIndexed { index, image ->
+            imageBlockFromElement(
+                element = image,
+                chapterPath = chapterPath,
+                imageItemsByPath = imageItemsByPath,
+                caption = caption.takeIf { index == 0 },
+            )?.let { blocks += it }
+        }
+    }
+
+    private fun imageBlockFromElement(
+        element: Element,
+        chapterPath: String,
+        imageItemsByPath: Map<String, EpubManifestItem>,
+        caption: String?,
+    ): PendingBlock? {
+        val rawSrc = element.getAttribute("src")
+            .ifBlank { element.getAttribute("href") }
+            .ifBlank { element.getAttribute("xlink:href") }
+            .ifBlank { element.getAttributeNS("http://www.w3.org/1999/xlink", "href") }
+            .trim()
+        if (rawSrc.isBlank()) {
+            return null
+        }
+        val resolvedPath = resolveHref(chapterPath, rawSrc).substringBefore('#')
+        val imageItem = imageItemsByPath[resolvedPath]
+        if (imageItem == null) {
+            val fallbackText = caption.normalizeWhitespace().takeIf { it.isNotBlank() }
+                ?: element.getAttribute("alt").normalizeWhitespace().takeIf { it.isNotBlank() }
+                ?: "Unsupported image"
+            return PendingBlock(
+                type = StructuredBlockType.PARAGRAPH,
+                text = fallbackText,
+                meta = mapOf(
+                    "unsupportedImage" to true,
+                    "src" to resolvedPath,
+                ),
+            )
+        }
+
+        val alt = element.getAttribute("alt").normalizeWhitespace().takeIf { it.isNotBlank() }
+        val normalizedCaption = caption.normalizeWhitespace().takeIf { it.isNotBlank() }
+        val displayText = normalizedCaption ?: alt ?: ""
+        val meta = linkedMapOf<String, Any?>(
+            "resourceId" to encodeResourceId(imageItem.fullPath),
+            "mediaType" to imageItem.mediaType,
+            "src" to imageItem.fullPath,
+        )
+        alt?.let { meta["alt"] = it }
+        normalizedCaption?.let { meta["caption"] = it }
+        parseDimension(element.getAttribute("width"))?.let { meta["width"] = it }
+        parseDimension(element.getAttribute("height"))?.let { meta["height"] = it }
+
+        return PendingBlock(
+            type = StructuredBlockType.IMAGE,
+            text = displayText,
+            meta = meta,
+        )
     }
 
     private fun resolveEntryPath(baseDir: String, relativePath: String): String {
@@ -469,6 +684,27 @@ class EpubBookFormatPlugin : BookFormatPlugin {
         "svg" -> "image/svg+xml"
         else -> "application/octet-stream"
     }
+
+    private fun encodeResourceId(path: String): String =
+        Base64.getUrlEncoder()
+            .withoutPadding()
+            .encodeToString(path.toByteArray(StandardCharsets.UTF_8))
+
+    private fun decodeResourceId(resourceId: String): String? =
+        try {
+            String(Base64.getUrlDecoder().decode(resourceId), StandardCharsets.UTF_8)
+                .replace('\\', '/')
+                .takeIf { it.isNotBlank() && !it.startsWith("/") && ".." !in it.split('/') }
+        } catch (_: IllegalArgumentException) {
+            null
+        }
+
+    private fun parseDimension(value: String): Int? =
+        value.trim()
+            .removeSuffix("px")
+            .substringBefore('.')
+            .toIntOrNull()
+            ?.takeIf { it > 0 }
 
     private fun readXml(zip: ZipFile, entryPath: String): Document {
         val entry = zip.getEntry(entryPath)
@@ -534,4 +770,14 @@ class EpubBookFormatPlugin : BookFormatPlugin {
         val text: String,
         val meta: Map<String, Any?> = emptyMap(),
     )
+
+    private companion object {
+        private const val STRUCTURED_CONTENT_MODEL_V2 = "UNIFIED_V2"
+        private val SUPPORTED_IMAGE_MEDIA_TYPES = setOf(
+            "image/jpeg",
+            "image/png",
+            "image/webp",
+            "image/gif",
+        )
+    }
 }

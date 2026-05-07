@@ -14,6 +14,8 @@ interface BookFormatPlugin {
 
     fun extractCover(file: Path): CoverExtractionResult? = null
 
+    fun extractResource(file: Path, resourceId: String): BookResource? = null
+
     fun buildManifest(file: Path): ReadingManifest? = null
 
     fun extractIndexableContent(file: Path): IndexableContent? = null

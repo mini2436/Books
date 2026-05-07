@@ -365,6 +365,17 @@ class BookService(
         )
     }
 
+    fun getBookResource(userId: Long, bookId: Long, resourceId: String): BookBinaryResource? {
+        require(hasAccess(userId, bookId)) { "Book access denied" }
+        val fileRef = resolveBookFileRef(bookId)
+        val plugin = pluginRegistryService.findPluginById(fileRef.pluginId) ?: return null
+        val resource = plugin.extractResource(Path.of(fileRef.storagePath), resourceId) ?: return null
+        return BookBinaryResource(
+            mimeType = resource.mimeType,
+            resource = ByteArrayResource(resource.bytes),
+        )
+    }
+
     fun resolveMediaType(bookId: Long): MediaType {
         val format = resolveBookFileRef(bookId).format
         return when (format.lowercase()) {
@@ -409,6 +420,21 @@ class BookService(
             .update()
 
         require(updated > 0) { "Book $bookId was not found" }
+        return getAdminBookDetail(bookId)
+    }
+
+    @Transactional
+    fun rebuildStructuredContent(bookId: Long): AdminBookDetailView {
+        val fileRef = resolveBookFileRef(bookId)
+        val filePath = Path.of(fileRef.storagePath)
+        val checksum = sha256(filePath)
+        refreshStructuredContent(
+            bookId = bookId,
+            sourceFileId = fileRef.fileId,
+            checksum = checksum,
+            pluginId = fileRef.pluginId,
+            filePath = filePath,
+        )
         return getAdminBookDetail(bookId)
     }
 
@@ -801,7 +827,7 @@ class BookService(
         )
             .param("bookId", bookId)
             .param("sourceFileId", sourceFileId)
-            .param("contentModel", STRUCTURED_CONTENT_MODEL)
+            .param("contentModel", structuredContent.contentModel)
             .param("status", CONTENT_STATUS_READY)
             .param("checksum", checksum)
             .param("now", now.toSqlTimestamp())
@@ -948,7 +974,7 @@ class BookService(
     private fun resolveBookFileRef(bookId: Long): BookFileRef =
         jdbcClient.sql(
             """
-            select storage_path, plugin_id, format from book_files
+            select id, storage_path, plugin_id, format from book_files
             where book_id = :bookId
             order by id desc
             limit 1
@@ -957,6 +983,7 @@ class BookService(
             .param("bookId", bookId)
             .query { rs, _ ->
                 BookFileRef(
+                    fileId = rs.getLong("id"),
                     storagePath = rs.getString("storage_path"),
                     pluginId = rs.getString("plugin_id"),
                     format = rs.getString("format"),
@@ -1013,7 +1040,13 @@ class BookService(
         val resource: ByteArrayResource,
     )
 
+    data class BookBinaryResource(
+        val mimeType: String,
+        val resource: ByteArrayResource,
+    )
+
     private data class BookFileRef(
+        val fileId: Long,
         val storagePath: String,
         val pluginId: String,
         val format: String,

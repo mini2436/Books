@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -13,6 +14,9 @@ class ReaderBlocksView extends StatelessWidget {
   const ReaderBlocksView({
     super.key,
     required this.blocks,
+    required this.imageResources,
+    required this.failedImageResourceIds,
+    required this.constrainImagesToViewport,
     required this.annotations,
     required this.preferences,
     required this.keyForAnchor,
@@ -22,6 +26,9 @@ class ReaderBlocksView extends StatelessWidget {
   });
 
   final List<BookContentBlock> blocks;
+  final Map<String, Uint8List> imageResources;
+  final Set<String> failedImageResourceIds;
+  final bool constrainImagesToViewport;
   final List<AnnotationView> annotations;
   final ReaderPreferences preferences;
   final GlobalKey Function(String anchor) keyForAnchor;
@@ -54,6 +61,21 @@ class ReaderBlocksView extends StatelessWidget {
         final highlightColor = _blockHighlightColor(blockAnnotations, palette);
         Widget blockView;
         switch (block.type) {
+          case 'image':
+            blockView = Padding(
+              padding: const EdgeInsets.only(bottom: 18),
+              child: _ImageBlockView(
+                block: block,
+                imageBytes: block.resourceId == null
+                    ? null
+                    : imageResources[block.resourceId],
+                failed:
+                    block.resourceId == null ||
+                    failedImageResourceIds.contains(block.resourceId),
+                constrainToViewport: constrainImagesToViewport,
+              ),
+            );
+            break;
           case 'heading':
             blockView = Padding(
               padding: const EdgeInsets.only(bottom: 22),
@@ -222,6 +244,186 @@ class _BlockHighlightFrame extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         child: child,
+      ),
+    );
+  }
+}
+
+class _ImageBlockView extends StatelessWidget {
+  const _ImageBlockView({
+    required this.block,
+    required this.imageBytes,
+    required this.failed,
+    required this.constrainToViewport,
+  });
+
+  final BookContentBlock block;
+  final Uint8List? imageBytes;
+  final bool failed;
+  final bool constrainToViewport;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppReaderPalette.of(context);
+    final caption = (block.imageCaption ?? block.imageAlt ?? '').trim();
+    final aspectRatio = _aspectRatio(block);
+    Widget image = imageBytes == null
+        ? _ImagePlaceholder(
+            failed: failed,
+            palette: palette,
+            aspectRatio: aspectRatio,
+          )
+        : GestureDetector(
+            onTap: () => _openPreview(context, imageBytes!, caption),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.memory(
+                imageBytes!,
+                width: double.infinity,
+                fit: BoxFit.contain,
+                errorBuilder: (_, _, _) => _ImagePlaceholder(
+                  failed: true,
+                  palette: palette,
+                  aspectRatio: aspectRatio,
+                ),
+              ),
+            ),
+          );
+
+    if (constrainToViewport && imageBytes != null) {
+      final maxImageHeight = (MediaQuery.sizeOf(context).height - 164).clamp(
+        220.0,
+        double.infinity,
+      );
+      image = ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: maxImageHeight),
+        child: image,
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (aspectRatio == null)
+          image
+        else if (constrainToViewport && imageBytes != null)
+          image
+        else
+          AspectRatio(aspectRatio: aspectRatio, child: image),
+        if (caption.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            caption,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: palette.inkSecondary,
+              height: 1.35,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  double? _aspectRatio(BookContentBlock block) {
+    final width = block.imageWidth;
+    final height = block.imageHeight;
+    if (width == null || height == null || width <= 0 || height <= 0) {
+      return null;
+    }
+    return (width / height).clamp(0.35, 3.2);
+  }
+
+  void _openPreview(BuildContext context, Uint8List bytes, String caption) {
+    showDialog<void>(
+      context: context,
+      builder: (context) {
+        final palette = AppReaderPalette.of(context);
+        return Dialog.fullscreen(
+          backgroundColor: Colors.black.withValues(alpha: 0.92),
+          child: SafeArea(
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: InteractiveViewer(
+                    minScale: 0.6,
+                    maxScale: 4,
+                    child: Center(
+                      child: Image.memory(bytes, fit: BoxFit.contain),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: IconButton.filledTonal(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close),
+                  ),
+                ),
+                if (caption.isNotEmpty)
+                  Positioned(
+                    left: 20,
+                    right: 20,
+                    bottom: 20,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.52),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        child: Text(
+                          caption,
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(color: palette.background),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _ImagePlaceholder extends StatelessWidget {
+  const _ImagePlaceholder({
+    required this.failed,
+    required this.palette,
+    required this.aspectRatio,
+  });
+
+  final bool failed;
+  final AppReaderPalette palette;
+  final double? aspectRatio;
+
+  @override
+  Widget build(BuildContext context) {
+    final height = aspectRatio == null ? 180.0 : null;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: palette.backgroundSoft,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: palette.line),
+      ),
+      child: SizedBox(
+        height: height,
+        child: Center(
+          child: Text(
+            failed ? '图片无法加载' : '图片加载中',
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: palette.inkTertiary),
+          ),
+        ),
       ),
     );
   }

@@ -43,6 +43,11 @@ class AdminBookController(
         @RequestBody request: UpdateAdminBookRequest,
     ): AdminBookDetailView = bookService.updateAdminBook(bookId, request)
 
+    @PostMapping("/{bookId}/content/rebuild")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','LIBRARIAN')")
+    fun rebuildStructuredContent(@PathVariable bookId: Long): AdminBookDetailView =
+        bookService.rebuildStructuredContent(bookId)
+
     @PostMapping("/bulk-delete")
     @PreAuthorize("hasAnyRole('SUPER_ADMIN','LIBRARIAN')")
     fun bulkDeleteBooks(

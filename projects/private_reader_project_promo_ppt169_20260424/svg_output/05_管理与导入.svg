@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="160%" height="160%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="10"/>
+      <feOffset dx="0" dy="6" result="offsetBlur"/>
+      <feFlood flood-color="#5B6678" flood-opacity="0.16" result="shadowColor"/>
+      <feComposite in="shadowColor" in2="offsetBlur" operator="in" result="shadow"/>
+      <feMerge>
+        <feMergeNode in="shadow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <marker id="arrowBlue" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#1565C0"/>
+    </marker>
+    <clipPath id="navClip">
+      <rect x="760" y="182" width="430" height="188" rx="24"/>
+    </clipPath>
+  </defs>
+
+  <rect width="1280" height="720" fill="#F6F8FB"/>
+  <rect x="54" y="40" width="8" height="36" rx="4" fill="#1565C0"/>
+  <text x="78" y="68" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="34" font-weight="700" fill="#0F2747">管理后台把“资源接入到内容入库”的动作真正流程化</text>
+  <text x="1200" y="68" text-anchor="end" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="14" fill="#8893A3">05</text>
+
+  <rect x="54" y="92" width="1172" height="54" rx="16" fill="#E9EEF5"/>
+  <text x="78" y="126" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#1A2433">系统不仅服务读者，也服务管理者，让 WebDAV 书库接入、扫描和入库形成高效链路。</text>
+
+  <g id="admin-list">
+    <rect x="54" y="182" width="644" height="470" rx="28" fill="#FFFFFF" stroke="#D6DDE8" stroke-width="1.5" filter="url(#shadow)"/>
+    <text x="86" y="226" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="24" font-weight="700" fill="#0F2747">后台能力版图</text>
+
+    <g id="module-1">
+      <rect x="86" y="252" width="272" height="68" rx="18" fill="#F6F8FB"/>
+      <use data-icon="chunk/users" x="108" y="272" width="28" height="28" fill="#1565C0"/>
+      <text x="150" y="294" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="20" font-weight="700" fill="#1A2433">用户管理</text>
+      <text x="150" y="314" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="14" fill="#5B6678">账号启停、创建与管理</text>
+    </g>
+    <g id="module-2">
+      <rect x="380" y="252" width="272" height="68" rx="18" fill="#F6F8FB"/>
+      <use data-icon="chunk/shield" x="402" y="272" width="28" height="28" fill="#1565C0"/>
+      <text x="444" y="294" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="20" font-weight="700" fill="#1A2433">角色管理</text>
+      <text x="444" y="314" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="14" fill="#5B6678">权限分层与角色调整</text>
+    </g>
+    <g id="module-3">
+      <rect x="86" y="338" width="272" height="68" rx="18" fill="#F6F8FB"/>
+      <use data-icon="chunk/book-open" x="108" y="358" width="28" height="28" fill="#1565C0"/>
+      <text x="150" y="380" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="20" font-weight="700" fill="#1A2433">书籍管理</text>
+      <text x="150" y="400" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="14" fill="#5B6678">搜索、上传、详情与批量操作</text>
+    </g>
+    <g id="module-4">
+      <rect x="380" y="338" width="272" height="68" rx="18" fill="#F6F8FB"/>
+      <use data-icon="chunk/cog" x="402" y="358" width="28" height="28" fill="#1565C0"/>
+      <text x="444" y="380" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="20" font-weight="700" fill="#1A2433">批注管理</text>
+      <text x="444" y="400" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="14" fill="#5B6678">查看、整理与运营清理动作</text>
+    </g>
+    <g id="module-5">
+      <rect x="86" y="424" width="566" height="92" rx="18" fill="#0F2747"/>
+      <use data-icon="chunk/folder-open" x="108" y="454" width="30" height="30" fill="#FFFFFF"/>
+      <text x="152" y="472" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="22" font-weight="700" fill="#FFFFFF">资源扫描</text>
+      <text x="152" y="500" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="17" fill="#DCE7F5">支持维护 WebDAV 扫描源、触发扫描任务，并把结果导入图书库。</text>
+    </g>
+
+    <rect x="86" y="548" width="566" height="70" rx="18" fill="#E9EEF5"/>
+    <text x="108" y="592" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#1A2433">管理后台已经从“查看信息”走向“驱动内容流转”。</text>
+  </g>
+
+  <g id="scan-flow">
+    <image href="../images/prototype-nav.png" x="760" y="182" width="430" height="188" clip-path="url(#navClip)" preserveAspectRatio="xMidYMid slice"/>
+    <text x="760" y="160" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" font-weight="700" fill="#0F2747">后台导航与入口布局</text>
+
+    <rect x="740" y="408" width="486" height="244" rx="28" fill="#FFFFFF" stroke="#D6DDE8" stroke-width="1.5" filter="url(#shadow)"/>
+    <text x="770" y="446" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="22" font-weight="700" fill="#0F2747">扫描导入流程</text>
+
+    <g id="step-1">
+      <rect x="770" y="482" width="98" height="70" rx="18" fill="#1565C0"/>
+      <text x="819" y="511" text-anchor="middle" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="16" font-weight="700" fill="#FFFFFF">配置</text>
+      <text x="819" y="534" text-anchor="middle" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="14" fill="#FFFFFF">扫描源</text>
+    </g>
+    <line x1="868" y1="517" x2="930" y2="517" stroke="#1565C0" stroke-width="3" marker-end="url(#arrowBlue)"/>
+
+    <g id="step-2">
+      <rect x="938" y="482" width="98" height="70" rx="18" fill="#1565C0"/>
+      <text x="987" y="511" text-anchor="middle" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="16" font-weight="700" fill="#FFFFFF">发起</text>
+      <text x="987" y="534" text-anchor="middle" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="14" fill="#FFFFFF">扫描任务</text>
+    </g>
+    <line x1="1036" y1="517" x2="1098" y2="517" stroke="#1565C0" stroke-width="3" marker-end="url(#arrowBlue)"/>
+
+    <g id="step-3">
+      <rect x="1106" y="482" width="98" height="70" rx="18" fill="#1565C0"/>
+      <text x="1155" y="511" text-anchor="middle" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="16" font-weight="700" fill="#FFFFFF">解析</text>
+      <text x="1155" y="534" text-anchor="middle" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="14" fill="#FFFFFF">元数据</text>
+    </g>
+
+    <line x1="1155" y1="552" x2="1155" y2="592" stroke="#1565C0" stroke-width="3" marker-end="url(#arrowBlue)"/>
+    <line x1="1155" y1="592" x2="888" y2="592" stroke="#1565C0" stroke-width="3" marker-end="url(#arrowBlue)"/>
+
+    <g id="step-4">
+      <rect x="840" y="576" width="126" height="52" rx="16" fill="#2FA39A"/>
+      <text x="903" y="608" text-anchor="middle" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" font-weight="700" fill="#FFFFFF">图书入库</text>
+    </g>
+  </g>
+
+  <text x="54" y="687" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="12" fill="#8893A3">Source: docs/第一阶段详细功能文档.md, docs/后端架构文档.md, project prototype images</text>
+</svg>

@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <linearGradient id="titleLine" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0F2747"/>
+      <stop offset="100%" stop-color="#1565C0"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="160%" height="160%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="10"/>
+      <feOffset dx="0" dy="6" result="offsetBlur"/>
+      <feFlood flood-color="#5B6678" flood-opacity="0.18" result="shadowColor"/>
+      <feComposite in="shadowColor" in2="offsetBlur" operator="in" result="shadow"/>
+      <feMerge>
+        <feMergeNode in="shadow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1280" height="720" fill="#F6F8FB"/>
+  <circle cx="1170" cy="72" r="110" fill="#1565C0" fill-opacity="0.08"/>
+
+  <g id="header">
+    <rect x="54" y="40" width="8" height="36" rx="4" fill="#1565C0"/>
+    <text x="78" y="68" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="34" font-weight="700" fill="#0F2747">一个能兼顾阅读体验与平台治理的私有阅读基础设施</text>
+    <text x="1200" y="68" text-anchor="end" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="14" fill="#8893A3">02</text>
+    <rect x="54" y="92" width="1172" height="54" rx="16" fill="#E9EEF5"/>
+    <text x="78" y="126" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#1A2433">项目不是单点阅读工具，而是一套覆盖读者端、后台端与资源入库链路的完整平台能力。</text>
+  </g>
+
+  <g id="left-panel">
+    <rect x="54" y="178" width="430" height="458" rx="24" fill="#FFFFFF" stroke="#D6DDE8" stroke-width="1.5" filter="url(#shadow)"/>
+    <text x="88" y="244" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="24" font-weight="700" fill="#0F2747">为什么它值得被当作平台来看待</text>
+    <text x="88" y="292" font-family='Georgia, SimSun, serif' font-size="40" font-weight="700" fill="#1565C0">Private Reading Infrastructure</text>
+    <text x="88" y="344" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="20" fill="#1A2433">适合团队、机构、企业搭建私有书库、知识分发</text>
+    <text x="88" y="376" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="20" fill="#1A2433">与阅读工作台，而不是局限于单一 App 页面展示。</text>
+
+    <use data-icon="chunk/target" x="88" y="432" width="26" height="26" fill="#1565C0"/>
+    <text x="128" y="452" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#1A2433">面向长期演进：阶段一先完成可交付闭环</text>
+
+    <use data-icon="chunk/shield" x="88" y="486" width="26" height="26" fill="#1565C0"/>
+    <text x="128" y="506" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#1A2433">面向治理：多角色、多入口、管理链路完整</text>
+
+    <use data-icon="chunk/globe" x="88" y="540" width="26" height="26" fill="#1565C0"/>
+    <text x="128" y="560" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#1A2433">面向多端：Flutter 将作为统一前端基座</text>
+
+    <rect x="88" y="590" width="160" height="30" rx="15" fill="#1565C0" fill-opacity="0.10"/>
+    <text x="168" y="611" text-anchor="middle" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="14" font-weight="700" fill="#1565C0">backend + mobile 为当前主线</text>
+  </g>
+
+  <g id="matrix">
+    <g id="card-1">
+      <rect x="516" y="178" width="334" height="214" rx="22" fill="#FFFFFF" stroke="#D6DDE8" stroke-width="1.5" filter="url(#shadow)"/>
+      <use data-icon="chunk/target" x="546" y="212" width="34" height="34" fill="#1565C0"/>
+      <text x="596" y="236" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="22" font-weight="700" fill="#0F2747">自托管平台定位</text>
+      <text x="546" y="282" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#1A2433">支持机构按自身数据与部署环境</text>
+      <text x="546" y="310" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#1A2433">掌控阅读内容、账号与服务边界。</text>
+    </g>
+
+    <g id="card-2">
+      <rect x="872" y="178" width="334" height="214" rx="22" fill="#FFFFFF" stroke="#D6DDE8" stroke-width="1.5" filter="url(#shadow)"/>
+      <use data-icon="chunk/users" x="902" y="212" width="34" height="34" fill="#1565C0"/>
+      <text x="952" y="236" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="22" font-weight="700" fill="#0F2747">多用户与权限治理</text>
+      <text x="902" y="282" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#1A2433">普通用户、管理员、超级管理员</text>
+      <text x="902" y="310" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#1A2433">形成清晰权限边界和管理入口。</text>
+    </g>
+
+    <g id="card-3">
+      <rect x="516" y="422" width="334" height="214" rx="22" fill="#FFFFFF" stroke="#D6DDE8" stroke-width="1.5" filter="url(#shadow)"/>
+      <use data-icon="chunk/cloud-arrow-up" x="546" y="456" width="34" height="34" fill="#1565C0"/>
+      <text x="596" y="480" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="22" font-weight="700" fill="#0F2747">离线优先同步能力</text>
+      <text x="546" y="526" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#1A2433">批注、书签、阅读进度具备本地存储</text>
+      <text x="546" y="554" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#1A2433">与同步协同基础，适合移动端场景。</text>
+    </g>
+
+    <g id="card-4">
+      <rect x="872" y="422" width="334" height="214" rx="22" fill="#FFFFFF" stroke="#D6DDE8" stroke-width="1.5" filter="url(#shadow)"/>
+      <use data-icon="chunk/card-stack" x="902" y="456" width="34" height="34" fill="#1565C0"/>
+      <text x="952" y="480" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="22" font-weight="700" fill="#0F2747">可扩展的技术基座</text>
+      <text x="902" y="526" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#1A2433">后端插件体系与 Flutter 多端路线</text>
+      <text x="902" y="554" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#1A2433">让项目具备继续放大的空间。</text>
+    </g>
+  </g>
+
+  <text x="54" y="687" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="12" fill="#8893A3">Source: README.md, docs/第一阶段功能总览.md, docs/Web端停用与Flutter多端迁移计划.md</text>
+</svg>

@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="160%" height="160%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="10"/>
+      <feOffset dx="0" dy="6" result="offsetBlur"/>
+      <feFlood flood-color="#5B6678" flood-opacity="0.16" result="shadowColor"/>
+      <feComposite in="shadowColor" in2="offsetBlur" operator="in" result="shadow"/>
+      <feMerge>
+        <feMergeNode in="shadow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1280" height="720" fill="#F6F8FB"/>
+  <rect x="54" y="40" width="8" height="36" rx="4" fill="#1565C0"/>
+  <text x="78" y="68" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="34" font-weight="700" fill="#0F2747">第一阶段已经打通四条关键业务链路</text>
+  <text x="1200" y="68" text-anchor="end" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="14" fill="#8893A3">03</text>
+
+  <rect x="54" y="92" width="1172" height="54" rx="16" fill="#E9EEF5"/>
+  <text x="78" y="126" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#1A2433">账号体系、阅读闭环、离线同步、后台与扫描能力都已形成可演示、可继续演进的基线。</text>
+
+  <g id="kpi-1">
+    <rect x="54" y="182" width="272" height="246" rx="22" fill="#FFFFFF" stroke="#D6DDE8" stroke-width="1.5" filter="url(#shadow)"/>
+    <use data-icon="chunk/target" x="82" y="214" width="36" height="36" fill="#1565C0"/>
+    <text x="82" y="284" font-family='Georgia, SimSun, serif' font-size="40" font-weight="700" fill="#0F2747">4</text>
+    <text x="82" y="320" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="24" font-weight="700" fill="#0F2747">关键业务链路</text>
+    <text x="82" y="356" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#1A2433">登录恢复、阅读闭环、同步基础、</text>
+    <text x="82" y="384" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#1A2433">管理与扫描导入已全部串起来。</text>
+  </g>
+
+  <g id="kpi-2">
+    <rect x="352" y="182" width="272" height="246" rx="22" fill="#FFFFFF" stroke="#D6DDE8" stroke-width="1.5" filter="url(#shadow)"/>
+    <use data-icon="chunk/users" x="380" y="214" width="36" height="36" fill="#1565C0"/>
+    <text x="380" y="284" font-family='Georgia, SimSun, serif' font-size="40" font-weight="700" fill="#0F2747">3</text>
+    <text x="380" y="320" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="24" font-weight="700" fill="#0F2747">系统角色体系</text>
+    <text x="380" y="356" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#1A2433">普通用户、管理员、超级管理员</text>
+    <text x="380" y="384" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#1A2433">形成清晰的权限与治理分层。</text>
+  </g>
+
+  <g id="kpi-3">
+    <rect x="650" y="182" width="272" height="246" rx="22" fill="#FFFFFF" stroke="#D6DDE8" stroke-width="1.5" filter="url(#shadow)"/>
+    <use data-icon="chunk/folder-open" x="678" y="214" width="36" height="36" fill="#1565C0"/>
+    <text x="678" y="284" font-family='Georgia, SimSun, serif' font-size="40" font-weight="700" fill="#0F2747">5</text>
+    <text x="678" y="320" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="24" font-weight="700" fill="#0F2747">后台核心分区</text>
+    <text x="678" y="356" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#1A2433">用户、角色、书籍、批注、资源扫描</text>
+    <text x="678" y="384" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#1A2433">让管理端具备实际运营价值。</text>
+  </g>
+
+  <g id="kpi-4">
+    <rect x="948" y="182" width="272" height="246" rx="22" fill="#FFFFFF" stroke="#D6DDE8" stroke-width="1.5" filter="url(#shadow)"/>
+    <use data-icon="chunk/card-stack" x="976" y="214" width="36" height="36" fill="#1565C0"/>
+    <text x="976" y="284" font-family='Georgia, SimSun, serif' font-size="40" font-weight="700" fill="#0F2747">3</text>
+    <text x="976" y="320" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="24" font-weight="700" fill="#0F2747">已集成格式插件</text>
+    <text x="976" y="356" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#1A2433">TXT、EPUB、PDF 已纳入统一处理</text>
+    <text x="976" y="384" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#1A2433">并采用编译期集成方式扩展。</text>
+  </g>
+
+  <g id="summary-band">
+    <rect x="54" y="466" width="1172" height="170" rx="26" fill="#0F2747"/>
+    <text x="88" y="520" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="24" font-weight="700" fill="#FFFFFF">从能力结构上看，项目已经形成“读者端 + 管理端 + 导入端”的完整产品面。</text>
+
+    <rect x="88" y="552" width="172" height="40" rx="20" fill="#1565C0"/>
+    <text x="174" y="578" text-anchor="middle" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="17" font-weight="700" fill="#FFFFFF">读者端闭环</text>
+    <rect x="276" y="552" width="172" height="40" rx="20" fill="#1565C0"/>
+    <text x="362" y="578" text-anchor="middle" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="17" font-weight="700" fill="#FFFFFF">离线同步底座</text>
+    <rect x="464" y="552" width="172" height="40" rx="20" fill="#1565C0"/>
+    <text x="550" y="578" text-anchor="middle" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="17" font-weight="700" fill="#FFFFFF">后台治理能力</text>
+    <rect x="652" y="552" width="172" height="40" rx="20" fill="#2FA39A"/>
+    <text x="738" y="578" text-anchor="middle" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="17" font-weight="700" fill="#FFFFFF">资源扫描入库</text>
+
+    <text x="1040" y="580" text-anchor="end" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="16" fill="#DCE7F5">阶段一目标：先跑通，再稳定，再扩展</text>
+  </g>
+
+  <text x="54" y="687" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="12" fill="#8893A3">Source: docs/第一阶段功能总览.md, docs/第一阶段详细功能文档.md, docs/后端架构文档.md</text>
+</svg>

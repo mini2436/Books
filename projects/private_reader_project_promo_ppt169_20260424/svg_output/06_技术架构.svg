@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="160%" height="160%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="10"/>
+      <feOffset dx="0" dy="6" result="offsetBlur"/>
+      <feFlood flood-color="#5B6678" flood-opacity="0.16" result="shadowColor"/>
+      <feComposite in="shadowColor" in2="offsetBlur" operator="in" result="shadow"/>
+      <feMerge>
+        <feMergeNode in="shadow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <marker id="arrowBlue" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#1565C0"/>
+    </marker>
+  </defs>
+
+  <rect width="1280" height="720" fill="#F6F8FB"/>
+  <rect x="54" y="40" width="8" height="36" rx="4" fill="#1565C0"/>
+  <text x="78" y="68" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="34" font-weight="700" fill="#0F2747">架构以可扩展与可交付为目标，兼顾当前落地与未来演进</text>
+  <text x="1200" y="68" text-anchor="end" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="14" fill="#8893A3">06</text>
+
+  <rect x="54" y="92" width="1172" height="54" rx="16" fill="#E9EEF5"/>
+  <text x="78" y="126" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#1A2433">后端、格式插件、Flutter 多端基座之间已经形成清晰边界，为 Native Image 和多端扩展预留了空间。</text>
+
+  <g id="architecture-stack">
+    <rect x="54" y="178" width="566" height="474" rx="28" fill="#FFFFFF" stroke="#D6DDE8" stroke-width="1.5" filter="url(#shadow)"/>
+    <text x="84" y="224" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="24" font-weight="700" fill="#0F2747">三层架构示意</text>
+
+    <g id="layer-1">
+      <rect x="84" y="254" width="506" height="96" rx="22" fill="#1565C0"/>
+      <use data-icon="chunk/mobile" x="108" y="286" width="32" height="32" fill="#FFFFFF"/>
+      <text x="156" y="308" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="24" font-weight="700" fill="#FFFFFF">Flutter Frontend Layer</text>
+      <text x="156" y="334" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="17" fill="#FFFFFF">app / data / features / shared，当前覆盖手机和平板，后续向 Web/Desktop 延展</text>
+    </g>
+    <line x1="337" y1="350" x2="337" y2="390" stroke="#1565C0" stroke-width="3" marker-end="url(#arrowBlue)"/>
+
+    <g id="layer-2">
+      <rect x="84" y="398" width="506" height="110" rx="22" fill="#0F2747"/>
+      <use data-icon="chunk/server" x="108" y="436" width="32" height="32" fill="#FFFFFF"/>
+      <text x="156" y="458" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="24" font-weight="700" fill="#FFFFFF">Backend Service Layer</text>
+      <text x="156" y="486" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="17" fill="#DCE7F5">Kotlin + Spring Boot 3，承载认证鉴权、图书服务、同步、管理后台与扫描流程</text>
+    </g>
+    <line x1="337" y1="508" x2="337" y2="548" stroke="#1565C0" stroke-width="3" marker-end="url(#arrowBlue)"/>
+
+    <g id="layer-3">
+      <rect x="84" y="556" width="506" height="64" rx="20" fill="#E9EEF5"/>
+      <use data-icon="chunk/card-stack" x="108" y="574" width="28" height="28" fill="#1565C0"/>
+      <text x="148" y="588" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" font-weight="700" fill="#0F2747">Plugin + Infra Layer: plugin-api / plugin-epub / plugin-pdf / plugin-txt</text>
+      <text x="148" y="612" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="16" fill="#5B6678">PostgreSQL / Redis / RabbitMQ</text>
+    </g>
+  </g>
+
+  <g id="architecture-points">
+    <g id="point-1">
+      <rect x="664" y="178" width="268" height="218" rx="24" fill="#FFFFFF" stroke="#D6DDE8" stroke-width="1.5" filter="url(#shadow)"/>
+      <use data-icon="chunk/shield" x="694" y="210" width="34" height="34" fill="#1565C0"/>
+      <text x="744" y="236" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="22" font-weight="700" fill="#0F2747">Native-ready</text>
+      <text x="694" y="282" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#1A2433">遵循 AOT 友好约束，避免运行时</text>
+      <text x="694" y="310" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#1A2433">动态插件发现与高反射依赖。</text>
+    </g>
+
+    <g id="point-2">
+      <rect x="958" y="178" width="268" height="218" rx="24" fill="#FFFFFF" stroke="#D6DDE8" stroke-width="1.5" filter="url(#shadow)"/>
+      <use data-icon="chunk/server" x="988" y="210" width="34" height="34" fill="#1565C0"/>
+      <text x="1038" y="236" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="22" font-weight="700" fill="#0F2747">模块边界清晰</text>
+      <text x="988" y="282" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#1A2433">控制器、服务、SQL 存取和插件层</text>
+      <text x="988" y="310" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#1A2433">职责明确，便于后续演进。</text>
+    </g>
+
+    <g id="point-3">
+      <rect x="664" y="432" width="268" height="220" rx="24" fill="#FFFFFF" stroke="#D6DDE8" stroke-width="1.5" filter="url(#shadow)"/>
+      <use data-icon="chunk/mobile" x="694" y="464" width="34" height="34" fill="#1565C0"/>
+      <text x="744" y="490" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="22" font-weight="700" fill="#0F2747">统一前端路线</text>
+      <text x="694" y="536" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#1A2433">Flutter 既是当前主端工程，也是</text>
+      <text x="694" y="564" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#1A2433">后续 Web/Desktop 收敛的基座。</text>
+    </g>
+
+    <g id="point-4">
+      <rect x="958" y="432" width="268" height="220" rx="24" fill="#FFFFFF" stroke="#D6DDE8" stroke-width="1.5" filter="url(#shadow)"/>
+      <use data-icon="chunk/lightbulb" x="988" y="464" width="34" height="34" fill="#1565C0"/>
+      <text x="1038" y="490" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="22" font-weight="700" fill="#0F2747">为长期平台化留白</text>
+      <text x="988" y="536" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#1A2433">当前先交付核心路径，未来再扩展</text>
+      <text x="988" y="564" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#1A2433">跨端适配、统计审计与工作流能力。</text>
+    </g>
+  </g>
+
+  <text x="54" y="687" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="12" fill="#8893A3">Source: docs/后端架构文档.md, docs/Flutter应用架构文档.md, README.md</text>
+</svg>

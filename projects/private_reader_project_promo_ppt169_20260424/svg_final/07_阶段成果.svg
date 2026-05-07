@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="160%" height="160%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="10" />
+      <feOffset dx="0" dy="6" result="offsetBlur" />
+      <feFlood flood-color="#5B6678" flood-opacity="0.16" result="shadowColor" />
+      <feComposite in="shadowColor" in2="offsetBlur" operator="in" result="shadow" />
+      <feMerge>
+        <feMergeNode in="shadow" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1280" height="720" fill="#F6F8FB" />
+  <path fill="#1565C0" d="M58,40 H58 A4,4 0 0 1 62,44 V72 A4,4 0 0 1 58,76 H58 A4,4 0 0 1 54,72 V44 A4,4 0 0 1 58,40 Z" />
+  <text x="78" y="68" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="34" font-weight="700" fill="#0F2747">阶段一已达到“可提交、可继续演进”的交付状态</text>
+  <text x="1200" y="68" text-anchor="end" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="14" fill="#8893A3">07</text>
+
+  <path fill="#E9EEF5" d="M70,92 H1210 A16,16 0 0 1 1226,108 V130 A16,16 0 0 1 1210,146 H70 A16,16 0 0 1 54,130 V108 A16,16 0 0 1 70,92 Z" />
+  <text x="78" y="126" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#1A2433">当前基线足以用于演示、评审和后续投资判断，且后续方向已经明确，不存在主线摇摆。</text>
+
+  <g id="top-stats">
+    <g id="stat-1">
+      <path fill="#FFFFFF" stroke="#D6DDE8" stroke-width="1.5" filter="url(#shadow)" d="M78,180 H298 A24,24 0 0 1 322,204 V336 A24,24 0 0 1 298,360 H78 A24,24 0 0 1 54,336 V204 A24,24 0 0 1 78,180 Z" />
+      <text x="84" y="246" font-family="Georgia, SimSun, serif" font-size="44" font-weight="700" fill="#0F2747">3</text>
+      <text x="84" y="284" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="24" font-weight="700" fill="#0F2747">已集成格式插件</text>
+      <text x="84" y="320" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#1A2433">TXT / EPUB / PDF</text>
+    </g>
+
+    <g id="stat-2">
+      <path fill="#FFFFFF" stroke="#D6DDE8" stroke-width="1.5" filter="url(#shadow)" d="M372,180 H592 A24,24 0 0 1 616,204 V336 A24,24 0 0 1 592,360 H372 A24,24 0 0 1 348,336 V204 A24,24 0 0 1 372,180 Z" />
+      <text x="378" y="246" font-family="Georgia, SimSun, serif" font-size="44" font-weight="700" fill="#0F2747">3</text>
+      <text x="378" y="284" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="24" font-weight="700" fill="#0F2747">角色体系已跑通</text>
+      <text x="378" y="320" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#1A2433">普通用户 / 管理员 / 超级管理员</text>
+    </g>
+
+    <g id="stat-3">
+      <path fill="#FFFFFF" stroke="#D6DDE8" stroke-width="1.5" filter="url(#shadow)" d="M666,180 H886 A24,24 0 0 1 910,204 V336 A24,24 0 0 1 886,360 H666 A24,24 0 0 1 642,336 V204 A24,24 0 0 1 666,180 Z" />
+      <text x="672" y="246" font-family="Georgia, SimSun, serif" font-size="44" font-weight="700" fill="#0F2747">5</text>
+      <text x="672" y="284" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="24" font-weight="700" fill="#0F2747">后台分区可用</text>
+      <text x="672" y="320" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#1A2433">用户、角色、书籍、批注、资源扫描</text>
+    </g>
+
+    <g id="stat-4">
+      <path fill="#0F2747" filter="url(#shadow)" d="M960,180 H1202 A24,24 0 0 1 1226,204 V336 A24,24 0 0 1 1202,360 H960 A24,24 0 0 1 936,336 V204 A24,24 0 0 1 960,180 Z" />
+      
+  <g transform="translate(966.0, 214.0) scale(2.125)" fill="#FFFFFF">
+    <path d="M10 3L9.00001 4L11.2929 6.29289L8.50001 9.08579L5.50001 6.08579L0.292908 11.2929L1.70712 12.7071L5.50001 8.91421L8.50001 11.9142L12.7071 7.70711L15 10L16 9L16 3H10Z" />
+  </g>
+      <text x="1016" y="240" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="24" font-weight="700" fill="#FFFFFF">主线已经收敛</text>
+      <text x="966" y="286" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#DCE7F5">第一阶段交付重心明确锁定在</text>
+      <text x="966" y="314" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#DCE7F5">backend + mobile，而不是继续双前端并进。</text>
+    </g>
+  </g>
+
+  <g id="bottom-panels">
+    <path fill="#FFFFFF" stroke="#D6DDE8" stroke-width="1.5" filter="url(#shadow)" d="M82,400 H566 A28,28 0 0 1 594,428 V624 A28,28 0 0 1 566,652 H82 A28,28 0 0 1 54,624 V428 A28,28 0 0 1 82,400 Z" />
+    <text x="86" y="444" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="24" font-weight="700" fill="#0F2747">已形成的阶段成果</text>
+    
+  <g transform="translate(88.0, 474.0) scale(1.5)" fill="#2E8B57">
+    <path fill-rule="evenodd" clip-rule="evenodd" d="M14.6563 5.24291C15.4743 5.88358 16 6.8804 16 8C16 9.11964 15.4743 10.1165 14.6562 10.7572C14.7816 11.7886 14.4485 12.8652 13.6568 13.6569C12.8651 14.4486 11.7885 14.7817 10.7571 14.6563C10.1164 15.4743 9.1196 16 8 16C6.88038 16 5.88354 15.4743 5.24288 14.6562C4.21141 14.7817 3.13481 14.4485 2.34312 13.6568C1.55143 12.8652 1.2183 11.7886 1.34372 10.7571C0.525698 10.1164 0 9.1196 0 8C0 6.88038 0.525715 5.88354 1.34376 5.24288C1.21834 4.21141 1.55147 3.13481 2.34316 2.34312C3.13485 1.55143 4.21145 1.2183 5.24291 1.34372C5.88358 0.525698 6.8804 0 8 0C9.11964 0 10.1165 0.525732 10.7572 1.3438C11.7886 1.21838 12.8652 1.55152 13.6569 2.3432C14.4486 3.13488 14.7817 4.21146 14.6563 5.24291ZM12.2071 6.20711L10.7929 4.79289L7 8.58579L5.20711 6.79289L3.79289 8.20711L7 11.4142L12.2071 6.20711Z" />
+  </g>
+    <text x="126" y="492" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#1A2433">Flutter 后台管理中心可在移动端落地使用</text>
+    
+  <g transform="translate(88.0, 518.0) scale(1.5)" fill="#2E8B57">
+    <path fill-rule="evenodd" clip-rule="evenodd" d="M14.6563 5.24291C15.4743 5.88358 16 6.8804 16 8C16 9.11964 15.4743 10.1165 14.6562 10.7572C14.7816 11.7886 14.4485 12.8652 13.6568 13.6569C12.8651 14.4486 11.7885 14.7817 10.7571 14.6563C10.1164 15.4743 9.1196 16 8 16C6.88038 16 5.88354 15.4743 5.24288 14.6562C4.21141 14.7817 3.13481 14.4485 2.34312 13.6568C1.55143 12.8652 1.2183 11.7886 1.34372 10.7571C0.525698 10.1164 0 9.1196 0 8C0 6.88038 0.525715 5.88354 1.34376 5.24288C1.21834 4.21141 1.55147 3.13481 2.34316 2.34312C3.13485 1.55143 4.21145 1.2183 5.24291 1.34372C5.88358 0.525698 6.8804 0 8 0C9.11964 0 10.1165 0.525732 10.7572 1.3438C11.7886 1.21838 12.8652 1.55152 13.6569 2.3432C14.4486 3.13488 14.7817 4.21146 14.6563 5.24291ZM12.2071 6.20711L10.7929 4.79289L7 8.58579L5.20711 6.79289L3.79289 8.20711L7 11.4142L12.2071 6.20711Z" />
+  </g>
+    <text x="126" y="536" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#1A2433">WebDAV 资源扫描打通“配置 - 扫描 - 入库”链路</text>
+    
+  <g transform="translate(88.0, 562.0) scale(1.5)" fill="#2E8B57">
+    <path fill-rule="evenodd" clip-rule="evenodd" d="M14.6563 5.24291C15.4743 5.88358 16 6.8804 16 8C16 9.11964 15.4743 10.1165 14.6562 10.7572C14.7816 11.7886 14.4485 12.8652 13.6568 13.6569C12.8651 14.4486 11.7885 14.7817 10.7571 14.6563C10.1164 15.4743 9.1196 16 8 16C6.88038 16 5.88354 15.4743 5.24288 14.6562C4.21141 14.7817 3.13481 14.4485 2.34312 13.6568C1.55143 12.8652 1.2183 11.7886 1.34372 10.7571C0.525698 10.1164 0 9.1196 0 8C0 6.88038 0.525715 5.88354 1.34376 5.24288C1.21834 4.21141 1.55147 3.13481 2.34316 2.34312C3.13485 1.55143 4.21145 1.2183 5.24291 1.34372C5.88358 0.525698 6.8804 0 8 0C9.11964 0 10.1165 0.525732 10.7572 1.3438C11.7886 1.21838 12.8652 1.55152 13.6569 2.3432C14.4486 3.13488 14.7817 4.21146 14.6563 5.24291ZM12.2071 6.20711L10.7929 4.79289L7 8.58579L5.20711 6.79289L3.79289 8.20711L7 11.4142L12.2071 6.20711Z" />
+  </g>
+    <text x="126" y="580" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#1A2433">阅读器交互与导航壳层做过稳定性优化</text>
+    
+  <g transform="translate(88.0, 606.0) scale(1.5)" fill="#2E8B57">
+    <path fill-rule="evenodd" clip-rule="evenodd" d="M14.6563 5.24291C15.4743 5.88358 16 6.8804 16 8C16 9.11964 15.4743 10.1165 14.6562 10.7572C14.7816 11.7886 14.4485 12.8652 13.6568 13.6569C12.8651 14.4486 11.7885 14.7817 10.7571 14.6563C10.1164 15.4743 9.1196 16 8 16C6.88038 16 5.88354 15.4743 5.24288 14.6562C4.21141 14.7817 3.13481 14.4485 2.34312 13.6568C1.55143 12.8652 1.2183 11.7886 1.34372 10.7571C0.525698 10.1164 0 9.1196 0 8C0 6.88038 0.525715 5.88354 1.34376 5.24288C1.21834 4.21141 1.55147 3.13481 2.34316 2.34312C3.13485 1.55143 4.21145 1.2183 5.24291 1.34372C5.88358 0.525698 6.8804 0 8 0C9.11964 0 10.1165 0.525732 10.7572 1.3438C11.7886 1.21838 12.8652 1.55152 13.6569 2.3432C14.4486 3.13488 14.7817 4.21146 14.6563 5.24291ZM12.2071 6.20711L10.7929 4.79289L7 8.58579L5.20711 6.79289L3.79289 8.20711L7 11.4142L12.2071 6.20711Z" />
+  </g>
+    <text x="126" y="624" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#1A2433">项目已具备向下阶段继续投入的基础条件</text>
+
+    <path fill="#FFFFFF" stroke="#D6DDE8" stroke-width="1.5" filter="url(#shadow)" d="M648,400 H1198 A28,28 0 0 1 1226,428 V624 A28,28 0 0 1 1198,652 H648 A28,28 0 0 1 620,624 V428 A28,28 0 0 1 648,400 Z" />
+    <text x="652" y="444" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="24" font-weight="700" fill="#0F2747">当前边界与下一步焦点</text>
+    <text x="652" y="488" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#1A2433">1. 原 Next.js Web 端不再承接新功能开发</text>
+    <text x="652" y="524" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#1A2433">2. Flutter Web/Desktop 尚未在本阶段正式接管全部能力</text>
+    <text x="652" y="560" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#1A2433">3. 下一阶段优先把后台管理能力迁移到 Flutter 多端</text>
+    <text x="652" y="596" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#1A2433">4. 书架、账户与阅读器跨端能力将继续抽象与收敛</text>
+  </g>
+
+  <text x="54" y="687" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="12" fill="#8893A3">Source: docs/第一阶段功能总览.md, docs/Web端停用与Flutter多端迁移计划.md</text>
+</svg>

@@ -7,13 +7,11 @@ Private Reader is a self-hosted multi-user ebook platform with:
 - A Kotlin + Spring Boot backend designed for JVM and GraalVM native image builds
 - A plugin-based book format scanner with compile-time integrated plugins
 - A Flutter app client for Android-first phone and tablet reading, with planned Web/Desktop convergence
-- A deprecated legacy Next.js web client kept only as migration reference
 - Offline-first sync for annotations, bookmarks, and reading progress
 
 ## Workspace layout
 
 - `backend/` Spring Boot multi-module project
-- `web/` deprecated legacy Next.js client, no longer the primary delivery target
 - `mobile/` Flutter app
 - `infra/` infrastructure notes, SQL scripts, and helper scripts
 - `docker-compose.yml` local development stack
@@ -23,7 +21,6 @@ Private Reader is a self-hosted multi-user ebook platform with:
 1. Start infrastructure with Docker Compose.
 2. Build and run the backend using the Gradle wrapper in `backend/`.
 3. Run the Flutter app against the backend using `--dart-define=API_BASE_URL=...`.
-4. Treat `web/` as read-only reference code during the Flutter Web/Desktop migration period.
 
 ## Documentation
 
@@ -33,7 +30,7 @@ Private Reader is a self-hosted multi-user ebook platform with:
 - [第一阶段详细功能文档](docs/第一阶段详细功能文档.md)
 - [后端架构文档](docs/后端架构文档.md)
 - [Flutter应用架构文档](docs/Flutter应用架构文档.md)
-- [Web端停用与Flutter多端迁移计划](docs/Web端停用与Flutter多端迁移计划.md)
+- [Web端移除与Flutter多端路线](docs/Web端移除与Flutter多端路线.md)
 - [基础设施说明](infra/README.md)
 
 ## Middleware and database setup
@@ -57,5 +54,5 @@ The backend is built with Spring Boot 3 and follows AOT-friendly constraints:
 ## Current product direction
 
 - Phase 1 delivery is centered on `backend/ + mobile/`.
-- New feature development on the legacy `web/` client is stopped.
-- The next cross-platform target is to evolve the Flutter app into shared mobile, web, and desktop clients.
+- The legacy Next.js `web/` client has been removed from the workspace.
+- All frontend product work now lands in the Flutter project under `mobile/`, including future web and desktop targets.

@@ -19,7 +19,7 @@ Private Reader 是一套可自托管的多用户电子书平台，当前以 `bac
 
 - 第一阶段已达到“后端能力跑通 + Flutter App 完成可用闭环 + 管理后台在移动端可落地”
 - 手机与平板采用统一 Flutter 代码基线，并已做平板适配
-- 原 Next.js Web 端已停用，仅保留为迁移参考
+- 原 Next.js Web 端已从仓库移除，后续前端工作统一进入 Flutter 工程
 
 ## 可用于 PPT 的真实素材
 
@@ -45,4 +45,4 @@ Private Reader 是一套可自托管的多用户电子书平台，当前以 `bac
 - `docs/第一阶段详细功能文档.md`
 - `docs/后端架构文档.md`
 - `docs/Flutter应用架构文档.md`
-- `docs/Web端停用与Flutter多端迁移计划.md`
+- `docs/Web端移除与Flutter多端路线.md`

@@ -23,4 +23,3 @@ The backend also keeps a runtime copy of the schema in `backend/app/src/main/res
 
 - [start-infra.ps1](scripts/start-infra.ps1): starts PostgreSQL, Redis, and RabbitMQ
 - [init-db.ps1](scripts/init-db.ps1): prints commands for applying SQL scripts to PostgreSQL
-- [build-web.ps1](scripts/build-web.ps1): installs frontend dependencies and runs the static export build

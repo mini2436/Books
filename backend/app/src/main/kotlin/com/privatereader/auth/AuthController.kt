@@ -13,12 +13,15 @@ import org.springframework.web.bind.annotation.RestController
 class AuthController(
     private val tokenService: TokenService,
 ) {
+    // 登录接口：校验用户名和密码，返回访问令牌、刷新令牌和当前用户信息。
     @PostMapping("/login")
     fun login(@Valid @RequestBody request: LoginRequest): AuthResponse = tokenService.login(request)
 
+    // 刷新令牌接口：使用 refreshToken 换取新的访问令牌和刷新令牌。
     @PostMapping("/refresh")
     fun refresh(@Valid @RequestBody request: RefreshRequest): AuthResponse = tokenService.refresh(request.refreshToken)
 
+    // 退出登录接口：撤销当前 Authorization 头中的访问令牌。
     @PostMapping("/logout")
     fun logout(
         @RequestHeader("Authorization", required = false) authorization: String?,

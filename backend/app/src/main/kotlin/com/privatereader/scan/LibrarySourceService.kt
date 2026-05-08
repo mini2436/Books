@@ -41,6 +41,7 @@ class LibrarySourceService(
     fun createSource(request: CreateLibrarySourceRequest): LibrarySourceView {
         val normalized = request.toNormalized()
         val now = Instant.now()
+        // 新增图书扫描源配置，并返回新建扫描源 ID。
         val id = jdbcClient.sql(
             """
             insert into library_sources (
@@ -70,6 +71,7 @@ class LibrarySourceService(
 
     fun updateSource(sourceId: Long, request: UpdateLibrarySourceRequest): LibrarySourceView {
         val normalized = request.toNormalized()
+        // 更新指定扫描源的路径、认证信息、启用状态和扫描间隔。
         val updated = jdbcClient.sql(
             """
             update library_sources
@@ -103,6 +105,7 @@ class LibrarySourceService(
     }
 
     fun listSources(): List<LibrarySourceView> =
+        // 查询全部扫描源配置，供后台扫描源管理页面展示。
         jdbcClient.sql(
             """
             select id, name, root_path, enabled, source_type, base_url, remote_path,
@@ -222,6 +225,7 @@ class LibrarySourceService(
     private fun getSourceView(sourceId: Long): LibrarySourceView = getSourceRecord(sourceId).toLibrarySourceView()
 
     private fun getSourceRecord(sourceId: Long): SourceRecord =
+        // 按扫描源 ID 查询完整配置，用于执行扫描或更新后回显。
         jdbcClient.sql(
             """
             select id, name, root_path, enabled, source_type, base_url, remote_path,
@@ -236,6 +240,7 @@ class LibrarySourceService(
             .orElseThrow { IllegalArgumentException("Source $sourceId was not found") }
 
     private fun listSourceRecords(): List<SourceRecord> =
+        // 查询全部扫描源完整配置，供定时任务筛选需要执行的扫描源。
         jdbcClient.sql(
             """
             select id, name, root_path, enabled, source_type, base_url, remote_path,
@@ -248,6 +253,7 @@ class LibrarySourceService(
             .list()
 
     private fun touchLastScan(sourceId: Long, scannedAt: Instant) {
+        // 记录指定扫描源最近一次扫描时间，用于定时轮询间隔判断。
         jdbcClient.sql(
             """
             update library_sources

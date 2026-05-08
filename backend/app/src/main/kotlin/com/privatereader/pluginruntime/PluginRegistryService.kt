@@ -36,9 +36,9 @@ class PluginRegistryService(
         plugins.firstOrNull { plugin -> plugin.pluginId == pluginId }
 
     fun syncRegistry() {
-        // Persist the compile-time plugin registry so the admin UI can expose the active scanner
-        // capabilities without relying on runtime classpath scanning.
+        // 同步编译期注册的插件清单，让后台能展示当前可用格式和能力。
         plugins.forEach { plugin ->
+            // 按插件 ID 插入或更新插件注册信息，避免运行时扫描类路径。
             jdbcClient.sql(
                 """
                 insert into plugin_registry (plugin_id, display_name, supported_extensions_json, capabilities_json, updated_at)

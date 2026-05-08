@@ -32,6 +32,7 @@ class UserAdminService(
         val existing = authRepository.findUserById(userId) ?: throw IllegalArgumentException("User not found")
         val newRole = request.role?.let(::normalizeRole) ?: existing.role
         val newEnabled = request.enabled ?: existing.enabled
+        // 更新指定用户的角色和启用状态，用于超级管理员维护账号权限。
         jdbcClient.sql(
             """
             update users set role = :role, enabled = :enabled, updated_at = :updatedAt
@@ -47,6 +48,7 @@ class UserAdminService(
     }
 
     fun listUsers(): List<UserView> =
+        // 查询全部用户的基础管理信息，并按创建顺序展示在后台用户列表。
         jdbcClient.sql("select id, username, role, enabled from users order by id asc")
             .query { rs, _ ->
                 UserView(

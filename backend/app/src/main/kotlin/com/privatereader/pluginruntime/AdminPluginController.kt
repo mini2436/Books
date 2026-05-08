@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RestController
 class AdminPluginController(
     private val pluginRegistryService: PluginRegistryService,
 ) {
+    // 插件列表接口：返回当前后端已注册的图书格式插件和能力。
     @GetMapping
     fun listPlugins(): List<RegisteredPluginView> = pluginRegistryService.all()
 }

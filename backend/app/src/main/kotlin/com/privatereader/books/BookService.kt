@@ -56,15 +56,14 @@ class BookService(
         actorId: Long?,
         sourcePathOverride: String? = null,
     ): BookDetailView {
-        // Import flow is format-driven: detect the compile-time plugin first, then persist
-        // the canonical book record, file source metadata, and the reader manifest/index excerpt.
+        // 导入流程以文件格式插件为入口，先解析元数据，再落库书籍、文件来源和阅读清单。
         val plugin = pluginRegistryService.findPluginFor(filePath.fileName.toString())
             ?: throw IllegalArgumentException("No plugin available for file ${filePath.fileName}")
         val fileHash = sha256(filePath)
         val preparedImport = prepareImport(filePath, plugin)
         val existing = findBookByHash(fileHash)
         if (existing != null) {
-            // A repeated NAS scan should revive an existing source path instead of creating duplicates.
+            // 重复扫描同一文件时复用已有书籍，并刷新文件来源信息，避免产生重复书目。
             refreshExistingFileReference(
                 existing.fileId,
                 filePath,
@@ -83,6 +82,7 @@ class BookService(
         }
 
         val now = Instant.now()
+        // 新增书籍主记录，保存从插件解析出的标题、作者和简介。
         val bookId = jdbcClient.sql(
             """
             insert into books (title, author, description, created_at, updated_at)
@@ -97,6 +97,7 @@ class BookService(
             .query(Long::class.java)
             .single()
 
+        // 新增书籍文件记录，保存文件哈希、物理路径、来源类型和格式信息。
         val fileId = jdbcClient.sql(
             """
             insert into book_files (
@@ -135,6 +136,7 @@ class BookService(
 
     fun listAccessibleBooks(userId: Long): List<BookView> {
         if (hasGlobalLibraryAccess(userId)) {
+            // 查询全局角色可访问的全部书籍，每本书只取最新文件记录用于列表展示。
             return jdbcClient.sql(
                 """
                 select b.id, b.title, b.author, b.description, bf.plugin_id, bf.format, bf.source_type, bf.source_missing, b.updated_at
@@ -151,6 +153,7 @@ class BookService(
                 .list()
         }
 
+        // 查询普通读者被显式授权的书籍列表，并带出最新文件信息。
         return jdbcClient.sql(
             """
             select b.id, b.title, b.author, b.description, bf.plugin_id, bf.format, bf.source_type, bf.source_missing, b.updated_at
@@ -166,6 +169,7 @@ class BookService(
     }
 
     fun listAdminBooks(): List<AdminBookView> =
+        // 查询后台书籍列表，每本书取最新文件记录并按更新时间倒序展示。
         jdbcClient.sql(
             """
             select b.id, b.title, b.author, b.group_name, b.description, bf.plugin_id, bf.format, bf.source_type, bf.source_missing, b.updated_at
@@ -195,6 +199,7 @@ class BookService(
             .list()
 
     fun getAdminBookDetail(bookId: Long): AdminBookDetailView =
+        // 查询后台书籍详情，并附带最新结构化正文版本的状态与版本号。
         jdbcClient.sql(
             """
             select b.id, b.title, b.author, b.group_name, b.description, bf.plugin_id, bf.format, f.source_type, f.source_missing,
@@ -264,6 +269,7 @@ class BookService(
                 hasStructuredContent = false,
                 chapters = emptyList(),
             )
+        // 查询结构化正文的章节标题块，用于生成在线阅读目录。
         val chapters = jdbcClient.sql(
             """
             select chapter_index, anchor, text
@@ -295,6 +301,7 @@ class BookService(
         require(hasAccess(userId, bookId)) { "Book access denied" }
         val version = resolveLatestStructuredContentVersion(bookId)
             ?: throw IllegalArgumentException("Structured content is not available for this book")
+        // 查询指定章节的标题块，确认章节存在并取出标题与锚点。
         val chapter = jdbcClient.sql(
             """
             select anchor, text
@@ -315,6 +322,7 @@ class BookService(
             }
             .optional()
             .orElseThrow { IllegalArgumentException("Structured content chapter $chapterIndex was not found") }
+        // 查询指定章节的正文块列表，按块序号还原阅读顺序。
         val blocks = jdbcClient.sql(
             """
             select block_index, block_type, anchor, text, plain_text, meta_json
@@ -388,6 +396,7 @@ class BookService(
     }
 
     fun grantBook(bookId: Long, userId: Long, grantedBy: Long) {
+        // 新增或刷新用户对书籍的显式授权记录，重复授权时更新授权人和时间。
         jdbcClient.sql(
             """
             insert into user_book_access (user_id, book_id, granted_by, granted_at)
@@ -407,6 +416,7 @@ class BookService(
     @Transactional
     fun updateAdminBook(bookId: Long, request: UpdateAdminBookRequest): AdminBookDetailView {
         val normalizedGroupName = request.groupName?.trim()?.takeIf { it.isNotEmpty() }
+        // 更新后台维护的书籍分组，并刷新书籍更新时间。
         val updated = jdbcClient.sql(
             """
             update books
@@ -446,6 +456,7 @@ class BookService(
             return 0
         }
 
+        // 批量删除指定书籍，依赖数据库外键级联清理相关记录。
         return jdbcClient.sql(
             """
             delete from books
@@ -457,6 +468,7 @@ class BookService(
     }
 
     fun revokeBookGrant(bookId: Long, userId: Long) {
+        // 删除指定用户对指定书籍的显式授权记录。
         jdbcClient.sql(
             """
             delete from user_book_access
@@ -469,6 +481,7 @@ class BookService(
     }
 
     fun listBookViewers(bookId: Long): List<BookViewerView> =
+        // 查询可访问指定书籍的用户列表，合并全局角色和显式授权来源。
         jdbcClient.sql(
             """
             select u.id as user_id,
@@ -515,6 +528,7 @@ class BookService(
             .list()
 
     fun listGrantableUsers(): List<UserView> =
+        // 查询所有启用用户，按角色优先级排序供书籍授权下拉选择。
         jdbcClient.sql(
             """
             select id, username, role, enabled
@@ -542,6 +556,7 @@ class BookService(
             .list()
 
     fun listTrackedSourcePaths(sourceId: Long): List<String> =
+        // 查询指定扫描源已跟踪的文件来源路径，用于扫描后判断缺失文件。
         jdbcClient.sql(
             """
             select source_path from book_files
@@ -553,6 +568,7 @@ class BookService(
             .list()
 
     fun markMissingSourcePath(sourceId: Long, sourcePath: String) {
+        // 将扫描源中未再次发现的文件标记为源文件缺失。
         jdbcClient.sql(
             """
             update book_files
@@ -567,6 +583,7 @@ class BookService(
     }
 
     fun listImportJobs(): List<Map<String, Any?>> =
+        // 查询最近导入任务，并关联书名和扫描源名称供后台展示。
         jdbcClient.sql(
             """
             select ij.id, ij.book_id, b.title as book_title, ij.source_id, ls.name as source_name,
@@ -598,6 +615,7 @@ class BookService(
         if (hasGlobalLibraryAccess(userId)) {
             return true
         }
+        // 查询用户是否拥有指定书籍的显式授权，用于阅读接口访问控制。
         return jdbcClient.sql(
             """
             select count(*) from user_book_access
@@ -628,6 +646,7 @@ class BookService(
         )
 
     private fun getBookDetail(bookId: Long): BookDetailView =
+        // 查询读者端书籍详情，包含最新文件、阅读清单和结构化正文状态。
         jdbcClient.sql(
             """
             select b.id, b.title, b.author, b.description, bf.plugin_id, bf.format, f.source_type, f.source_missing,
@@ -662,8 +681,7 @@ class BookService(
 
     private fun ResultSet.toBookDetailView(): BookDetailView {
         val manifestJson = getString("manifest_json")
-        // The manifest stays JSON in storage so every plugin can emit its own reader-specific
-        // navigation structure without forcing a rigid relational schema.
+        // 阅读清单保持 JSON 存储，让不同插件可以返回各自适配的导航结构。
         val manifest = manifestJson?.let {
             objectMapper.readValue(it, object : TypeReference<Map<String, Any>>() {})
         }
@@ -726,6 +744,7 @@ class BookService(
         format: String,
         sourcePathOverride: String?,
     ) {
+        // 刷新复用文件记录的物理路径、来源信息和文件大小，并清除缺失标记。
         jdbcClient.sql(
             """
             update book_files
@@ -752,6 +771,7 @@ class BookService(
     }
 
     private fun reconcileExistingImport(bookId: Long, filePath: Path, preparedImport: PreparedImport) {
+        // 复用已有书籍时同步最新解析出的标题、作者和简介。
         jdbcClient.sql(
             """
             update books
@@ -773,6 +793,7 @@ class BookService(
     }
 
     private fun upsertBookFormat(bookId: Long, preparedImport: PreparedImport) {
+        // 优先更新书籍格式记录，保存插件、能力、阅读清单和索引摘要。
         val updated = jdbcClient.sql(
             """
             update book_formats
@@ -801,6 +822,7 @@ class BookService(
         }
 
         val now = Instant.now()
+        // 当前书籍没有格式记录时新增一条格式解析结果。
         jdbcClient.sql(
             """
             insert into book_formats (
@@ -841,6 +863,7 @@ class BookService(
         }
 
         val now = Instant.now()
+        // 新增可用的结构化正文版本，并返回版本 ID 用于写入章节块。
         val versionId = jdbcClient.sql(
             """
             insert into book_content_versions (
@@ -866,6 +889,7 @@ class BookService(
 
     private fun insertFailedStructuredContentVersion(bookId: Long, sourceFileId: Long, checksum: String) {
         val now = Instant.now()
+        // 记录结构化正文抽取失败的版本，保留失败状态供后台排查。
         jdbcClient.sql(
             """
             insert into book_content_versions (
@@ -925,6 +949,7 @@ class BookService(
         metaJson: String?,
         now: Instant,
     ) {
+        // 写入结构化正文块，包含章节序号、块类型、锚点和正文内容。
         jdbcClient.sql(
             """
             insert into book_content_blocks (
@@ -947,6 +972,7 @@ class BookService(
     }
 
     private fun markPreviousContentVersionsStale(bookId: Long, latestVersionId: Long, now: Instant) {
+        // 将同一本书旧的 READY 正文版本标记为过期，只保留最新版本可用。
         jdbcClient.sql(
             """
             update book_content_versions
@@ -967,6 +993,7 @@ class BookService(
 
     private fun insertImportJob(bookId: Long, sourceId: Long?, fileId: Long, message: String) {
         val now = Instant.now()
+        // 写入导入任务完成记录，用于后台查看扫描或上传导入历史。
         jdbcClient.sql(
             """
             insert into import_jobs (
@@ -985,6 +1012,7 @@ class BookService(
     }
 
     private fun findBookByHash(hash: String): ExistingBookRef? =
+        // 按文件哈希查找已导入书籍，避免重复导入同一文件。
         jdbcClient.sql(
             """
             select book_id, id from book_files
@@ -998,6 +1026,7 @@ class BookService(
             .orElse(null)
 
     private fun resolveBookFileRef(bookId: Long): BookFileRef =
+        // 查询指定书籍最新的文件记录，用于读取源文件、封面和资源。
         jdbcClient.sql(
             """
             select id, storage_path, plugin_id, format from book_files
@@ -1018,6 +1047,7 @@ class BookService(
             .single()
 
     private fun resolveLatestStructuredContentVersion(bookId: Long): StructuredContentVersionRef? =
+        // 查询指定书籍最新 READY 的结构化正文版本。
         jdbcClient.sql(
             """
             select id, content_model

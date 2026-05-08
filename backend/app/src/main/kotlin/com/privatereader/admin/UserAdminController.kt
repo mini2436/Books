@@ -19,14 +19,17 @@ import org.springframework.web.bind.annotation.RestController
 class UserAdminController(
     private val userAdminService: UserAdminService,
 ) {
+    // 用户列表接口：超级管理员查看所有账号及其角色状态。
     @GetMapping
     @PreAuthorize(RoleExpressions.SUPER_ADMIN_ONLY)
     fun listUsers(): List<UserView> = userAdminService.listUsers()
 
+    // 用户创建接口：超级管理员创建后台或读者账号。
     @PostMapping
     @PreAuthorize(RoleExpressions.SUPER_ADMIN_ONLY)
     fun createUser(@Valid @RequestBody request: CreateUserRequest): UserView = userAdminService.createUser(request)
 
+    // 用户更新接口：超级管理员调整用户角色或启用状态。
     @PatchMapping("/{userId}")
     @PreAuthorize(RoleExpressions.SUPER_ADMIN_ONLY)
     fun updateUser(

@@ -11,6 +11,7 @@ class AdminModerationService(
     private val jdbcClient: JdbcClient,
 ) {
     fun listAnnotations(): List<AdminAnnotationView> =
+        // 查询所有用户批注及其所属用户、书籍信息，供后台审核列表按更新时间展示。
         jdbcClient.sql(
             """
             select a.id,
@@ -35,6 +36,7 @@ class AdminModerationService(
             .list()
 
     fun updateAnnotationDeleted(annotationId: Long, deleted: Boolean): AdminAnnotationView {
+        // 更新指定批注的隐藏状态，并刷新更新时间。
         val updatedRows = jdbcClient.sql(
             """
             update annotations
@@ -52,6 +54,7 @@ class AdminModerationService(
     }
 
     fun listBookmarks(): List<AdminBookmarkView> =
+        // 查询所有用户书签及其所属用户、书籍信息，供后台审核列表按更新时间展示。
         jdbcClient.sql(
             """
             select bm.id,
@@ -73,6 +76,7 @@ class AdminModerationService(
             .list()
 
     fun updateBookmarkDeleted(bookmarkId: Long, deleted: Boolean): AdminBookmarkView {
+        // 更新指定书签的隐藏状态，并刷新更新时间。
         val updatedRows = jdbcClient.sql(
             """
             update bookmarks
@@ -90,6 +94,7 @@ class AdminModerationService(
     }
 
     private fun getAnnotation(annotationId: Long): AdminAnnotationView? =
+        // 按批注 ID 查询单条批注详情，用于更新后返回最新状态。
         jdbcClient.sql(
             """
             select a.id,
@@ -116,6 +121,7 @@ class AdminModerationService(
             .orElse(null)
 
     private fun getBookmark(bookmarkId: Long): AdminBookmarkView? =
+        // 按书签 ID 查询单条书签详情，用于更新后返回最新状态。
         jdbcClient.sql(
             """
             select bm.id,

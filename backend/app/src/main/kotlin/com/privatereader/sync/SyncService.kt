@@ -18,8 +18,7 @@ class SyncService(
         request.annotations.forEach { mutation ->
             when (mutation.action.uppercase()) {
                 "CREATE" -> {
-                    // Offline-created annotations arrive with a client temp id; the response maps
-                    // that temp id to the server id so the client can reconcile local state.
+                    // 新增离线创建的批注，并返回服务端 ID 供客户端替换临时 ID。
                     val annotationId = jdbcClient.sql(
                         """
                         insert into annotations (
@@ -45,8 +44,7 @@ class SyncService(
                 "UPDATE", "DELETE" -> {
                     val existing = getAnnotationRecord(userId, mutation.annotationId ?: -1)
                         ?: throw IllegalArgumentException("Annotation not found")
-                    // Annotation edits are version-checked so two offline devices do not silently
-                    // overwrite each other. Conflicts are returned for the client to resolve.
+                    // 批注更新先做版本校验，避免多设备离线修改时静默覆盖。
                     if (existing.version != mutation.baseVersion) {
                         conflicts += SyncConflict(
                             entityType = "annotation",
@@ -55,6 +53,7 @@ class SyncService(
                             serverAnnotation = existing.toView(),
                         )
                     } else {
+                        // 更新或软删除指定批注，并递增版本号用于后续冲突检测。
                         jdbcClient.sql(
                             """
                             update annotations
@@ -86,6 +85,7 @@ class SyncService(
         request.bookmarks.forEach { mutation ->
             val deleted = mutation.action.uppercase() == "DELETE"
             if (mutation.bookmarkId == null) {
+                // 新增客户端同步上来的书签，可直接带入删除状态以兼容离线操作。
                 jdbcClient.sql(
                     """
                     insert into bookmarks (user_id, book_id, location, label, deleted, created_at, updated_at)
@@ -100,6 +100,7 @@ class SyncService(
                     .param("updatedAt", Instant.parse(mutation.updatedAt).toSqlTimestamp())
                     .update()
             } else {
+                // 更新或软删除指定书签，只允许修改当前用户自己的记录。
                 jdbcClient.sql(
                     """
                     update bookmarks
@@ -118,6 +119,7 @@ class SyncService(
         }
 
         request.progresses.forEach { mutation ->
+            // 查询当前阅读进度的最后更新时间，用于判断是否接受客户端进度。
             val existingUpdatedAt = jdbcClient.sql(
                 "select updated_at from reading_progress where user_id = :userId and book_id = :bookId",
             )
@@ -128,6 +130,7 @@ class SyncService(
                 .orElse(null)
             val incomingUpdatedAt = Instant.parse(mutation.updatedAt)
             if (existingUpdatedAt == null || incomingUpdatedAt.isAfter(existingUpdatedAt)) {
+                // 写入阅读进度；已有记录时仅用更新的客户端进度覆盖。
                 jdbcClient.sql(
                     """
                     insert into reading_progress (user_id, book_id, location, progress_percent, updated_at)
@@ -152,6 +155,7 @@ class SyncService(
 
     fun pull(userId: Long, cursor: Long?): SyncPullResponse {
         val since = cursor?.let { Instant.ofEpochMilli(it) } ?: Instant.EPOCH
+        // 拉取指定游标之后发生变更的批注，供客户端增量同步。
         val annotations = jdbcClient.sql(
             """
             select id, book_id, quote_text, note_text, color, anchor_json, version, deleted, updated_at
@@ -165,6 +169,7 @@ class SyncService(
             .query { rs, _ -> rs.toAnnotationView() }
             .list()
 
+        // 拉取指定游标之后发生变更的书签，供客户端增量同步。
         val bookmarks = jdbcClient.sql(
             """
             select id, book_id, location, label, deleted, updated_at
@@ -178,6 +183,7 @@ class SyncService(
             .query { rs, _ -> rs.toBookmarkView() }
             .list()
 
+        // 拉取指定游标之后发生变更的阅读进度，供客户端增量同步。
         val progresses = jdbcClient.sql(
             """
             select book_id, location, progress_percent, updated_at
@@ -191,8 +197,7 @@ class SyncService(
             .query { rs, _ -> rs.toProgressView() }
             .list()
 
-        // The cursor is just the latest updated timestamp the client has observed across
-        // annotations, bookmarks, and reading progress.
+        // 游标取三类同步数据中的最大更新时间，让客户端下次从该时间之后继续拉取。
         val nextCursor = listOf(
             annotations.maxOfOrNull { Instant.parse(it.updatedAt).toEpochMilli() } ?: 0L,
             bookmarks.maxOfOrNull { Instant.parse(it.updatedAt).toEpochMilli() } ?: 0L,
@@ -209,6 +214,7 @@ class SyncService(
     }
 
     fun getAnnotations(userId: Long, bookId: Long): List<AnnotationView> =
+        // 查询当前用户在指定书籍上的批注列表，按最近更新时间倒序返回。
         jdbcClient.sql(
             """
             select id, book_id, quote_text, note_text, color, anchor_json, version, deleted, updated_at
@@ -223,6 +229,7 @@ class SyncService(
             .list()
 
     fun getBookmarks(userId: Long, bookId: Long): List<BookmarkView> =
+        // 查询当前用户在指定书籍上的书签列表，按最近更新时间倒序返回。
         jdbcClient.sql(
             """
             select id, book_id, location, label, deleted, updated_at
@@ -247,6 +254,7 @@ class SyncService(
     }
 
     private fun getAnnotationRecord(userId: Long, annotationId: Long): AnnotationRecord? =
+        // 查询当前用户的单条批注原始记录，用于同步更新前的版本冲突判断。
         jdbcClient.sql(
             """
             select id, book_id, quote_text, note_text, color, anchor_json, version, deleted, updated_at

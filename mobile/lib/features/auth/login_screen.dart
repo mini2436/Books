@@ -56,7 +56,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'Private Reader',
+            '轻阅',
             textAlign: tablet ? TextAlign.left : TextAlign.center,
             style: Theme.of(context).textTheme.headlineMedium?.copyWith(
               fontWeight: FontWeight.w700,
@@ -89,18 +89,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   : const Icon(Icons.settings_ethernet),
             ),
             keyboardType: TextInputType.url,
-            validator: (value) => (value == null || value.trim().isEmpty)
-                ? '请输入服务地址'
-                : null,
+            validator: (value) =>
+                (value == null || value.trim().isEmpty) ? '请输入服务地址' : null,
           ),
           const SizedBox(height: 8),
           Align(
             alignment: Alignment.centerLeft,
             child: Text(
               '当前接口: $_baseUrlPreview',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: palette.inkSecondary,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: palette.inkSecondary),
             ),
           ),
           const SizedBox(height: 14),
@@ -156,7 +155,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             builder: (context, constraints) => SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
               child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: constraints.maxHeight - 48),
+                constraints: BoxConstraints(
+                  minHeight: constraints.maxHeight - 48,
+                ),
                 child: Center(
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 420),
@@ -192,7 +193,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           builder: (context, constraints) => SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 32),
             child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: constraints.maxHeight - 64),
+              constraints: BoxConstraints(
+                minHeight: constraints.maxHeight - 64,
+              ),
               child: Center(child: form),
             ),
           ),
@@ -222,7 +225,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   void _handleServerAddressChanged() {
-    final nextPreview = AppConfig.normalizeBaseUrl(_serverAddressController.text);
+    final nextPreview = AppConfig.normalizeBaseUrl(
+      _serverAddressController.text,
+    );
     if (nextPreview == _baseUrlPreview) {
       return;
     }

@@ -56,9 +56,9 @@ class ReaderSettingsPanelContent extends ConsumerWidget {
         EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       ),
       textStyle: WidgetStatePropertyAll(
-        Theme.of(context).textTheme.bodySmall?.copyWith(
-          fontWeight: FontWeight.w600,
-        ),
+        Theme.of(
+          context,
+        ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
       ),
     );
 
@@ -203,29 +203,6 @@ class ReaderSettingsPanelContent extends ConsumerWidget {
                     selected: {preferences.tabletPageTurnAxis},
                     onSelectionChanged: (selection) =>
                         controller.setTabletPageTurnAxis(selection.first),
-                  ),
-                  SizedBox(height: compact ? 12 : 16),
-                  Text(
-                    '翻页动画',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: palette.inkTertiary,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  SizedBox(height: compact ? 8 : 10),
-                  SegmentedButton<TabletPageTurnAnimation>(
-                    style: segmentedStyle,
-                    segments: TabletPageTurnAnimation.values
-                        .map(
-                          (animation) => ButtonSegment(
-                            value: animation,
-                            label: Text(animation.label),
-                          ),
-                        )
-                        .toList(),
-                    selected: {preferences.tabletPageTurnAnimation},
-                    onSelectionChanged: (selection) =>
-                        controller.setTabletPageTurnAnimation(selection.first),
                   ),
                 ],
               ),

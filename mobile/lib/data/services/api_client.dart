@@ -485,6 +485,20 @@ class ApiClient {
     return BookContentChapter.fromJson(data);
   }
 
+  Future<Uint8List> downloadBookFile(String accessToken, int bookId) async {
+    final data = await _request<List<int>>(
+      () => _dio.get<List<int>>(
+        '/api/me/books/$bookId/file',
+        options: Options(
+          headers: _headers(accessToken),
+          responseType: ResponseType.bytes,
+        ),
+      ),
+    );
+
+    return Uint8List.fromList(data);
+  }
+
   Future<Uint8List> downloadBookResource(
     String accessToken,
     int bookId,

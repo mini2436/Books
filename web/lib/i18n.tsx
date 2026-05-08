@@ -311,7 +311,7 @@ const translations: Record<Locale, TranslationTree> = {
       pillNative: "Spring Boot Native-Ready",
       pillSync: "Offline Sync",
       pillPlugin: "Plugin Scanner",
-      title: "Private Reader",
+      title: "轻阅",
       description:
         "A self-hosted multi-user reading platform with fine-grained access control, NAS scanning, and offline annotation sync.",
       openReader: "Open Reading App",

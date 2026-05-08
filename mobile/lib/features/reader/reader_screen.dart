@@ -11,6 +11,7 @@ import '../../shared/utils/responsive.dart';
 import '../settings/reader_preferences_controller.dart';
 import 'models/annotation_anchor.dart';
 import 'reader_controller.dart';
+import 'widgets/pdf_reader_view.dart';
 import 'widgets/reader_html_view.dart';
 import 'widgets/reader_settings_sheet.dart';
 
@@ -121,7 +122,39 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       });
     }
 
-    final body = chapter == null
+    final body = detail.isPdf
+        ? controller.pdfBytes == null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(controller.error ?? 'PDF 正在加载中'),
+                        const SizedBox(height: 12),
+                        if (controller.error != null)
+                          FilledButton(
+                            onPressed: controller.load,
+                            child: const Text('重试'),
+                          )
+                        else
+                          const CircularProgressIndicator(),
+                      ],
+                    ),
+                  ),
+                )
+              : PdfReaderView(
+                  bytes: controller.pdfBytes!,
+                  initialPage: controller.pdfPageNumber,
+                  palette: palette,
+                  onPageChanged: (pageNumber) =>
+                      controller.updatePdfPage(pageNumber: pageNumber),
+                  onDocumentLoaded: (pageCount) => controller.updatePdfPage(
+                    pageNumber: controller.pdfPageNumber,
+                    pageCount: pageCount,
+                  ),
+                )
+        : chapter == null
         ? const Center(child: CircularProgressIndicator())
         : ReaderHtmlView(
             chapter: chapter,
@@ -283,10 +316,14 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                       offset: const Offset(-0.08, 0),
                       child: _TabletReaderProgressChip(
                         controller: controller,
-                        onPreviousPage: () => _dispatchViewportTapZone('left'),
+                        onPreviousPage: detail.isPdf
+                            ? controller.previousPdfPage
+                            : () => _dispatchViewportTapZone('left'),
                         onToggleChrome: () =>
                             _dispatchViewportTapZone('center'),
-                        onNextPage: () => _dispatchViewportTapZone('right'),
+                        onNextPage: detail.isPdf
+                            ? controller.nextPdfPage
+                            : () => _dispatchViewportTapZone('right'),
                       ),
                     ),
                   ),
@@ -935,7 +972,9 @@ class _TabletReaderHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = AppReaderPalette.of(context);
-    final chapterTitle = controller.currentChapter?.title ?? detail.title;
+    final chapterTitle = detail.isPdf
+        ? controller.currentReadingLabel
+        : controller.currentChapter?.title ?? detail.title;
 
     return Material(
       color: palette.panel.withValues(alpha: 0.94),
@@ -1324,6 +1363,7 @@ class _MobileReaderBottomBar extends StatelessWidget {
         ? 0
         : controller.currentChapterIndex + 1;
     final progress = controller.progressPercent.clamp(0, 100);
+    final isPdf = controller.isPdf;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
@@ -1368,7 +1408,9 @@ class _MobileReaderBottomBar extends StatelessWidget {
                     const SizedBox(height: 6),
                     Text(
                       chapterCount <= 0
-                          ? '正在计算章节进度'
+                          ? isPdf
+                                ? controller.currentReadingLabel
+                                : '正在计算章节进度'
                           : '第 $chapterNumber / $chapterCount 章',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: palette.inkSecondary,
@@ -1379,12 +1421,16 @@ class _MobileReaderBottomBar extends StatelessWidget {
               ),
               const SizedBox(width: 14),
               TextButton(
-                onPressed: controller.previousChapter,
-                child: const Text('上一章'),
+                onPressed: isPdf
+                    ? controller.previousPdfPage
+                    : controller.previousChapter,
+                child: Text(isPdf ? '上一页' : '上一章'),
               ),
               TextButton(
-                onPressed: controller.nextChapter,
-                child: const Text('下一章'),
+                onPressed: isPdf
+                    ? controller.nextPdfPage
+                    : controller.nextChapter,
+                child: Text(isPdf ? '下一页' : '下一章'),
               ),
             ],
           ),
@@ -1623,28 +1669,46 @@ class _ReaderLeftPanel extends StatelessWidget {
             ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 8),
-          ...chapters.map((chapter) {
-            final selected =
-                chapter.chapterIndex == controller.currentChapterIndex;
-            return ListTile(
-              dense: true,
-              minTileHeight: 0,
-              visualDensity: compactTileDensity,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 8,
-                vertical: 1,
-              ),
-              title: Text(
-                chapter.title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-              selected: selected,
-              selectedTileColor: palette.accent.withValues(alpha: 0.08),
-              onTap: () => controller.openChapter(chapter.chapterIndex),
-            );
-          }),
+          if (controller.isPdf)
+            ...List.generate(controller.pdfPageCount, (index) {
+              final pageNumber = index + 1;
+              return ListTile(
+                dense: true,
+                minTileHeight: 0,
+                visualDensity: compactTileDensity,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 1,
+                ),
+                title: Text('第 $pageNumber 页'),
+                selected: pageNumber == controller.pdfPageNumber,
+                selectedTileColor: palette.accent.withValues(alpha: 0.08),
+                onTap: () => controller.jumpToAnchor('#page=$pageNumber'),
+              );
+            })
+          else
+            ...chapters.map((chapter) {
+              final selected =
+                  chapter.chapterIndex == controller.currentChapterIndex;
+              return ListTile(
+                dense: true,
+                minTileHeight: 0,
+                visualDensity: compactTileDensity,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 1,
+                ),
+                title: Text(
+                  chapter.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                selected: selected,
+                selectedTileColor: palette.accent.withValues(alpha: 0.08),
+                onTap: () => controller.openChapter(chapter.chapterIndex),
+              );
+            }),
           const SizedBox(height: 14),
           Text(
             '书签',
@@ -1706,6 +1770,7 @@ class _ReaderBookmarksManager extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = AppReaderPalette.of(context);
     final currentChapter = controller.currentChapter;
+    final currentLocationReady = controller.isPdf || currentChapter != null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1747,7 +1812,7 @@ class _ReaderBookmarksManager extends StatelessWidget {
                     ),
                   ),
                   onPressed:
-                      currentChapter == null ||
+                      !currentLocationReady ||
                           controller.hasCurrentLocationBookmark
                       ? null
                       : controller.addBookmark,

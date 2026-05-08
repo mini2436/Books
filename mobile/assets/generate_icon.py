@@ -1,3 +1,4 @@
+from collections import deque
 from pathlib import Path
 
 from PIL import Image
@@ -13,23 +14,76 @@ WINDOWS_ICON_PATH = ROOT / "mobile" / "windows" / "runner" / "resources" / "app_
 
 SOURCE_ICON = ASSET_DIR / "icon_master.png"
 PRIMARY_ICON = ASSET_DIR / "icon.png"
+EDGE_MATTE_THRESHOLD = 96
+TRANSPARENT_EDGE_RGB = (246, 232, 211)
+
+
+def clear_edge_matte(image):
+    image = image.convert("RGBA")
+    width, height = image.size
+    pixels = image.load()
+    matte = Image.new("1", image.size, 0)
+    matte_pixels = matte.load()
+    queue = deque()
+
+    def is_edge_matte(x, y):
+        r, g, b, a = pixels[x, y]
+        return (
+            a > 0
+            and r <= EDGE_MATTE_THRESHOLD
+            and g <= EDGE_MATTE_THRESHOLD
+            and b <= EDGE_MATTE_THRESHOLD
+        )
+
+    def add_seed(x, y):
+        if matte_pixels[x, y] == 0 and is_edge_matte(x, y):
+            matte_pixels[x, y] = 1
+            queue.append((x, y))
+
+    for x in range(width):
+        add_seed(x, 0)
+        add_seed(x, height - 1)
+    for y in range(height):
+        add_seed(0, y)
+        add_seed(width - 1, y)
+
+    while queue:
+        x, y = queue.popleft()
+        for next_x, next_y in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)):
+            if 0 <= next_x < width and 0 <= next_y < height:
+                add_seed(next_x, next_y)
+
+    result = image.copy()
+    result_pixels = result.load()
+    for y in range(height):
+        for x in range(width):
+            if matte_pixels[x, y]:
+                result_pixels[x, y] = (*TRANSPARENT_EDGE_RGB, 0)
+    return result
 
 
 def load_master():
     image = Image.open(SOURCE_ICON).convert("RGBA")
     if image.size != (1024, 1024):
         image = image.resize((1024, 1024), Image.Resampling.LANCZOS)
-    return image
+    return clear_edge_matte(image)
 
 
 def save_icon(image, path, size):
     path.parent.mkdir(parents=True, exist_ok=True)
-    resized = image.resize((size, size), Image.Resampling.LANCZOS)
+    if image.size == (size, size):
+        resized = image
+    else:
+        resized = image.resize((size, size), Image.Resampling.LANCZOS)
     resized.save(path)
     print(f"Saved {path.relative_to(ROOT)}")
 
 
 def generate_ios_icons(master):
+    if not IOS_ICON_DIR.exists():
+        print(f"Skipped {IOS_ICON_DIR.relative_to(ROOT)}")
+        return
+
     ios_sizes = {
         "Icon-App-20x20@1x.png": 20,
         "Icon-App-20x20@2x.png": 40,
@@ -96,6 +150,7 @@ def generate_windows_icon(master):
 
 def main():
     master = load_master()
+    save_icon(master, SOURCE_ICON, 1024)
     save_icon(master, PRIMARY_ICON, 1024)
     generate_ios_icons(master)
     generate_macos_icons(master)

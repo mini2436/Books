@@ -477,7 +477,9 @@ class _BookManagementSection extends ConsumerWidget {
     final auth = ref.watch(authControllerProvider);
     final filteredBooks = controller.filteredBooks;
     final isTablet = Responsive.isTablet(context);
-    final crossAxisCount = isTablet ? 4 : 2;
+    final isDesktop = Responsive.isDesktop(context);
+    final bookTileMaxWidth = isDesktop ? 228.0 : (isTablet ? 212.0 : 180.0);
+    final bookTileHeight = isDesktop ? 322.0 : (isTablet ? 304.0 : 282.0);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -658,11 +660,11 @@ class _BookManagementSection extends ConsumerWidget {
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             itemCount: filteredBooks.length,
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: crossAxisCount,
+            gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: bookTileMaxWidth,
+              mainAxisExtent: bookTileHeight,
               mainAxisSpacing: isTablet ? 18 : 14,
               crossAxisSpacing: isTablet ? 18 : 14,
-              childAspectRatio: 0.62,
             ),
             itemBuilder: (context, index) {
               final book = filteredBooks[index];

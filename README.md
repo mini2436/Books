@@ -1,6 +1,6 @@
 # Private Reader
 
-[中文说明](/C:/Users/MINI2436/PROJRCT/AI/Books/README.zh-CN.md)
+[中文说明](README.zh-CN.md)
 
 Private Reader is a self-hosted multi-user ebook platform with:
 
@@ -27,23 +27,23 @@ Private Reader is a self-hosted multi-user ebook platform with:
 
 ## Documentation
 
-- [运行文档](/C:/Users/mini2436/Project/Ai/Books/docs/运行文档.md)
-- [接口文档](/C:/Users/mini2436/Project/Ai/Books/docs/接口文档.md)
-- [第一阶段功能总览](/C:/Users/MINI2436/PROJRCT/AI/Books/docs/第一阶段功能总览.md)
-- [第一阶段详细功能文档](/C:/Users/MINI2436/PROJRCT/AI/Books/docs/第一阶段详细功能文档.md)
-- [后端架构文档](/C:/Users/MINI2436/PROJRCT/AI/Books/docs/后端架构文档.md)
-- [Flutter应用架构文档](/C:/Users/MINI2436/PROJRCT/AI/Books/docs/Flutter应用架构文档.md)
-- [Web端停用与Flutter多端迁移计划](/C:/Users/MINI2436/PROJRCT/AI/Books/docs/Web端停用与Flutter多端迁移计划.md)
-- [基础设施说明](/C:/Users/mini2436/Project/Ai/Books/infra/README.md)
+- [运行文档](docs/运行文档.md)
+- [接口文档](docs/接口文档.md)
+- [第一阶段功能总览](docs/第一阶段功能总览.md)
+- [第一阶段详细功能文档](docs/第一阶段详细功能文档.md)
+- [后端架构文档](docs/后端架构文档.md)
+- [Flutter应用架构文档](docs/Flutter应用架构文档.md)
+- [Web端停用与Flutter多端迁移计划](docs/Web端停用与Flutter多端迁移计划.md)
+- [基础设施说明](infra/README.md)
 
 ## Middleware and database setup
 
-Local development middleware is already defined in [docker-compose.yml](/C:/Users/mini2436/Project/Ai/Books/docker-compose.yml), so PostgreSQL, Redis, and RabbitMQ do not need separate manual installation if Docker is available.
+Local development middleware is already defined in [docker-compose.yml](docker-compose.yml), so PostgreSQL, Redis, and RabbitMQ do not need separate manual installation if Docker is available.
 
 Operator-facing SQL scripts live in:
 
-- [infra/database/001_schema.sql](/C:/Users/mini2436/Project/Ai/Books/infra/database/001_schema.sql)
-- [infra/database/010_seed_dev.sql](/C:/Users/mini2436/Project/Ai/Books/infra/database/010_seed_dev.sql)
+- [infra/database/001_schema.sql](infra/database/001_schema.sql)
+- [infra/database/010_seed_dev.sql](infra/database/010_seed_dev.sql)
 
 ## Native-ready backend notes
 

@@ -16,7 +16,7 @@ class ReaderApp extends ConsumerWidget {
     final preferences = ref.watch(readerPreferencesControllerProvider).value;
 
     return MaterialApp.router(
-      title: 'Private Reader',
+      title: '轻阅',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.build(preferences),
       routerConfig: router,

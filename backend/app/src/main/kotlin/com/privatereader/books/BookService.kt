@@ -678,7 +678,14 @@ class BookService(
     }
 
     private fun prepareImport(filePath: Path, plugin: com.privatereader.plugin.BookFormatPlugin): PreparedImport {
-        val metadata = plugin.extractMetadata(filePath)
+        val rawMetadata = plugin.extractMetadata(filePath)
+        val metadata = com.privatereader.plugin.BookMetadata(
+            title = rawMetadata.title.toPostgresText(),
+            author = rawMetadata.author?.toPostgresText(),
+            language = rawMetadata.language?.toPostgresText(),
+            description = rawMetadata.description?.toPostgresText(),
+            tags = rawMetadata.tags.map { it.toPostgresText() },
+        )
         val manifestJson = plugin.buildManifest(filePath)?.let { objectMapper.writeValueAsString(it) }
         val capabilitiesJson = objectMapper.writeValueAsString(plugin.capabilities.map { it.name })
         return PreparedImport(
@@ -688,9 +695,20 @@ class BookService(
             capabilitiesJson = capabilitiesJson,
             manifestJson = manifestJson,
             onlineReadable = plugin.capabilities.any { it.name == "READ_ONLINE" },
-            indexExcerpt = plugin.extractIndexableContent(filePath)?.text?.take(10_000),
+            indexExcerpt = plugin.extractIndexableContent(filePath)?.text?.toPostgresText()?.take(10_000),
         )
     }
+
+    private fun String.toPostgresText(): String =
+        buildString(length) {
+            this@toPostgresText.forEach { char ->
+                when {
+                    char == '\n' || char == '\r' || char == '\t' -> append(char)
+                    char.isISOControl() -> append(' ')
+                    else -> append(char)
+                }
+            }
+        }.trim()
 
     private fun refreshExistingFileReference(
         fileId: Long,

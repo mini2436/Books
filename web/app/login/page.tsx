@@ -55,7 +55,7 @@ export default function LoginPage() {
       <main className="login-page">
         <section className="login-shell login-shell-compact">
           <section className="login-panel">
-            <div className="eyebrow">Private Reader</div>
+            <div className="eyebrow">轻阅</div>
             <h1>{t("auth.alreadySignedIn")}</h1>
             <p className="muted">
               {t("auth.loggedInAs")}: <strong>{session.user.username}</strong>
@@ -87,7 +87,7 @@ export default function LoginPage() {
     <main className="login-page">
       <section className="login-shell">
         <aside className="login-aside">
-          <div className="eyebrow">Private Reader</div>
+          <div className="eyebrow">轻阅</div>
           <h1>{t("auth.title")}</h1>
           <p className="muted">{t("auth.subtitle")}</p>
           <div className="home-pill-row login-pill-row">

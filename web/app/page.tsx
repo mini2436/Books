@@ -15,7 +15,7 @@ export default function HomePage() {
             <div className="pill">{t("home.pillSync")}</div>
             <div className="pill">{t("home.pillPlugin")}</div>
           </div>
-          <div className="eyebrow">Private Reader</div>
+          <div className="eyebrow">轻阅</div>
           <h1>{t("home.title")}</h1>
           <p className="muted home-hero-description">{t("home.description")}</p>
           <div className="toolbar home-toolbar">

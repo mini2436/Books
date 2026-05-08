@@ -5,7 +5,7 @@ import { AuthProvider } from "../lib/auth";
 import { I18nProvider } from "../lib/i18n";
 
 export const metadata: Metadata = {
-  title: "Private Reader",
+  title: "轻阅",
   description: "Self-hosted multi-user reading platform",
   icons: {
     icon: "/icon.svg",

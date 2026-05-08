@@ -72,6 +72,7 @@ class ReaderController extends ChangeNotifier {
 
   BookDetail? detail;
   BookContent? content;
+  Uint8List? pdfBytes;
   final Map<int, BookContentChapter> _chapterCache = {};
   final Set<int> _loadingChapters = {};
   final Map<String, Uint8List> imageResourceBytes = {};
@@ -86,12 +87,16 @@ class ReaderController extends ChangeNotifier {
   bool inspectorVisible = true;
   ReaderInspectorTab inspectorTab = ReaderInspectorTab.notes;
   int currentChapterIndex = 0;
+  int pdfPageNumber = 1;
+  int pdfPageCount = 0;
   String? focusedAnchor;
   int anchorJumpVersion = 0;
   String? _currentVisibleAnchor;
   Timer? _progressTimer;
 
-  bool get isSupported => detail?.supportsStructuredReader == true;
+  bool get isPdf => detail?.isPdf == true;
+
+  bool get isSupported => detail?.supportsStructuredReader == true || isPdf;
 
   BookContentChapter? get currentChapter => _chapterCache[currentChapterIndex];
   bool get hasCurrentLocationBookmark {
@@ -105,6 +110,9 @@ class ReaderController extends ChangeNotifier {
   }
 
   String get currentReadingLocation {
+    if (isPdf) {
+      return _pdfLocation(pdfPageNumber);
+    }
     final visibleAnchor = AnnotationAnchor.parse(
       _currentVisibleAnchor ?? '',
     ).blockAnchor;
@@ -117,6 +125,12 @@ class ReaderController extends ChangeNotifier {
   String get currentReadingLabel => _labelForLocation(currentReadingLocation);
 
   double get progressPercent {
+    if (isPdf) {
+      if (pdfPageCount <= 0) {
+        return 0;
+      }
+      return (pdfPageNumber / pdfPageCount) * 100;
+    }
     final chapterCount = content?.chapters.length ?? 0;
     if (chapterCount <= 0) {
       return 0;
@@ -158,6 +172,43 @@ class ReaderController extends ChangeNotifier {
       final loadedBookmarksFuture = _authController.runAuthorized(
         (accessToken) => _apiClient.listBookmarks(accessToken, bookId),
       );
+
+      if (loadedDetail.isPdf) {
+        final results = await Future.wait([
+          loadedAnnotationsFuture,
+          loadedBookmarksFuture,
+          _authController.runAuthorized(
+            (accessToken) => _apiClient.pullSync(accessToken),
+          ),
+          _authController.runAuthorized(
+            (accessToken) => _apiClient.downloadBookFile(accessToken, bookId),
+          ),
+        ]);
+
+        annotations =
+            (results[0] as List<AnnotationView>)
+                .where((item) => !item.deleted)
+                .toList()
+              ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+        bookmarks =
+            (results[1] as List<BookmarkView>)
+                .where((item) => !item.deleted)
+                .toList()
+              ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+
+        final pull = results[2] as SyncPullResponse;
+        final progress = pull.progresses
+            .cast<ReadingProgressView?>()
+            .firstWhere((entry) => entry?.bookId == bookId, orElse: () => null);
+        final initialLocation =
+            initialAnchor ??
+            progress?.location ??
+            loadedDetail.manifest?['primaryLocation'] as String?;
+        pdfPageCount = loadedDetail.pdfPageCount ?? 0;
+        pdfPageNumber = _parsePdfPage(initialLocation) ?? 1;
+        pdfBytes = results[3] as Uint8List;
+        return;
+      }
 
       if (!loadedDetail.supportsStructuredReader) {
         annotations = await loadedAnnotationsFuture;
@@ -258,6 +309,37 @@ class ReaderController extends ChangeNotifier {
 
   Future<void> previousChapter() => openChapter(currentChapterIndex - 1);
 
+  void updatePdfPage({required int pageNumber, int? pageCount}) {
+    if (!isPdf) {
+      return;
+    }
+    final nextPageCount = pageCount ?? pdfPageCount;
+    final boundedPage = _boundPdfPage(pageNumber, nextPageCount);
+    final changed =
+        boundedPage != pdfPageNumber || nextPageCount != pdfPageCount;
+    pdfPageNumber = boundedPage;
+    pdfPageCount = nextPageCount;
+    if (!changed) {
+      return;
+    }
+    notifyListeners();
+    _scheduleProgressWrite();
+  }
+
+  void nextPdfPage() {
+    if (!isPdf) {
+      return;
+    }
+    updatePdfPage(pageNumber: pdfPageNumber + 1);
+  }
+
+  void previousPdfPage() {
+    if (!isPdf) {
+      return;
+    }
+    updatePdfPage(pageNumber: pdfPageNumber - 1);
+  }
+
   Future<void> nextChapterFromPageBoundary() => openChapter(
     currentChapterIndex + 1,
     position: ReaderChapterOpenPosition.start,
@@ -269,6 +351,15 @@ class ReaderController extends ChangeNotifier {
   );
 
   Future<void> jumpToAnchor(String anchor) async {
+    if (isPdf) {
+      final page = _parsePdfPage(anchor);
+      if (page == null) {
+        return;
+      }
+      updatePdfPage(pageNumber: page);
+      return;
+    }
+
     final chapterIndex = await _resolveChapterIndex(anchor);
     if (chapterIndex == null) {
       return;
@@ -765,6 +856,33 @@ class ReaderController extends ChangeNotifier {
   String _localId(String prefix) =>
       '$prefix-${DateTime.now().microsecondsSinceEpoch}';
 
+  int _boundPdfPage(int pageNumber, int pageCount) {
+    final minimum = pageNumber < 1 ? 1 : pageNumber;
+    if (pageCount <= 0) {
+      return minimum;
+    }
+    return minimum > pageCount ? pageCount : minimum;
+  }
+
+  int? _parsePdfPage(String? location) {
+    if (location == null || location.isEmpty) {
+      return null;
+    }
+    final normalized = location.trim();
+    final pageMatch = RegExp(
+      r'(?:#page=|pdf-page:|page:)(\d+)',
+    ).firstMatch(normalized);
+    final raw = pageMatch == null
+        ? int.tryParse(normalized)
+        : int.tryParse(pageMatch.group(1)!);
+    if (raw == null || raw <= 0) {
+      return null;
+    }
+    return _boundPdfPage(raw, pdfPageCount);
+  }
+
+  String _pdfLocation(int pageNumber) => '#page=$pageNumber';
+
   String _firstReadableAnchor(BookContentChapter? chapter) {
     if (chapter == null) {
       return '';
@@ -782,6 +900,10 @@ class ReaderController extends ChangeNotifier {
   }
 
   String _labelForLocation(String location) {
+    if (isPdf) {
+      final count = pdfPageCount <= 0 ? '?' : pdfPageCount.toString();
+      return '第 $pdfPageNumber / $count 页';
+    }
     final chapter = currentChapter;
     if (chapter == null) {
       return location;

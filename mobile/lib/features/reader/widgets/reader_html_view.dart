@@ -1510,7 +1510,6 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       const underlineRow = document.getElementById('reader-underline-row');
       const pagedMode = ${widget.pagedMode ? 'true' : 'false'};
       const pageTurnAxis = ${jsonEncode(widget.preferences.tabletPageTurnAxis.storageValue)};
-      const pageTurnAnimation = ${jsonEncode(widget.preferences.tabletPageTurnAnimation.storageValue)};
       const annotationColors = ${jsonEncode(_webAnnotationColors)};
       const defaultAnnotationColor = ${jsonEncode(_defaultAnnotationColor(widget.preferences.themeMode))};
       const underlineOptions = [
@@ -1637,13 +1636,6 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         });
       }
 
-      function directionalTransform(distance) {
-        if (pageTurnAxis === 'horizontal') {
-          return 'translate3d(' + distance + 'px,0,0)';
-        }
-        return 'translate3d(0,' + distance + 'px,0)';
-      }
-
       function clearTurnShadow() {
         if (!turnShadow) {
           return;
@@ -1697,6 +1689,78 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         stage.style.opacity = '1';
         stage.style.filter = 'none';
         clearTurnShadow();
+      }
+
+      function animateSmoothPagedCommit(direction, commit) {
+        stage.style.transformOrigin = 'center center';
+        stage.style.transform = 'translate3d(0,0,0)';
+        stage.style.transition = 'opacity 130ms ease, filter 130ms ease';
+        stage.style.opacity = '0.9';
+        stage.style.filter = 'brightness(0.985)';
+        updateTurnShadow(direction, 0.08, false);
+
+        window.setTimeout(function() {
+          commit();
+          stage.style.transition = 'none';
+          stage.style.transform = 'translate3d(0,0,0)';
+          stage.style.opacity = '0.94';
+          stage.style.filter = 'brightness(1.01)';
+          updateTurnShadow(direction, 0.06, true);
+          afterTwoFrames(function() {
+            stage.style.transition = 'opacity 210ms ease-out, filter 210ms ease-out';
+            stage.style.opacity = '1';
+            stage.style.filter = 'none';
+            if (turnShadow) {
+              turnShadow.style.transition = 'opacity 200ms ease-out';
+              turnShadow.style.opacity = '0';
+            }
+            window.setTimeout(function() {
+              clearStageAnimationState();
+              pageAnimationBusy = false;
+            }, 210);
+          });
+        }, 105);
+      }
+
+      function animatePagedCommit(direction, commit) {
+        if (!stage || pageAnimationBusy) {
+          commit();
+          return;
+        }
+        pageAnimationBusy = true;
+        clearStageAnimationState();
+        animateSmoothPagedCommit(direction, commit);
+      }
+
+      function playSmoothBoundaryTransition(direction) {
+        stage.style.transformOrigin = 'center center';
+        stage.style.transform = 'translate3d(0,0,0)';
+        stage.style.transition = 'none';
+        stage.style.opacity = '0.94';
+        stage.style.filter = 'brightness(1.01)';
+        updateTurnShadow(direction, 0.06, true);
+        afterTwoFrames(function() {
+          stage.style.transition = 'opacity 210ms ease-out, filter 210ms ease-out';
+          stage.style.opacity = '1';
+          stage.style.filter = 'none';
+          if (turnShadow) {
+            turnShadow.style.transition = 'opacity 200ms ease-out';
+            turnShadow.style.opacity = '0';
+          }
+          window.setTimeout(function() {
+            clearStageAnimationState();
+            pageAnimationBusy = false;
+          }, 210);
+        });
+      }
+
+      function playBoundaryTransition(direction) {
+        if (!stage || pageAnimationBusy) {
+          return;
+        }
+        pageAnimationBusy = true;
+        clearStageAnimationState();
+        playSmoothBoundaryTransition(direction);
       }
 
       function hasActiveDomSelection() {
@@ -1824,157 +1888,6 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         currentPage = Math.max(0, Math.min(currentPage, pageCount - 1));
         currentOffset = Math.min(bounds.maxOffset, currentPage * pageSpan);
         applyPagedOffset();
-      }
-
-      function animatePagedCommit(direction, commit) {
-        if (!stage || pageAnimationBusy) {
-          commit();
-          return;
-        }
-        pageAnimationBusy = true;
-        if (pageTurnAnimation === 'roll') {
-          const outgoingDistance = pageTurnAxis === 'horizontal' ? 10 : 12;
-          const incomingDistance = pageTurnAxis === 'horizontal' ? 18 : 20;
-          const outgoingShift = direction > 0 ? -outgoingDistance : outgoingDistance;
-          const incomingShift = direction > 0 ? incomingDistance : -incomingDistance;
-          const outgoingAngle = direction > 0 ? -14 : 14;
-          const incomingAngle = direction > 0 ? 11 : -11;
-          const rotateAxis = pageTurnAxis === 'horizontal' ? 'Y' : 'X';
-          stage.style.transformOrigin = pageTurnAxis === 'horizontal'
-            ? (direction > 0 ? 'right center' : 'left center')
-            : (direction > 0 ? 'center top' : 'center bottom');
-          stage.style.transition = 'transform 170ms cubic-bezier(0.45, 0, 0.68, 1), opacity 170ms ease, filter 170ms ease';
-          stage.style.opacity = '0.93';
-          stage.style.filter = 'brightness(0.97)';
-          stage.style.transform =
-            'perspective(1800px) ' +
-            directionalTransform(outgoingShift) +
-            ' rotate' + rotateAxis + '(' + outgoingAngle + 'deg) scale(0.986, 0.996)';
-          updateTurnShadow(direction, 0.24, false);
-
-          window.setTimeout(function() {
-            commit();
-            stage.style.transition = 'none';
-            stage.style.opacity = '0.985';
-            stage.style.filter = 'brightness(1.015)';
-            stage.style.transform =
-              'perspective(1800px) ' +
-              directionalTransform(incomingShift) +
-              ' rotate' + rotateAxis + '(' + incomingAngle + 'deg) scale(0.992, 1)';
-            updateTurnShadow(direction, 0.18, true);
-            afterTwoFrames(function() {
-              stage.style.transition = 'transform 260ms cubic-bezier(0.2, 0.72, 0.18, 1), opacity 240ms ease-out, filter 240ms ease-out';
-              stage.style.opacity = '1';
-              stage.style.filter = 'none';
-              stage.style.transform = 'translate3d(0,0,0)';
-              if (turnShadow) {
-                turnShadow.style.transition = 'opacity 240ms ease-out';
-                turnShadow.style.opacity = '0';
-              }
-              window.setTimeout(function() {
-                clearStageAnimationState();
-                pageAnimationBusy = false;
-              }, 260);
-            });
-          }, 150);
-          return;
-        }
-
-        const outgoingDistance = pageTurnAxis === 'horizontal' ? 18 : 24;
-        const incomingDistance = pageTurnAxis === 'horizontal' ? 12 : 16;
-        const outgoingShift = direction > 0 ? -outgoingDistance : outgoingDistance;
-        const incomingShift = direction > 0 ? incomingDistance : -incomingDistance;
-        stage.style.transformOrigin = 'center center';
-        stage.style.transition = 'transform 150ms cubic-bezier(0.38, 0, 0.7, 1), opacity 150ms linear, filter 150ms ease';
-        stage.style.opacity = '0.9';
-        stage.style.filter = 'blur(0.7px)';
-        stage.style.transform = directionalTransform(outgoingShift);
-        updateTurnShadow(direction, 0.12, false);
-
-        window.setTimeout(function() {
-          commit();
-          stage.style.transition = 'none';
-          stage.style.opacity = '0.985';
-          stage.style.filter = 'blur(0.45px)';
-          stage.style.transform = directionalTransform(incomingShift);
-          updateTurnShadow(direction, 0.08, true);
-          afterTwoFrames(function() {
-            stage.style.transition = 'transform 230ms cubic-bezier(0.22, 0.61, 0.36, 1), opacity 230ms ease-out, filter 230ms ease-out';
-            stage.style.opacity = '1';
-            stage.style.filter = 'none';
-            stage.style.transform = 'translate3d(0,0,0)';
-            if (turnShadow) {
-              turnShadow.style.transition = 'opacity 220ms ease-out';
-              turnShadow.style.opacity = '0';
-            }
-            window.setTimeout(function() {
-              clearStageAnimationState();
-              pageAnimationBusy = false;
-            }, 230);
-          });
-        }, 110);
-      }
-
-      function playBoundaryTransition(direction) {
-        if (!stage || pageAnimationBusy) {
-          return;
-        }
-        pageAnimationBusy = true;
-        if (pageTurnAnimation === 'roll') {
-          const incomingDistance = pageTurnAxis === 'horizontal' ? 20 : 22;
-          const incomingShift = direction > 0 ? incomingDistance : -incomingDistance;
-          const incomingAngle = direction > 0 ? 12 : -12;
-          const rotateAxis = pageTurnAxis === 'horizontal' ? 'Y' : 'X';
-          stage.style.transformOrigin = pageTurnAxis === 'horizontal'
-            ? (direction > 0 ? 'right center' : 'left center')
-            : (direction > 0 ? 'center bottom' : 'center top');
-          stage.style.transition = 'none';
-          stage.style.opacity = '0.985';
-          stage.style.filter = 'brightness(1.02)';
-          stage.style.transform =
-            'perspective(1800px) ' +
-            directionalTransform(incomingShift) +
-            ' rotate' + rotateAxis + '(' + incomingAngle + 'deg) scale(0.992, 1)';
-          updateTurnShadow(direction, 0.18, true);
-          afterTwoFrames(function() {
-            stage.style.transition = 'transform 250ms cubic-bezier(0.2, 0.72, 0.18, 1), opacity 240ms ease-out, filter 240ms ease-out';
-            stage.style.opacity = '1';
-            stage.style.filter = 'none';
-            stage.style.transform = 'translate3d(0,0,0)';
-            if (turnShadow) {
-              turnShadow.style.transition = 'opacity 220ms ease-out';
-              turnShadow.style.opacity = '0';
-            }
-            window.setTimeout(function() {
-              clearStageAnimationState();
-              pageAnimationBusy = false;
-            }, 250);
-          });
-          return;
-        }
-
-        const incomingDistance = pageTurnAxis === 'horizontal' ? 12 : 16;
-        const incomingShift = direction > 0 ? incomingDistance : -incomingDistance;
-        stage.style.transformOrigin = 'center center';
-        stage.style.transition = 'none';
-        stage.style.opacity = '0.985';
-        stage.style.filter = 'blur(0.45px)';
-        stage.style.transform = directionalTransform(incomingShift);
-        updateTurnShadow(direction, 0.08, true);
-        afterTwoFrames(function() {
-          stage.style.transition = 'transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1), opacity 220ms ease-out, filter 220ms ease-out';
-          stage.style.opacity = '1';
-          stage.style.filter = 'none';
-          stage.style.transform = 'translate3d(0,0,0)';
-          if (turnShadow) {
-            turnShadow.style.transition = 'opacity 200ms ease-out';
-            turnShadow.style.opacity = '0';
-          }
-          window.setTimeout(function() {
-            clearStageAnimationState();
-            pageAnimationBusy = false;
-          }, 220);
-        });
       }
 
       function goToPage(targetPage, animate) {

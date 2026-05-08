@@ -58,6 +58,13 @@ class BookDetail extends BookSummary {
   final String? contentModel;
   final int? latestContentVersionId;
 
+  bool get isPdf => format == 'pdf';
+
+  int? get pdfPageCount {
+    final meta = manifest?['meta'] as Map<String, dynamic>?;
+    return (meta?['pageCount'] as num?)?.toInt();
+  }
+
   bool get supportsStructuredReader =>
       hasStructuredContent && (format == 'txt' || format == 'epub');
 

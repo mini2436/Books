@@ -30,6 +30,7 @@ data class ReadingManifest(
     val format: String,
     val toc: List<ManifestTocItem>,
     val primaryLocation: String,
+    val meta: Map<String, Any?> = emptyMap(),
 )
 
 data class ManifestTocItem(

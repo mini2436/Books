@@ -8,7 +8,7 @@ enum ReaderFontFamilyPreference { system, sans, serif }
 
 enum TabletPageTurnAxis { horizontal, vertical }
 
-enum TabletPageTurnAnimation { smooth, roll }
+enum TabletPageTurnAnimation { smooth }
 
 extension ReaderThemePreferenceX on ReaderThemeMode {
   String get storageValue => name;
@@ -81,8 +81,6 @@ extension TabletPageTurnAnimationX on TabletPageTurnAnimation {
     switch (this) {
       case TabletPageTurnAnimation.smooth:
         return '平滑翻页';
-      case TabletPageTurnAnimation.roll:
-        return '仿真翻页';
     }
   }
 

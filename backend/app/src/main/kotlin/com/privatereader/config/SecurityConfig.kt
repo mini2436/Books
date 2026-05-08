@@ -1,6 +1,7 @@
 package com.privatereader.config
 
 import com.privatereader.auth.BearerTokenFilter
+import com.privatereader.auth.UserRole
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.security.config.Customizer
@@ -23,7 +24,7 @@ class SecurityConfig(
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             .authorizeHttpRequests {
                 it.requestMatchers("/actuator/health", "/api/auth/login", "/api/auth/refresh", "/error").permitAll()
-                    .requestMatchers("/api/admin/**").hasAnyRole("SUPER_ADMIN", "LIBRARIAN")
+                    .requestMatchers("/api/admin/**").hasAnyRole(*UserRole.adminAccessValues.toTypedArray())
                     .anyRequest().authenticated()
             }
             .addFilterBefore(bearerTokenFilter, UsernamePasswordAuthenticationFilter::class.java)

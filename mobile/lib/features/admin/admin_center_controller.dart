@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/admin_models.dart';
+import '../../data/models/user_role.dart';
 import '../../data/services/api_client.dart';
 import '../auth/auth_controller.dart';
 
@@ -131,10 +132,10 @@ class AdminCenterController extends ChangeNotifier {
     return adminRoles
         .map(
           (role) => AdminRoleSummary(
-            role: role,
-            label: adminRoleLabel(role),
-            description: adminRoleDescription(role),
-            userCount: _users.where((user) => user.role == role).length,
+            role: role.value,
+            label: role.label,
+            description: role.description,
+            userCount: _users.where((user) => user.role == role.value).length,
           ),
         )
         .toList();
@@ -466,10 +467,10 @@ class AdminCenterController extends ChangeNotifier {
       await loadBookViewers(bookId, force: true);
       final user = _grantableUsers.firstWhere(
         (item) => item.id == userId,
-        orElse: () => const AdminUserView(
+        orElse: () => AdminUserView(
           id: 0,
           username: '未知用户',
-          role: 'READER',
+          role: UserRole.reader.value,
           enabled: true,
         ),
       );

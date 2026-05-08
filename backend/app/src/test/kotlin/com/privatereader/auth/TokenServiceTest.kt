@@ -29,7 +29,7 @@ class TokenServiceTest {
                 id = 1,
                 username = "alice",
                 passwordHash = passwordEncoder.encode("secret"),
-                role = "READER",
+                role = UserRole.READER.value,
                 enabled = true,
             ),
         )

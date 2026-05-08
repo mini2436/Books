@@ -1,6 +1,7 @@
 package com.privatereader.admin
 
 import com.privatereader.auth.AuthRepository
+import com.privatereader.auth.UserRole
 import com.privatereader.books.CreateUserRequest
 import com.privatereader.books.UpdateUserRequest
 import com.privatereader.books.UserView
@@ -58,8 +59,6 @@ class UserAdminService(
             .list()
 
     private fun normalizeRole(role: String): String {
-        val normalized = role.trim().uppercase()
-        require(normalized in setOf("SUPER_ADMIN", "LIBRARIAN", "READER")) { "Unsupported role" }
-        return normalized
+        return UserRole.normalize(role)
     }
 }

@@ -1,3 +1,5 @@
+import 'user_role.dart';
+
 class AdminBookSummary {
   const AdminBookSummary({
     required this.id,
@@ -131,7 +133,7 @@ class AdminUserView {
     return AdminUserView(
       id: (json['id'] as num).toInt(),
       username: json['username'] as String? ?? '',
-      role: json['role'] as String? ?? 'READER',
+      role: json['role'] as String? ?? UserRole.reader.value,
       enabled: json['enabled'] as bool? ?? false,
     );
   }
@@ -414,7 +416,7 @@ class BookViewerView {
     return BookViewerView(
       userId: (json['userId'] as num).toInt(),
       username: json['username'] as String? ?? '',
-      role: json['role'] as String? ?? 'READER',
+      role: json['role'] as String? ?? UserRole.reader.value,
       enabled: json['enabled'] as bool? ?? false,
       accessSource: json['accessSource'] as String? ?? 'EXPLICIT_GRANT',
       grantedAt: json['grantedAt'] as String?,
@@ -422,26 +424,12 @@ class BookViewerView {
   }
 }
 
-const adminRoles = ['SUPER_ADMIN', 'LIBRARIAN', 'READER'];
+const adminRoles = UserRole.values;
 
 String adminRoleLabel(String role) {
-  switch (role) {
-    case 'SUPER_ADMIN':
-      return '超级管理员';
-    case 'LIBRARIAN':
-      return '馆员';
-    default:
-      return '读者';
-  }
+  return UserRole.fromValue(role).label;
 }
 
 String adminRoleDescription(String role) {
-  switch (role) {
-    case 'SUPER_ADMIN':
-      return '可管理用户、角色与全部后台能力';
-    case 'LIBRARIAN':
-      return '可管理图书、批注与扫描任务';
-    default:
-      return '仅使用阅读与同步功能';
-  }
+  return UserRole.fromValue(role).description;
 }

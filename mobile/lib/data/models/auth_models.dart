@@ -1,3 +1,5 @@
+import 'user_role.dart';
+
 class AuthUser {
   const AuthUser({
     required this.id,
@@ -9,9 +11,11 @@ class AuthUser {
   final String username;
   final String role;
 
-  bool get canAccessAdmin => role == 'SUPER_ADMIN' || role == 'LIBRARIAN';
+  UserRole get userRole => UserRole.fromValue(role);
 
-  bool get canManageAdminUsers => role == 'SUPER_ADMIN';
+  bool get canAccessAdmin => userRole.canAccessAdmin;
+
+  bool get canManageAdminUsers => userRole.canManageAdminUsers;
 
   String get initials {
     final trimmed = username.trim();
@@ -25,7 +29,7 @@ class AuthUser {
     return AuthUser(
       id: (json['id'] as num).toInt(),
       username: json['username'] as String? ?? '',
-      role: json['role'] as String? ?? 'READER',
+      role: json['role'] as String? ?? UserRole.reader.value,
     );
   }
 

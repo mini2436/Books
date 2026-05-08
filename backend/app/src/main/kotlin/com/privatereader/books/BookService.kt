@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.privatereader.auth.AuthRepository
 import com.privatereader.auth.UserPrincipal
+import com.privatereader.auth.UserRole
 import com.privatereader.common.toSqlTimestamp
 import com.privatereader.config.AppProperties
 import com.privatereader.plugin.StructuredBlockType
@@ -475,27 +476,32 @@ class BookService(
                    u.role,
                    u.enabled,
                    case
-                       when u.role in ('SUPER_ADMIN', 'LIBRARIAN') then 'GLOBAL_ROLE'
-                       else 'EXPLICIT_GRANT'
+                       when u.role in (:adminRoles) then :globalAccessSource
+                       else :explicitGrantSource
                    end as access_source,
                    uba.granted_at
             from users u
             left join user_book_access uba on uba.user_id = u.id and uba.book_id = :bookId
             where u.enabled = true
               and (
-                  u.role in ('SUPER_ADMIN', 'LIBRARIAN')
+                  u.role in (:adminRoles)
                   or uba.book_id is not null
               )
             order by
                 case
-                    when u.role = 'SUPER_ADMIN' then 0
-                    when u.role = 'LIBRARIAN' then 1
+                    when u.role = :superAdminRole then 0
+                    when u.role = :librarianRole then 1
                     else 2
                 end,
                 lower(u.username) asc
             """.trimIndent(),
         )
             .param("bookId", bookId)
+            .param("adminRoles", UserRole.adminAccessValues)
+            .param("globalAccessSource", ACCESS_SOURCE_GLOBAL_ROLE)
+            .param("explicitGrantSource", ACCESS_SOURCE_EXPLICIT_GRANT)
+            .param("superAdminRole", UserRole.SUPER_ADMIN.value)
+            .param("librarianRole", UserRole.LIBRARIAN.value)
             .query { rs, _ ->
                 BookViewerView(
                     userId = rs.getLong("user_id"),
@@ -516,13 +522,15 @@ class BookService(
             where enabled = true
             order by
                 case
-                    when role = 'SUPER_ADMIN' then 0
-                    when role = 'LIBRARIAN' then 1
+                    when role = :superAdminRole then 0
+                    when role = :librarianRole then 1
                     else 2
                 end,
                 lower(username) asc
             """.trimIndent(),
         )
+            .param("superAdminRole", UserRole.SUPER_ADMIN.value)
+            .param("librarianRole", UserRole.LIBRARIAN.value)
             .query { rs, _ ->
                 UserView(
                     id = rs.getLong("id"),
@@ -603,7 +611,7 @@ class BookService(
     }
 
     private fun hasGlobalLibraryAccess(userId: Long): Boolean =
-        authRepository.findUserById(userId)?.role in setOf("SUPER_ADMIN", "LIBRARIAN")
+        authRepository.findUserById(userId)?.role?.let(UserRole::hasGlobalLibraryAccess) == true
 
     private fun ResultSet.toBookView(granted: Boolean): BookView =
         BookView(
@@ -1095,6 +1103,8 @@ class BookService(
         private const val CONTENT_STATUS_READY = "READY"
         private const val CONTENT_STATUS_FAILED = "FAILED"
         private const val CONTENT_STATUS_STALE = "STALE"
+        private const val ACCESS_SOURCE_GLOBAL_ROLE = "GLOBAL_ROLE"
+        private const val ACCESS_SOURCE_EXPLICIT_GRANT = "EXPLICIT_GRANT"
         private const val SYNTHETIC_CHAPTER_META_JSON = """{"syntheticChapterTitle":true}"""
     }
 }

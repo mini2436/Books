@@ -440,8 +440,8 @@ class _RoleManagementSection extends ConsumerWidget {
                     items: adminRoles
                         .map(
                           (role) => DropdownMenuItem(
-                            value: role,
-                            child: Text(adminRoleLabel(role)),
+                            value: role.value,
+                            child: Text(role.label),
                           ),
                         )
                         .toList(),
@@ -1600,7 +1600,7 @@ class _CreateUserDialogState extends State<CreateUserDialog> {
   final _formKey = GlobalKey<FormState>();
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
-  String _role = adminRoles.first;
+  String _role = adminRoles.first.value;
   bool _submitting = false;
 
   @override
@@ -1641,8 +1641,8 @@ class _CreateUserDialogState extends State<CreateUserDialog> {
               items: adminRoles
                   .map(
                     (role) => DropdownMenuItem(
-                      value: role,
-                      child: Text(adminRoleLabel(role)),
+                      value: role.value,
+                      child: Text(role.label),
                     ),
                   )
                   .toList(),

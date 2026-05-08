@@ -64,7 +64,7 @@ class TokenService(
         authRepository.insertUser(
             username = appProperties.bootstrapAdminUsername,
             passwordHash = passwordEncoder.encode(appProperties.bootstrapAdminPassword),
-            role = "SUPER_ADMIN",
+            role = UserRole.SUPER_ADMIN.value,
         )
     }
 

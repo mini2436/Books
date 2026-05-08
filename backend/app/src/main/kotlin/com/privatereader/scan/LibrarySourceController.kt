@@ -1,5 +1,6 @@
 package com.privatereader.scan
 
+import com.privatereader.auth.RoleExpressions
 import com.privatereader.books.CreateLibrarySourceRequest
 import com.privatereader.books.LibrarySourceView
 import com.privatereader.books.UpdateLibrarySourceRequest
@@ -19,22 +20,22 @@ class LibrarySourceController(
     private val librarySourceService: LibrarySourceService,
 ) {
     @GetMapping
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','LIBRARIAN')")
+    @PreAuthorize(RoleExpressions.ADMIN_ACCESS)
     fun listSources(): List<LibrarySourceView> = librarySourceService.listSources()
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','LIBRARIAN')")
+    @PreAuthorize(RoleExpressions.ADMIN_ACCESS)
     fun createSource(@Valid @RequestBody request: CreateLibrarySourceRequest): LibrarySourceView =
         librarySourceService.createSource(request)
 
     @PatchMapping("/{sourceId}")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','LIBRARIAN')")
+    @PreAuthorize(RoleExpressions.ADMIN_ACCESS)
     fun updateSource(
         @PathVariable sourceId: Long,
         @Valid @RequestBody request: UpdateLibrarySourceRequest,
     ): LibrarySourceView = librarySourceService.updateSource(sourceId, request)
 
     @PostMapping("/{sourceId}/rescan")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','LIBRARIAN')")
+    @PreAuthorize(RoleExpressions.ADMIN_ACCESS)
     fun rescan(@PathVariable sourceId: Long): Map<String, Any> = librarySourceService.scanSource(sourceId)
 }

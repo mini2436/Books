@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../data/models/user_role.dart';
 import '../../shared/theme/reader_theme_extension.dart';
 import '../auth/auth_controller.dart';
 import '../bookshelf/bookshelf_controller.dart';
@@ -50,7 +51,7 @@ class ProfileScreen extends ConsumerWidget {
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        user?.role ?? 'READER',
+                        user?.role ?? UserRole.reader.value,
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: palette.inkSecondary,
                         ),

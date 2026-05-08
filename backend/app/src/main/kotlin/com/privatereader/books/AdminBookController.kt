@@ -1,5 +1,6 @@
 package com.privatereader.books
 
+import com.privatereader.auth.RoleExpressions
 import com.privatereader.auth.UserPrincipal
 import jakarta.validation.Valid
 import org.springframework.http.MediaType
@@ -22,11 +23,11 @@ class AdminBookController(
     private val bookService: BookService,
 ) {
     @GetMapping
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','LIBRARIAN')")
+    @PreAuthorize(RoleExpressions.ADMIN_ACCESS)
     fun listBooks(): List<AdminBookView> = bookService.listAdminBooks()
 
     @GetMapping("/{bookId}")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','LIBRARIAN')")
+    @PreAuthorize(RoleExpressions.ADMIN_ACCESS)
     fun getBook(@PathVariable bookId: Long): AdminBookDetailView =
         bookService.getAdminBookDetail(bookId)
 
@@ -37,19 +38,19 @@ class AdminBookController(
     ): BookDetailView = bookService.uploadBook(file, actor)
 
     @PatchMapping("/{bookId}")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','LIBRARIAN')")
+    @PreAuthorize(RoleExpressions.ADMIN_ACCESS)
     fun updateBook(
         @PathVariable bookId: Long,
         @RequestBody request: UpdateAdminBookRequest,
     ): AdminBookDetailView = bookService.updateAdminBook(bookId, request)
 
     @PostMapping("/{bookId}/content/rebuild")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','LIBRARIAN')")
+    @PreAuthorize(RoleExpressions.ADMIN_ACCESS)
     fun rebuildStructuredContent(@PathVariable bookId: Long): AdminBookDetailView =
         bookService.rebuildStructuredContent(bookId)
 
     @PostMapping("/bulk-delete")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','LIBRARIAN')")
+    @PreAuthorize(RoleExpressions.ADMIN_ACCESS)
     fun bulkDeleteBooks(
         @Valid @RequestBody request: BulkDeleteBooksRequest,
     ): Map<String, Any> {
@@ -71,12 +72,12 @@ class AdminBookController(
     }
 
     @GetMapping("/{bookId}/viewers")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','LIBRARIAN')")
+    @PreAuthorize(RoleExpressions.ADMIN_ACCESS)
     fun listBookViewers(@PathVariable bookId: Long): List<BookViewerView> =
         bookService.listBookViewers(bookId)
 
     @DeleteMapping("/{bookId}/grants/{userId}")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','LIBRARIAN')")
+    @PreAuthorize(RoleExpressions.ADMIN_ACCESS)
     fun revokeBookGrant(
         @PathVariable bookId: Long,
         @PathVariable userId: Long,
@@ -86,10 +87,10 @@ class AdminBookController(
     }
 
     @GetMapping("/grantable-users")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','LIBRARIAN')")
+    @PreAuthorize(RoleExpressions.ADMIN_ACCESS)
     fun listGrantableUsers(): List<UserView> = bookService.listGrantableUsers()
 
     @GetMapping("/import-jobs")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN','LIBRARIAN')")
+    @PreAuthorize(RoleExpressions.ADMIN_ACCESS)
     fun listImportJobs(): List<Map<String, Any?>> = bookService.listImportJobs()
 }

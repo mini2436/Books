@@ -26,7 +26,7 @@ class BearerTokenFilter(
                 val authentication = UsernamePasswordAuthenticationToken(
                     principal,
                     token,
-                    listOf(SimpleGrantedAuthority("ROLE_${principal.role}")),
+                    listOf(SimpleGrantedAuthority(RoleAuthorities.fromRole(principal.role))),
                 )
                 SecurityContextHolder.getContext().authentication = authentication
             }

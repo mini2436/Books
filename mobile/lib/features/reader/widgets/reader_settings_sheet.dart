@@ -168,21 +168,6 @@ class ReaderSettingsPanelContent extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '正文默认启用双栏分页',
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  SizedBox(height: compact ? 4 : 6),
-                  Text(
-                    '点击左侧上一页，右侧下一页，中间呼出阅读工具。手机端继续保留滚动阅读。',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: palette.inkSecondary,
-                      height: 1.5,
-                    ),
-                  ),
-                  SizedBox(height: compact ? 12 : 16),
-                  Text(
                     '翻页方向',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: palette.inkTertiary,

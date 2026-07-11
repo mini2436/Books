@@ -48,6 +48,14 @@ class AdminBookController(
         @RequestBody request: UpdateAdminBookRequest,
     ): AdminBookDetailView = bookService.updateAdminBook(bookId, request)
 
+    // 书籍元数据更新接口：保留管理员手动维护的书名和作者，不再被后续扫描覆盖。
+    @PatchMapping("/{bookId}/metadata")
+    @PreAuthorize(RoleExpressions.ADMIN_ACCESS)
+    fun updateBookMetadata(
+        @PathVariable bookId: Long,
+        @Valid @RequestBody request: UpdateAdminBookMetadataRequest,
+    ): AdminBookDetailView = bookService.updateAdminBookMetadata(bookId, request)
+
     // 结构化正文重建接口：管理员或馆员重新抽取指定书籍的统一正文。
     @PostMapping("/{bookId}/content/rebuild")
     @PreAuthorize(RoleExpressions.ADMIN_ACCESS)

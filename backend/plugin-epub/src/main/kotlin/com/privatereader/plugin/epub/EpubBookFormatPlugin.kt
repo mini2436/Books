@@ -48,14 +48,29 @@ class EpubBookFormatPlugin : BookFormatPlugin {
         val packageDocument = readXml(zip, packagePath)
         val packageDir = packagePath.substringBeforeLast('/', "")
         val manifestItems = extractManifestItems(packageDocument, packageDir)
-        val coverItem = findCoverItem(packageDocument, manifestItems, packagePath) ?: return null
-        val entry = zip.getEntry(coverItem.fullPath) ?: return null
+        val coverItem = findCoverItem(packageDocument, manifestItems, packagePath)
+        val entry = coverItem?.let { zip.getEntry(it.fullPath) }
+            ?: zip.entries().asSequence()
+                .filterNot { entry -> entry.isDirectory }
+                .filter { entry -> inferMimeTypeFromPath(entry.name).startsWith("image/") }
+                .sortedBy { entry ->
+                    val fileName = entry.name.substringAfterLast('/').substringBeforeLast('.').lowercase()
+                    when {
+                        fileName == "cover" -> 0
+                        fileName.startsWith("cover") -> 1
+                        entry.name.contains("cover", ignoreCase = true) -> 2
+                        else -> 3
+                    }
+                }
+                .firstOrNull { entry -> entry.name.contains("cover", ignoreCase = true) }
+            ?: return null
         val bytes = zip.getInputStream(entry).use { it.readBytes() }
         if (bytes.isEmpty()) {
             return null
         }
         CoverExtractionResult(
-            mimeType = coverItem.mediaType.ifBlank { inferMimeTypeFromPath(coverItem.fullPath) },
+            mimeType = coverItem?.mediaType?.ifBlank { inferMimeTypeFromPath(entry.name) }
+                ?: inferMimeTypeFromPath(entry.name),
             bytes = bytes,
         )
     }
@@ -717,9 +732,16 @@ class EpubBookFormatPlugin : BookFormatPlugin {
         val factory = DocumentBuilderFactory.newInstance()
         factory.isNamespaceAware = true
         factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
-        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
+        // EPUB 2 NCX documents commonly declare the standard DAISY DTD. Allow the
+        // declaration itself, but never load external DTDs or resolve entities.
+        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", false)
         factory.setFeature("http://xml.org/sax/features/external-general-entities", false)
         factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false)
+        factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
+        factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "")
+        factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "")
+        factory.isXIncludeAware = false
+        factory.isExpandEntityReferences = false
         val builder = factory.newDocumentBuilder()
         return ByteArrayInputStream(bytes).use(builder::parse)
     }

@@ -105,9 +105,13 @@ class ProfileScreen extends ConsumerWidget {
                 },
               ),
               onTap: () {
-                ref.read(readerPreferencesControllerProvider).setThemeMode(
-                  isNightMode ? ReaderThemeMode.paper : ReaderThemeMode.night,
-                );
+                ref
+                    .read(readerPreferencesControllerProvider)
+                    .setThemeMode(
+                      isNightMode
+                          ? ReaderThemeMode.paper
+                          : ReaderThemeMode.night,
+                    );
               },
             ),
             _ActionTile(
@@ -120,11 +124,6 @@ class ProfileScreen extends ConsumerWidget {
                   context,
                 ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
               ),
-            ),
-            _ActionTile(
-              icon: Icons.desktop_windows_outlined,
-              title: '桌面端阅读',
-              subtitle: '桌面端继续使用 Web 浏览器阅读 PDF 与完整后台能力',
             ),
             const SizedBox(height: 24),
             TextButton(

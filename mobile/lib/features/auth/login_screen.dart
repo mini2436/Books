@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../shared/config/app_config.dart';
 import '../../shared/theme/reader_theme_extension.dart';
 import '../../shared/utils/responsive.dart';
 import 'auth_controller.dart';
@@ -19,7 +18,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   late final TextEditingController _serverAddressController;
   final _usernameController = TextEditingController(text: 'admin');
   final _passwordController = TextEditingController(text: 'admin12345');
-  late String _baseUrlPreview;
 
   @override
   void initState() {
@@ -28,15 +26,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     _serverAddressController = TextEditingController(
       text: serverConfig.serverAddress,
     );
-    _baseUrlPreview = serverConfig.baseUrl;
-    _serverAddressController.addListener(_handleServerAddressChanged);
   }
 
   @override
   void dispose() {
-    _serverAddressController
-      ..removeListener(_handleServerAddressChanged)
-      ..dispose();
+    _serverAddressController.dispose();
     _usernameController.dispose();
     _passwordController.dispose();
     super.dispose();
@@ -63,20 +57,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               letterSpacing: -0.6,
             ),
           ),
-          const SizedBox(height: 10),
-          Text(
-            '为手机与平板重新设计的沉浸阅读入口。',
-            textAlign: tablet ? TextAlign.left : TextAlign.center,
-            style: Theme.of(
-              context,
-            ).textTheme.bodyMedium?.copyWith(color: palette.inkSecondary),
-          ),
-          const SizedBox(height: 28),
+          const SizedBox(height: 24),
           TextFormField(
             controller: _serverAddressController,
             decoration: InputDecoration(
               labelText: '服务地址',
-              helperText: '默认端口 8080，可输入 IP、IP:端口 或完整 URL',
               suffixIcon: serverConfig.isSaving
                   ? const Padding(
                       padding: EdgeInsets.all(12),
@@ -91,16 +76,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             keyboardType: TextInputType.url,
             validator: (value) =>
                 (value == null || value.trim().isEmpty) ? '请输入服务地址' : null,
-          ),
-          const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              '当前接口: $_baseUrlPreview',
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: palette.inkSecondary),
-            ),
           ),
           const SizedBox(height: 14),
           TextFormField(
@@ -222,17 +197,5 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     } catch (_) {
       // AuthController already stores the backend error for inline display.
     }
-  }
-
-  void _handleServerAddressChanged() {
-    final nextPreview = AppConfig.normalizeBaseUrl(
-      _serverAddressController.text,
-    );
-    if (nextPreview == _baseUrlPreview) {
-      return;
-    }
-    setState(() {
-      _baseUrlPreview = nextPreview;
-    });
   }
 }

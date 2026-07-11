@@ -127,6 +127,23 @@ class ApiClient {
     return AdminBookDetail.fromJson(data);
   }
 
+  Future<AdminBookDetail> updateAdminBookMetadata(
+    String accessToken,
+    int bookId, {
+    required String title,
+    String? author,
+  }) async {
+    final data = await _request<Map<String, dynamic>>(
+      () => _dio.patch<Map<String, dynamic>>(
+        '/api/admin/books/$bookId/metadata',
+        data: {'title': title, 'author': author},
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+
+    return AdminBookDetail.fromJson(data);
+  }
+
   Future<int> bulkDeleteAdminBooks(
     String accessToken,
     List<int> bookIds,
@@ -158,6 +175,8 @@ class ApiClient {
         options: Options(
           headers: _headers(accessToken),
           contentType: 'multipart/form-data',
+          sendTimeout: const Duration(minutes: 5),
+          receiveTimeout: const Duration(minutes: 5),
         ),
       ),
     );

@@ -21,7 +21,7 @@ class BookshelfScreen extends ConsumerWidget {
     final tablet = Responsive.isTablet(context);
     final columns = tablet ? Responsive.bookshelfColumns(context) : 2;
     final visibleBooks = controller.visibleBooks;
-    final gridGap = tablet ? 20.0 : 16.0;
+    const gridGap = 16.0;
     final horizontalPadding = tablet ? 24.0 : 16.0;
     final viewportWidth = MediaQuery.sizeOf(context).width;
     final availableWidth =
@@ -31,7 +31,7 @@ class BookshelfScreen extends ConsumerWidget {
         ? _wideCoverAspectRatio
         : _phoneCoverAspectRatio;
     final imageHeight = tileWidth / coverAspectRatio;
-    final tileHeight = imageHeight + (tablet ? 98 : 102);
+    final tileHeight = imageHeight + (tablet ? 82 : 102);
     final childAspectRatio = tileWidth / tileHeight;
 
     return Scaffold(
@@ -75,11 +75,6 @@ class BookshelfScreen extends ConsumerWidget {
                                       .textTheme
                                       .headlineSmall
                                       ?.copyWith(fontWeight: FontWeight.w700),
-                                ),
-                                Text(
-                                  '以统一正文为核心的移动阅读入口',
-                                  style: Theme.of(context).textTheme.bodyMedium
-                                      ?.copyWith(color: palette.inkSecondary),
                                 ),
                                 const SizedBox(height: 4),
                                 Text(

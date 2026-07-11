@@ -296,34 +296,26 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                   ),
                   Positioned(
                     right: 20,
-                    top: 112,
-                    child: _TabletChromeVisibility(
-                      visible: controller.uiVisible,
-                      offset: const Offset(0.08, 0),
-                      child: _TabletReaderDock(
-                        activePanel: _tabletPanel,
-                        onSelectPanel: _toggleTabletPanel,
-                        onAddBookmark: controller.addBookmark,
-                        bookmarkDisabled: controller.hasCurrentLocationBookmark,
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    left: 28,
-                    bottom: 24,
-                    child: _TabletChromeVisibility(
-                      visible: controller.uiVisible,
-                      offset: const Offset(-0.08, 0),
-                      child: _TabletReaderProgressChip(
-                        controller: controller,
-                        onPreviousPage: detail.isPdf
-                            ? controller.previousPdfPage
-                            : () => _dispatchViewportTapZone('left'),
-                        onToggleChrome: () =>
-                            _dispatchViewportTapZone('center'),
-                        onNextPage: detail.isPdf
-                            ? controller.nextPdfPage
-                            : () => _dispatchViewportTapZone('right'),
+                    top: 0,
+                    bottom: 0,
+                    child: Center(
+                      child: _TabletChromeVisibility(
+                        visible: controller.uiVisible,
+                        offset: const Offset(0.08, 0),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _TabletReaderDock(
+                              activePanel: _tabletPanel,
+                              onSelectPanel: _toggleTabletPanel,
+                              onAddBookmark: controller.addBookmark,
+                              bookmarkDisabled:
+                                  controller.hasCurrentLocationBookmark,
+                            ),
+                            const SizedBox(height: 14),
+                            _TabletReaderProgressRing(controller: controller),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -978,11 +970,11 @@ class _TabletReaderHeader extends StatelessWidget {
 
     return Material(
       color: palette.panel.withValues(alpha: 0.94),
-      elevation: 10,
+      elevation: 8,
       shadowColor: Colors.black.withValues(alpha: 0.08),
-      borderRadius: BorderRadius.circular(24),
+      borderRadius: BorderRadius.circular(18),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         child: Row(
           children: [
             IconButton(
@@ -994,29 +986,33 @@ class _TabletReaderHeader extends StatelessWidget {
                 context.go('/shelf');
               },
               icon: const Icon(Icons.arrow_back_ios_new),
+              iconSize: 20,
+              visualDensity: VisualDensity.compact,
+              constraints: const BoxConstraints.tightFor(width: 38, height: 38),
             ),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    detail.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    chapterTitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: palette.inkSecondary,
-                    ),
-                  ),
-                ],
+              flex: 3,
+              child: Text(
+                detail.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              ),
+            ),
+            const SizedBox(width: 24),
+            Expanded(
+              flex: 2,
+              child: Text(
+                chapterTitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.end,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: palette.inkSecondary,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
           ],
@@ -1045,9 +1041,12 @@ class _TabletReaderDock extends StatelessWidget {
 
     return Material(
       color: palette.panel.withValues(alpha: 0.96),
-      elevation: 12,
-      shadowColor: Colors.black.withValues(alpha: 0.1),
-      borderRadius: BorderRadius.circular(24),
+      elevation: 18,
+      shadowColor: Colors.black.withValues(alpha: 0.2),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(24),
+        side: BorderSide(color: palette.line.withValues(alpha: 0.72)),
+      ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
         child: Column(
@@ -1126,117 +1125,50 @@ class _TabletDockButton extends StatelessWidget {
   }
 }
 
-class _TabletReaderProgressChip extends StatelessWidget {
-  const _TabletReaderProgressChip({
-    required this.controller,
-    required this.onPreviousPage,
-    required this.onToggleChrome,
-    required this.onNextPage,
-  });
+class _TabletReaderProgressRing extends StatelessWidget {
+  const _TabletReaderProgressRing({required this.controller});
 
   final ReaderController controller;
-  final VoidCallback onPreviousPage;
-  final VoidCallback onToggleChrome;
-  final VoidCallback onNextPage;
 
   @override
   Widget build(BuildContext context) {
     final palette = AppReaderPalette.of(context);
 
-    return Material(
-      color: palette.panel.withValues(alpha: 0.96),
-      elevation: 10,
-      borderRadius: BorderRadius.circular(999),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _TabletProgressButton(
-              icon: Icons.chevron_left,
-              tooltip: '上一页',
-              onPressed: onPreviousPage,
-            ),
-            const SizedBox(width: 8),
-            Text(
-              '${controller.progressPercent.toStringAsFixed(1)}%',
-              style: Theme.of(
-                context,
-              ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(width: 10),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: palette.backgroundSoft,
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: palette.line),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _TabletProgressButton(
-                    icon: Icons.tune,
-                    tooltip: '显示/隐藏界面',
-                    onPressed: onToggleChrome,
-                    compact: true,
+    final progress = controller.progressPercent.clamp(0.0, 100.0);
+
+    return Semantics(
+      label: '阅读进度 ${progress.toStringAsFixed(1)}%',
+      child: Material(
+        color: palette.panel.withValues(alpha: 0.96),
+        elevation: 10,
+        shadowColor: Colors.black.withValues(alpha: 0.1),
+        shape: const CircleBorder(),
+        child: SizedBox.square(
+          dimension: 60,
+          child: Padding(
+            padding: const EdgeInsets.all(7),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                SizedBox.expand(
+                  child: CircularProgressIndicator(
+                    value: progress / 100,
+                    strokeWidth: 4,
+                    strokeCap: StrokeCap.round,
+                    color: palette.accent,
+                    backgroundColor: palette.line,
                   ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: Text(
-                      '菜单',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: palette.inkSecondary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                ),
+                Text(
+                  '${progress.toStringAsFixed(1)}%',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: palette.ink,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.3,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
-            _TabletProgressButton(
-              icon: Icons.chevron_right,
-              tooltip: '下一页',
-              onPressed: onNextPage,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _TabletProgressButton extends StatelessWidget {
-  const _TabletProgressButton({
-    required this.icon,
-    required this.tooltip,
-    required this.onPressed,
-    this.compact = false,
-  });
-
-  final IconData icon;
-  final String tooltip;
-  final VoidCallback onPressed;
-  final bool compact;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = AppReaderPalette.of(context);
-
-    return Tooltip(
-      message: tooltip,
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(999),
-        child: Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: compact ? 8 : 6,
-            vertical: compact ? 6 : 4,
-          ),
-          child: Icon(
-            icon,
-            size: compact ? 16 : 20,
-            color: palette.inkSecondary,
           ),
         ),
       ),
@@ -1496,16 +1428,9 @@ class _TabletReaderPanelHost extends StatelessWidget {
             ],
           ),
           transitionBuilder: (child, animation) {
-            final key = child.key;
-            final panelValue = key is ValueKey<_TabletReaderPanel?>
-                ? key.value
-                : null;
-            final alignLeft = panelValue == _TabletReaderPanel.toc;
             final slide =
                 Tween<Offset>(
-                  begin: alignLeft
-                      ? const Offset(-0.08, 0)
-                      : const Offset(0.08, 0),
+                  begin: const Offset(0.08, 0),
                   end: Offset.zero,
                 ).animate(
                   CurvedAnimation(
@@ -1550,25 +1475,19 @@ class _TabletReaderPanelSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = AppReaderPalette.of(context);
-    final alignLeft = panel == _TabletReaderPanel.toc;
     final panelWidth = switch (panel) {
-      _TabletReaderPanel.toc => 292.0,
+      _TabletReaderPanel.toc => 326.0,
       _TabletReaderPanel.settings => 344.0,
       _TabletReaderPanel.notes => 334.0,
       _TabletReaderPanel.bookmarks => 326.0,
     };
-    final panelPadding = EdgeInsets.fromLTRB(
-      alignLeft ? 28 : 0,
-      92,
-      alignLeft ? 0 : 98,
-      24,
-    );
+    const panelPadding = EdgeInsets.fromLTRB(0, 92, 98, 24);
 
     return Padding(
       padding: panelPadding,
       child: LayoutBuilder(
         builder: (context, constraints) => Align(
-          alignment: alignLeft ? Alignment.topLeft : Alignment.topRight,
+          alignment: Alignment.topRight,
           child: SizedBox(
             width: panelWidth,
             height: constraints.maxHeight,
@@ -1588,7 +1507,7 @@ class _TabletReaderPanelSheet extends StatelessWidget {
                         children: [
                           Text(
                             switch (panel) {
-                              _TabletReaderPanel.toc => '目录与书签',
+                              _TabletReaderPanel.toc => '目录',
                               _TabletReaderPanel.notes => '批注管理',
                               _TabletReaderPanel.bookmarks => '书签管理',
                               _TabletReaderPanel.settings => '阅读设置',

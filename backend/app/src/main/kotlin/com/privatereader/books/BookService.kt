@@ -34,6 +34,7 @@ class BookService(
     private val appProperties: AppProperties,
     private val authRepository: AuthRepository,
 ) {
+    @Transactional
     fun uploadBook(file: MultipartFile, actor: UserPrincipal): BookDetailView {
         require(!file.isEmpty) { "Uploaded file must not be empty" }
         val uploadsDir = Path.of(appProperties.storageRoot, "uploads")
@@ -45,7 +46,13 @@ class BookService(
         file.inputStream.use { input ->
             Files.copy(input, target, StandardCopyOption.REPLACE_EXISTING)
         }
-        return importDiscoveredFile(target, "MANAGED_UPLOAD", null, actor.id)
+        return try {
+            importDiscoveredFile(target, "MANAGED_UPLOAD", null, actor.id)
+        } catch (exception: Exception) {
+            Files.deleteIfExists(target)
+            Files.deleteIfExists(targetDir)
+            throw exception
+        }
     }
 
     @Transactional
@@ -434,6 +441,29 @@ class BookService(
         return getAdminBookDetail(bookId)
     }
 
+    fun updateAdminBookMetadata(bookId: Long, request: UpdateAdminBookMetadataRequest): AdminBookDetailView {
+        val normalizedTitle = request.title.trim().toPostgresText()
+        val normalizedAuthor = request.author?.trim()?.takeIf { it.isNotEmpty() }?.toPostgresText()
+        val updated = jdbcClient.sql(
+            """
+            update books
+            set title = :title,
+                author = :author,
+                metadata_manually_edited = true,
+                updated_at = :updatedAt
+            where id = :bookId
+            """.trimIndent(),
+        )
+            .param("title", normalizedTitle)
+            .param("author", normalizedAuthor)
+            .param("updatedAt", Instant.now().toSqlTimestamp())
+            .param("bookId", bookId)
+            .update()
+
+        require(updated > 0) { "Book $bookId was not found" }
+        return getAdminBookDetail(bookId)
+    }
+
     @Transactional
     fun rebuildStructuredContent(bookId: Long): AdminBookDetailView {
         val fileRef = resolveBookFileRef(bookId)
@@ -775,8 +805,8 @@ class BookService(
         jdbcClient.sql(
             """
             update books
-            set title = :title,
-                author = :author,
+            set title = case when metadata_manually_edited then title else :title end,
+                author = case when metadata_manually_edited then author else :author end,
                 description = :description,
                 updated_at = :updatedAt
             where id = :bookId
@@ -850,6 +880,10 @@ class BookService(
         pluginId: String,
         filePath: Path,
     ) {
+        if (hasReadyStructuredContentVersion(bookId, sourceFileId, checksum)) {
+            return
+        }
+
         val plugin = pluginRegistryService.findPluginById(pluginId) ?: return
         val structuredContent = try {
             plugin.extractStructuredContent(filePath)
@@ -886,6 +920,26 @@ class BookService(
         insertStructuredBlocks(versionId, structuredContent, now)
         markPreviousContentVersionsStale(bookId, versionId, now)
     }
+
+    private fun hasReadyStructuredContentVersion(bookId: Long, sourceFileId: Long, checksum: String): Boolean =
+        jdbcClient.sql(
+            """
+            select exists (
+                select 1
+                from book_content_versions
+                where book_id = :bookId
+                and source_file_id = :sourceFileId
+                and checksum = :checksum
+                and status = :status
+            )
+            """.trimIndent(),
+        )
+            .param("bookId", bookId)
+            .param("sourceFileId", sourceFileId)
+            .param("checksum", checksum)
+            .param("status", CONTENT_STATUS_READY)
+            .query(Boolean::class.java)
+            .single()
 
     private fun insertFailedStructuredContentVersion(bookId: Long, sourceFileId: Long, checksum: String) {
         val now = Instant.now()

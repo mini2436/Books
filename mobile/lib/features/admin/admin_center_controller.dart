@@ -509,6 +509,7 @@ class AdminCenterController extends ChangeNotifier {
             (book) => book.id == bookId
                 ? book.copyWith(
                     groupName: updated.groupName,
+                    clearGroupName: updated.groupName == null,
                     updatedAt: updated.updatedAt,
                   )
                 : book,
@@ -517,6 +518,45 @@ class AdminCenterController extends ChangeNotifier {
       _notice = updated.groupName == null || updated.groupName!.isEmpty
           ? '已清空图书分组'
           : '已将图书分组更新为 ${updated.groupName}';
+    });
+  }
+
+  Future<void> updateBookMetadata(
+    int bookId,
+    String title,
+    String? author,
+  ) async {
+    final normalizedTitle = title.trim();
+    if (normalizedTitle.isEmpty) {
+      _error = '书名不能为空';
+      notifyListeners();
+      return;
+    }
+
+    await _runMutation(() async {
+      final normalizedAuthor = author?.trim();
+      final updated = await _authController.runAuthorized(
+        (token) => _apiClient.updateAdminBookMetadata(
+          token,
+          bookId,
+          title: normalizedTitle,
+          author: normalizedAuthor?.isEmpty == true ? null : normalizedAuthor,
+        ),
+      );
+      _bookDetails = {..._bookDetails, bookId: updated};
+      _books = _books
+          .map(
+            (book) => book.id == bookId
+                ? book.copyWith(
+                    title: updated.title,
+                    author: updated.author,
+                    clearAuthor: updated.author == null,
+                    updatedAt: updated.updatedAt,
+                  )
+                : book,
+          )
+          .toList();
+      _notice = '已更新《${updated.title}》的书籍信息';
     });
   }
 

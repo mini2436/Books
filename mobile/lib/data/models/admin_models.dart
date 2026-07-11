@@ -50,12 +50,14 @@ class AdminBookSummary {
     String? sourceType,
     bool? sourceMissing,
     String? updatedAt,
+    bool clearAuthor = false,
+    bool clearGroupName = false,
   }) {
     return AdminBookSummary(
       id: id,
       title: title ?? this.title,
-      author: author ?? this.author,
-      groupName: groupName ?? this.groupName,
+      author: clearAuthor ? null : author ?? this.author,
+      groupName: clearGroupName ? null : groupName ?? this.groupName,
       description: description ?? this.description,
       pluginId: pluginId ?? this.pluginId,
       format: format ?? this.format,

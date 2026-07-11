@@ -16,6 +16,103 @@ class EpubBookFormatPluginTest {
     private val plugin = EpubBookFormatPlugin()
 
     @Test
+    fun `extracts toc from epub 2 ncx with standard doctype`() {
+        val tempFile = Files.createTempFile("reader-epub2-ncx", ".epub")
+        ZipOutputStream(Files.newOutputStream(tempFile)).use { zip ->
+            writeEntry(zip, "mimetype", "application/epub+zip")
+            writeEntry(
+                zip,
+                "META-INF/container.xml",
+                """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+                  <rootfiles>
+                    <rootfile full-path="OPS/content.opf" media-type="application/oebps-package+xml"/>
+                  </rootfiles>
+                </container>
+                """.trimIndent(),
+            )
+            writeEntry(
+                zip,
+                "OPS/content.opf",
+                """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+                  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+                    <dc:title>EPUB 2 Sample</dc:title>
+                  </metadata>
+                  <manifest>
+                    <item id="ncx" href="fb.ncx" media-type="application/x-dtbncx+xml"/>
+                    <item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/>
+                  </manifest>
+                  <spine toc="ncx"><itemref idref="chapter"/></spine>
+                </package>
+                """.trimIndent(),
+            )
+            writeEntry(
+                zip,
+                "OPS/fb.ncx",
+                """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <!DOCTYPE ncx PUBLIC "-//NISO//DTD ncx 2005-1//EN" "http://www.daisy.org/z3986/2005/ncx-2005-1.dtd">
+                <ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+                  <navMap>
+                    <navPoint id="chapter-1"><navLabel><text>第一章</text></navLabel><content src="chapter.xhtml"/></navPoint>
+                  </navMap>
+                </ncx>
+                """.trimIndent(),
+            )
+            writeEntry(
+                zip,
+                "OPS/chapter.xhtml",
+                """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <html xmlns="http://www.w3.org/1999/xhtml"><body><h1>第一章</h1><p>正文</p></body></html>
+                """.trimIndent(),
+            )
+        }
+
+        val manifest = plugin.buildManifest(tempFile)
+
+        assertEquals("第一章", manifest.toc.single().title)
+        assertEquals("OPS/chapter.xhtml", manifest.toc.single().href)
+    }
+
+    @Test
+    fun `extracts conventional cover omitted from epub manifest`() {
+        val tempFile = Files.createTempFile("reader-epub-unlisted-cover", ".epub")
+        val coverBytes = byteArrayOf(0x01, 0x02, 0x03)
+        ZipOutputStream(Files.newOutputStream(tempFile)).use { zip ->
+            writeEntry(
+                zip,
+                "META-INF/container.xml",
+                """
+                <container xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+                  <rootfiles><rootfile full-path="OPS/content.opf"/></rootfiles>
+                </container>
+                """.trimIndent(),
+            )
+            writeEntry(
+                zip,
+                "OPS/content.opf",
+                """
+                <package xmlns="http://www.idpf.org/2007/opf">
+                  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Cover fallback</dc:title></metadata>
+                  <manifest/>
+                </package>
+                """.trimIndent(),
+            )
+            writeBytes(zip, "OPS/images/cover.jpg", coverBytes)
+        }
+
+        val cover = plugin.extractCover(tempFile)
+
+        assertNotNull(cover)
+        assertEquals("image/jpeg", cover?.mimeType)
+        assertArrayEquals(coverBytes, cover?.bytes)
+    }
+
+    @Test
     fun `extracts structured chapters from epub spine`() {
         val tempFile = Files.createTempFile("reader-epub", ".epub")
         ZipOutputStream(Files.newOutputStream(tempFile)).use { zip ->

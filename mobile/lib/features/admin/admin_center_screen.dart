@@ -77,11 +77,6 @@ class AdminCenterScreen extends ConsumerWidget {
                                       .headlineSmall
                                       ?.copyWith(fontWeight: FontWeight.w700),
                                 ),
-                                Text(
-                                  '面向管理员的用户、角色、图书与阅读数据维护入口',
-                                  style: Theme.of(context).textTheme.bodyMedium
-                                      ?.copyWith(color: palette.inkSecondary),
-                                ),
                               ],
                             ),
                           ),
@@ -495,13 +490,6 @@ class _BookManagementSection extends ConsumerWidget {
                     '书籍管理',
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '把导入、筛选、分组和授权整合到同一条工作流里，减少在多个弹窗之间反复跳转。',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: palette.inkSecondary,
                     ),
                   ),
                   const SizedBox(height: 14),
@@ -977,13 +965,6 @@ class _AnnotationManagementSectionState
                 style: Theme.of(
                   context,
                 ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                '先按书定位，再进入书内查看和处理具体批注。',
-                style: Theme.of(
-                  context,
-                ).textTheme.bodyMedium?.copyWith(color: palette.inkSecondary),
               ),
               const SizedBox(height: 16),
               TextField(

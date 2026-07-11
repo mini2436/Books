@@ -79,11 +79,6 @@ class _AnnotationCenterScreenState
                                       .headlineSmall
                                       ?.copyWith(fontWeight: FontWeight.w700),
                                 ),
-                                Text(
-                                  '先按书定位，再进入书内查看和搜索具体批注',
-                                  style: Theme.of(context).textTheme.bodyMedium
-                                      ?.copyWith(color: palette.inkSecondary),
-                                ),
                               ],
                             ),
                           ),

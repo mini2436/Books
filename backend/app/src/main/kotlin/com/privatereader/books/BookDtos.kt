@@ -2,6 +2,7 @@ package com.privatereader.books
 
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotNull
+import jakarta.validation.constraints.Size
 
 data class BookView(
     val id: Long,
@@ -102,6 +103,14 @@ data class CreateGrantRequest(
 
 data class UpdateAdminBookRequest(
     val groupName: String? = null,
+)
+
+data class UpdateAdminBookMetadataRequest(
+    @field:NotBlank
+    @field:Size(max = 255)
+    val title: String,
+    @field:Size(max = 255)
+    val author: String? = null,
 )
 
 data class BulkDeleteBooksRequest(

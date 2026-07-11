@@ -27,10 +27,13 @@ class Responsive {
 
   static int bookshelfColumns(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
-    if (isDesktop(context) && width >= 1280) {
+    if (isDesktop(context) && width >= 1400) {
+      return 7;
+    }
+    if (isDesktop(context) && width >= 1100) {
       return 6;
     }
-    if (width >= 1024) {
+    if (width >= 900) {
       return 5;
     }
     if (width >= tabletBreakpoint) {

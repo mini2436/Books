@@ -19,8 +19,11 @@ class AdminBookDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _AdminBookDetailScreenState extends ConsumerState<AdminBookDetailScreen> {
+  final _titleController = TextEditingController();
+  final _authorController = TextEditingController();
   final _groupController = TextEditingController();
   int? _selectedUserId;
+  bool _seededMetadata = false;
   bool _seededGroup = false;
 
   @override
@@ -35,6 +38,8 @@ class _AdminBookDetailScreenState extends ConsumerState<AdminBookDetailScreen> {
 
   @override
   void dispose() {
+    _titleController.dispose();
+    _authorController.dispose();
     _groupController.dispose();
     super.dispose();
   }
@@ -64,6 +69,11 @@ class _AdminBookDetailScreenState extends ConsumerState<AdminBookDetailScreen> {
     if (!_seededGroup && detail != null) {
       _groupController.text = detail.groupName ?? '';
       _seededGroup = true;
+    }
+    if (!_seededMetadata && detail != null) {
+      _titleController.text = detail.title;
+      _authorController.text = detail.author ?? '';
+      _seededMetadata = true;
     }
 
     return Scaffold(
@@ -117,6 +127,8 @@ class _AdminBookDetailScreenState extends ConsumerState<AdminBookDetailScreen> {
                               child: _BookDetailOperations(
                                 detail: detail,
                                 summary: summary,
+                                titleController: _titleController,
+                                authorController: _authorController,
                                 groupController: _groupController,
                                 selectedUserId: _selectedUserId,
                                 availableUsers: availableUsers,
@@ -149,6 +161,8 @@ class _AdminBookDetailScreenState extends ConsumerState<AdminBookDetailScreen> {
                             _BookDetailOperations(
                               detail: detail,
                               summary: summary,
+                              titleController: _titleController,
+                              authorController: _authorController,
                               groupController: _groupController,
                               selectedUserId: _selectedUserId,
                               availableUsers: availableUsers,
@@ -260,6 +274,8 @@ class _BookDetailOperations extends StatelessWidget {
   const _BookDetailOperations({
     required this.detail,
     required this.summary,
+    required this.titleController,
+    required this.authorController,
     required this.groupController,
     required this.selectedUserId,
     required this.availableUsers,
@@ -271,6 +287,8 @@ class _BookDetailOperations extends StatelessWidget {
 
   final AdminBookDetail? detail;
   final AdminBookSummary? summary;
+  final TextEditingController titleController;
+  final TextEditingController authorController;
   final TextEditingController groupController;
   final int? selectedUserId;
   final List<AdminUserView> availableUsers;
@@ -291,17 +309,67 @@ class _BookDetailOperations extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '图书分组',
+                '书籍信息',
                 style: Theme.of(
                   context,
                 ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 14),
+              TextField(
+                controller: titleController,
+                maxLength: 255,
+                decoration: const InputDecoration(
+                  labelText: '书名',
+                  hintText: '请输入书名',
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: authorController,
+                maxLength: 255,
+                decoration: const InputDecoration(
+                  labelText: '作者（可选）',
+                  hintText: '留空可清除作者',
+                ),
+              ),
+              const SizedBox(height: 4),
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton(
+                  onPressed: controller.isWorking
+                      ? null
+                      : () async {
+                          await controller.updateBookMetadata(
+                            detail?.id ?? summary!.id,
+                            titleController.text,
+                            authorController.text,
+                          );
+                          if (!context.mounted) {
+                            return;
+                          }
+                          final message = controller.error ?? controller.notice;
+                          if (message != null) {
+                            ScaffoldMessenger.of(
+                              context,
+                            ).showSnackBar(SnackBar(content: Text(message)));
+                          }
+                        },
+                  child: Text(controller.isWorking ? '保存中...' : '保存书籍信息'),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        _DetailPanel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               Text(
-                '分组会同步回书籍管理列表，可用于快速筛选和批量处理。',
+                '图书分组',
                 style: Theme.of(
                   context,
-                ).textTheme.bodySmall?.copyWith(color: palette.inkSecondary),
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 14),
               LayoutBuilder(
@@ -419,13 +487,6 @@ class _BookDetailOperations extends StatelessWidget {
                 style: Theme.of(
                   context,
                 ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '全局角色用户会自动可见，显式分配的读者可以在这里新增或解绑。',
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(color: palette.inkSecondary),
               ),
               const SizedBox(height: 14),
               LayoutBuilder(

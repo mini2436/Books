@@ -22,7 +22,6 @@ class _AdminBookDetailScreenState extends ConsumerState<AdminBookDetailScreen> {
   final _titleController = TextEditingController();
   final _authorController = TextEditingController();
   final _groupController = TextEditingController();
-  int? _selectedUserId;
   bool _seededMetadata = false;
   bool _seededGroup = false;
 
@@ -130,20 +129,9 @@ class _AdminBookDetailScreenState extends ConsumerState<AdminBookDetailScreen> {
                                 titleController: _titleController,
                                 authorController: _authorController,
                                 groupController: _groupController,
-                                selectedUserId: _selectedUserId,
                                 availableUsers: availableUsers,
                                 viewers: viewers,
                                 controller: controller,
-                                onUserChanged: (value) {
-                                  setState(() {
-                                    _selectedUserId = value;
-                                  });
-                                },
-                                onAssigned: () {
-                                  setState(() {
-                                    _selectedUserId = null;
-                                  });
-                                },
                               ),
                             ),
                           ],
@@ -164,20 +152,9 @@ class _AdminBookDetailScreenState extends ConsumerState<AdminBookDetailScreen> {
                               titleController: _titleController,
                               authorController: _authorController,
                               groupController: _groupController,
-                              selectedUserId: _selectedUserId,
                               availableUsers: availableUsers,
                               viewers: viewers,
                               controller: controller,
-                              onUserChanged: (value) {
-                                setState(() {
-                                  _selectedUserId = value;
-                                });
-                              },
-                              onAssigned: () {
-                                setState(() {
-                                  _selectedUserId = null;
-                                });
-                              },
                             ),
                           ],
                         ),
@@ -277,12 +254,9 @@ class _BookDetailOperations extends StatelessWidget {
     required this.titleController,
     required this.authorController,
     required this.groupController,
-    required this.selectedUserId,
     required this.availableUsers,
     required this.viewers,
     required this.controller,
-    required this.onUserChanged,
-    required this.onAssigned,
   });
 
   final AdminBookDetail? detail;
@@ -290,12 +264,9 @@ class _BookDetailOperations extends StatelessWidget {
   final TextEditingController titleController;
   final TextEditingController authorController;
   final TextEditingController groupController;
-  final int? selectedUserId;
   final List<AdminUserView> availableUsers;
   final List<BookViewerView> viewers;
   final AdminCenterController controller;
-  final ValueChanged<int?> onUserChanged;
-  final VoidCallback onAssigned;
 
   @override
   Widget build(BuildContext context) {
@@ -489,60 +460,54 @@ class _BookDetailOperations extends StatelessWidget {
                 ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 14),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final compact = constraints.maxWidth < 520;
-                  return Flex(
-                    direction: compact ? Axis.vertical : Axis.horizontal,
-                    crossAxisAlignment: compact
-                        ? CrossAxisAlignment.stretch
-                        : CrossAxisAlignment.center,
-                    children: [
-                      Expanded(
-                        flex: compact ? 0 : 1,
-                        child: DropdownButtonFormField<int>(
-                          initialValue: selectedUserId,
-                          decoration: const InputDecoration(
-                            labelText: '分配给指定人员',
-                          ),
-                          items: availableUsers
-                              .map(
-                                (user) => DropdownMenuItem<int>(
-                                  value: user.id,
-                                  child: Text(
-                                    '${user.username} · ${adminRoleLabel(user.role)}',
-                                  ),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: controller.isWorking
-                              ? null
-                              : onUserChanged,
-                        ),
-                      ),
-                      SizedBox(
-                        width: compact ? 0 : 12,
-                        height: compact ? 12 : 0,
-                      ),
-                      FilledButton.icon(
-                        onPressed:
-                            controller.isWorking || selectedUserId == null
-                            ? null
-                            : () async {
-                                await controller.grantBookToUser(
-                                  detail?.id ?? summary!.id,
-                                  selectedUserId!,
-                                );
-                                onAssigned();
-                              },
-                        icon: const Icon(Icons.person_add_alt_1),
-                        label: Text(controller.isWorking ? '分配中...' : '分配'),
-                      ),
-                    ],
-                  );
-                },
+              Text(
+                '可绑定用户',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
               ),
+              const SizedBox(height: 8),
+              if (availableUsers.isEmpty)
+                Text(
+                  '没有尚未绑定的启用用户。',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: palette.inkSecondary),
+                )
+              else
+                ...availableUsers.map(
+                  (user) => ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: CircleAvatar(
+                      child: Text(_initials(user.username)),
+                    ),
+                    title: Text(user.username),
+                    subtitle: Text(adminRoleLabel(user.role)),
+                    trailing: FilledButton.tonalIcon(
+                      onPressed: controller.isWorking
+                          ? null
+                          : () async {
+                              await controller.grantBookToUser(
+                                detail?.id ?? summary!.id,
+                                user.id,
+                              );
+                              if (context.mounted) {
+                                _showOperationMessage(context, controller);
+                              }
+                            },
+                      icon: const Icon(Icons.link_rounded),
+                      label: const Text('绑定'),
+                    ),
+                  ),
+                ),
               const SizedBox(height: 16),
+              Text(
+                '当前可见用户',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 8),
               if (controller.isLoadingViewers(detail?.id ?? summary?.id ?? 0) &&
                   viewers.isEmpty)
                 const Padding(
@@ -573,14 +538,7 @@ class _BookDetailOperations extends StatelessWidget {
                         child: Row(
                           children: [
                             CircleAvatar(
-                              child: Text(
-                                viewer.username
-                                    .substring(
-                                      0,
-                                      viewer.username.length >= 2 ? 2 : 1,
-                                    )
-                                    .toUpperCase(),
-                              ),
+                              child: Text(_initials(viewer.username)),
                             ),
                             const SizedBox(width: 12),
                             Expanded(
@@ -609,10 +567,18 @@ class _BookDetailOperations extends StatelessWidget {
                               TextButton.icon(
                                 onPressed: controller.isWorking
                                     ? null
-                                    : () => controller.revokeBookFromUser(
-                                        detail?.id ?? summary!.id,
-                                        viewer,
-                                      ),
+                                    : () async {
+                                        await controller.revokeBookFromUser(
+                                          detail?.id ?? summary!.id,
+                                          viewer,
+                                        );
+                                        if (context.mounted) {
+                                          _showOperationMessage(
+                                            context,
+                                            controller,
+                                          );
+                                        }
+                                      },
                                 icon: const Icon(Icons.link_off),
                                 label: const Text('解绑'),
                               ),
@@ -628,6 +594,25 @@ class _BookDetailOperations extends StatelessWidget {
       ],
     );
   }
+}
+
+String _initials(String value) {
+  final normalized = value.trim();
+  if (normalized.isEmpty) {
+    return '?';
+  }
+  return normalized.substring(0, normalized.length >= 2 ? 2 : 1).toUpperCase();
+}
+
+void _showOperationMessage(
+  BuildContext context,
+  AdminCenterController controller,
+) {
+  final message = controller.error ?? controller.notice;
+  if (message == null || message.isEmpty) {
+    return;
+  }
+  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
 }
 
 class _DetailPanel extends StatelessWidget {

@@ -14,7 +14,6 @@ web/.next/
 web/out/
 web/node_modules/
 mobile/node_modules/
-mobile/android/
 mobile/ios/
 storage/
 tmp/

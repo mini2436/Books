@@ -349,24 +349,11 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
         child: Stack(
           children: [
             Positioned.fill(
-              child: AnimatedPadding(
-                duration: const Duration(milliseconds: 220),
-                curve: Curves.easeOutCubic,
-                padding: EdgeInsets.fromLTRB(
-                  16,
-                  controller.uiVisible ? 86 : 24,
-                  16,
-                  controller.uiVisible ? 108 : 40,
-                ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 24, 16, 40),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      chapter?.title ?? detail.title,
-                      style: Theme.of(context).textTheme.headlineSmall
-                          ?.copyWith(fontWeight: FontWeight.w700),
-                    ),
-                    const SizedBox(height: 20),
                     if (controller.isCurrentChapterLoading)
                       const Padding(
                         padding: EdgeInsets.only(bottom: 16),
@@ -1617,14 +1604,31 @@ class _ReaderLeftPanel extends StatelessWidget {
                   horizontal: 8,
                   vertical: 1,
                 ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                leading: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  curve: Curves.easeOut,
+                  width: 3,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: selected ? palette.accent : Colors.transparent,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+                horizontalTitleGap: 10,
                 title: Text(
                   chapter.title,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodyMedium,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: selected ? palette.accent : palette.ink,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+                  ),
                 ),
                 selected: selected,
-                selectedTileColor: palette.accent.withValues(alpha: 0.08),
+                selectedTileColor: palette.accent.withValues(alpha: 0.12),
                 onTap: () => controller.openChapter(chapter.chapterIndex),
               );
             }),

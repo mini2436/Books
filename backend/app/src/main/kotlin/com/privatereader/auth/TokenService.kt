@@ -82,7 +82,7 @@ class TokenService(
         return AuthResponse(
             accessToken = accessToken,
             refreshToken = refreshToken,
-            user = AuthUserView(id = user.id, username = user.username, role = user.role),
+            user = user.toAuthUserView(),
         )
     }
 

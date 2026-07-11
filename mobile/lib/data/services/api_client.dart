@@ -74,6 +74,44 @@ class ApiClient {
     );
   }
 
+  Future<AuthUser> updateMyProfile(
+    String accessToken, {
+    required String? displayName,
+  }) async {
+    final data = await _request<Map<String, dynamic>>(
+      () => _dio.patch<Map<String, dynamic>>(
+        '/api/me/profile',
+        data: {'displayName': displayName},
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+    return AuthUser.fromJson(data);
+  }
+
+  Future<AuthUser> uploadMyAvatar(
+    String accessToken, {
+    required String filePath,
+  }) async {
+    final formData = FormData.fromMap({
+      'file': await MultipartFile.fromFile(
+        filePath,
+        filename: path.basename(filePath),
+        contentType: DioMediaType.parse(_avatarContentType(filePath)),
+      ),
+    });
+    final data = await _request<Map<String, dynamic>>(
+      () => _dio.post<Map<String, dynamic>>(
+        '/api/me/profile/avatar',
+        data: formData,
+        options: Options(
+          headers: _headers(accessToken),
+          contentType: 'multipart/form-data',
+        ),
+      ),
+    );
+    return AuthUser.fromJson(data);
+  }
+
   Future<List<BookSummary>> listMyBooks(String accessToken) async {
     final data = await _request<List<dynamic>>(
       () => _dio.get<List<dynamic>>(
@@ -643,5 +681,15 @@ class ApiClient {
       return responseData.trim();
     }
     return error.message ?? '网络请求失败';
+  }
+
+  String _avatarContentType(String filePath) {
+    return switch (path.extension(filePath).toLowerCase()) {
+      '.jpg' || '.jpeg' => 'image/jpeg',
+      '.png' => 'image/png',
+      '.webp' => 'image/webp',
+      '.gif' => 'image/gif',
+      _ => 'application/octet-stream',
+    };
   }
 }

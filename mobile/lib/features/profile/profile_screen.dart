@@ -1,3 +1,4 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -8,11 +9,16 @@ import '../bookshelf/bookshelf_controller.dart';
 import '../reader/widgets/reader_settings_sheet.dart';
 import '../settings/reader_preferences_controller.dart';
 
-class ProfileScreen extends ConsumerWidget {
+class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends ConsumerState<ProfileScreen> {
+  @override
+  Widget build(BuildContext context) {
     final auth = ref.watch(authControllerProvider);
     final shelf = ref.watch(bookshelfControllerProvider);
     final preferences = ref.watch(readerPreferencesControllerProvider);
@@ -26,36 +32,108 @@ class ProfileScreen extends ConsumerWidget {
           padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                CircleAvatar(
-                  radius: 32,
-                  backgroundColor: palette.accent.withValues(alpha: 0.14),
-                  foregroundColor: palette.accent,
-                  child: Text(
-                    user?.initials ?? 'PR',
-                    style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w700,
-                    ),
+                SizedBox(
+                  width: 72,
+                  height: 72,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Positioned.fill(
+                        child: Material(
+                          color: palette.accent.withValues(alpha: 0.14),
+                          shape: const CircleBorder(),
+                          clipBehavior: Clip.antiAlias,
+                          child: InkWell(
+                            onTap: auth.isWorking ? null : _pickAvatar,
+                            child:
+                                user?.hasAvatar == true &&
+                                    auth.accessToken != null
+                                ? Image.network(
+                                    ref
+                                        .read(apiClientProvider)
+                                        .buildUrl('/api/me/profile/avatar'),
+                                    key: ValueKey(user?.avatarVersion),
+                                    headers: ref
+                                        .read(apiClientProvider)
+                                        .coverHeaders(auth.accessToken!),
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, _, _) => _AvatarInitials(
+                                      initials: user?.initials ?? 'PR',
+                                    ),
+                                  )
+                                : _AvatarInitials(
+                                    initials: user?.initials ?? 'PR',
+                                  ),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        right: -2,
+                        bottom: -2,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: palette.accent,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: palette.background,
+                              width: 3,
+                            ),
+                          ),
+                          child: const Padding(
+                            padding: EdgeInsets.all(6),
+                            child: Icon(
+                              Icons.camera_alt_rounded,
+                              size: 15,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 18),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        user?.username ?? '未登录',
-                        style: Theme.of(context).textTheme.headlineSmall
-                            ?.copyWith(fontWeight: FontWeight.w700),
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              user?.displayLabel ?? '未登录',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.headlineSmall
+                                  ?.copyWith(fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          IconButton(
+                            onPressed: auth.isWorking || user == null
+                                ? null
+                                : _editDisplayName,
+                            visualDensity: VisualDensity.compact,
+                            tooltip: '编辑个人名称',
+                            icon: const Icon(Icons.edit_rounded, size: 19),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 2),
                       Text(
-                        user?.role ?? UserRole.reader.value,
+                        user == null
+                            ? UserRole.reader.value
+                            : '@${user.username} · ${user.role}',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: palette.inkSecondary,
                         ),
                       ),
+                      if (auth.isWorking) ...[
+                        const SizedBox(height: 8),
+                        const LinearProgressIndicator(minHeight: 2),
+                      ],
                     ],
                   ),
                 ),
@@ -134,6 +212,105 @@ class ProfileScreen extends ConsumerWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickAvatar() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      allowMultiple: false,
+    );
+    final filePath = result?.files.single.path;
+    if (filePath == null || !mounted) {
+      return;
+    }
+    try {
+      await ref.read(authControllerProvider).uploadAvatar(filePath);
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('头像已更新')));
+      }
+    } catch (error) {
+      _showError(error);
+    }
+  }
+
+  Future<void> _editDisplayName() async {
+    final auth = ref.read(authControllerProvider);
+    final textController = TextEditingController(
+      text: auth.user?.displayName ?? auth.user?.username ?? '',
+    );
+    final value = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('编辑个人名称'),
+        content: TextField(
+          controller: textController,
+          autofocus: true,
+          maxLength: 120,
+          textInputAction: TextInputAction.done,
+          decoration: const InputDecoration(
+            labelText: '个人名称',
+            hintText: '留空将恢复显示登录账号',
+          ),
+          onSubmitted: (value) => Navigator.of(context).pop(value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(textController.text),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    textController.dispose();
+    if (value == null || !mounted) {
+      return;
+    }
+    try {
+      await ref.read(authControllerProvider).updateDisplayName(value);
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('个人名称已更新')));
+      }
+    } catch (error) {
+      _showError(error);
+    }
+  }
+
+  void _showError(Object error) {
+    if (!mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('保存失败：$error')));
+  }
+}
+
+class _AvatarInitials extends StatelessWidget {
+  const _AvatarInitials({required this.initials});
+
+  final String initials;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppReaderPalette.of(context);
+    return Center(
+      child: Text(
+        initials,
+        style: TextStyle(
+          color: palette.accent,
+          fontSize: 22,
+          fontWeight: FontWeight.w700,
         ),
       ),
     );

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/book_models.dart';
+import '../../data/models/sync_models.dart';
 import '../../data/services/api_client.dart';
 import '../../data/services/offline_queue_service.dart';
 import '../auth/auth_controller.dart';
@@ -38,16 +39,17 @@ class BookshelfController extends ChangeNotifier {
   bool _isLoading = false;
   String? _error;
   int _pendingCount = 0;
-  String _searchQuery = '';
+  List<ReadingProgressView> _readingProgresses = const [];
 
   List<BookSummary> get books => _books;
-  List<BookSummary> get visibleBooks {
-    final normalizedQuery = _normalizedSearchQuery;
-    if (normalizedQuery.isEmpty) {
-      return _books;
-    }
-    return _books
-        .where((book) => _matchesSearch(book, normalizedQuery))
+  List<BookSummary> get recentBooks {
+    final booksById = {for (final book in _books) book.id: book};
+    final progresses = [..._readingProgresses]
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    return progresses
+        .map((progress) => booksById[progress.bookId])
+        .whereType<BookSummary>()
+        .take(10)
         .toList();
   }
 
@@ -55,13 +57,29 @@ class BookshelfController extends ChangeNotifier {
   String? get error => _error;
   int get pendingCount => _pendingCount;
   String get serviceBaseUrl => _apiClient.baseUrl;
-  String get searchQuery => _searchQuery;
-  bool get hasSearchQuery => _normalizedSearchQuery.isNotEmpty;
-  int get visibleBookCount => visibleBooks.length;
+  ReadingProgressView? progressForBook(int bookId) {
+    for (final progress in _readingProgresses) {
+      if (progress.bookId == bookId) {
+        return progress;
+      }
+    }
+    return null;
+  }
+
+  List<BookSummary> searchBooks(String query) {
+    final normalizedQuery = _normalizeForSearch(query);
+    if (normalizedQuery.isEmpty) {
+      return const [];
+    }
+    return _books
+        .where((book) => _matchesSearch(book, normalizedQuery))
+        .toList();
+  }
 
   Future<void> refresh() async {
     if (!_authController.isAuthenticated) {
       _books = const [];
+      _readingProgresses = const [];
       _pendingCount = 0;
       _error = null;
       notifyListeners();
@@ -76,6 +94,20 @@ class BookshelfController extends ChangeNotifier {
       final nextBooks = await _authController.runAuthorized(
         (accessToken) => _apiClient.listMyBooks(accessToken),
       );
+      var nextProgresses = _readingProgresses;
+      try {
+        final sync = await _authController.runAuthorized(
+          (accessToken) => _apiClient.pullSync(accessToken, cursor: 0),
+        );
+        nextProgresses = sync.progresses;
+      } catch (error, stackTrace) {
+        developer.log(
+          'Failed to load recent reading progress',
+          name: 'BookshelfController',
+          error: error,
+          stackTrace: stackTrace,
+        );
+      }
       var count = _pendingCount;
       try {
         count = await _offlineQueueService.pendingCount();
@@ -88,6 +120,7 @@ class BookshelfController extends ChangeNotifier {
         );
       }
       _books = nextBooks;
+      _readingProgresses = nextProgresses;
       _pendingCount = count;
     } catch (error, stackTrace) {
       _error = '书架加载失败，请检查服务地址、登录状态或网络后重试。\n当前服务：${_apiClient.baseUrl}\n$error';
@@ -114,29 +147,12 @@ class BookshelfController extends ChangeNotifier {
       refresh();
     } else {
       _books = const [];
+      _readingProgresses = const [];
       _pendingCount = 0;
       _error = null;
       notifyListeners();
     }
   }
-
-  void updateSearchQuery(String value) {
-    if (value == _searchQuery) {
-      return;
-    }
-    _searchQuery = value;
-    notifyListeners();
-  }
-
-  void clearSearchQuery() {
-    if (_searchQuery.isEmpty) {
-      return;
-    }
-    _searchQuery = '';
-    notifyListeners();
-  }
-
-  String get _normalizedSearchQuery => _normalizeForSearch(_searchQuery);
 
   bool _matchesSearch(BookSummary book, String normalizedQuery) {
     final candidates = [

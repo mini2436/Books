@@ -100,6 +100,31 @@ class AuthController extends ChangeNotifier {
     await _sessionStorage.clear();
   }
 
+  Future<void> updateDisplayName(String value) async {
+    _setWorking(true);
+    try {
+      final normalized = value.trim().isEmpty ? null : value.trim();
+      final user = await runAuthorized(
+        (token) => _apiClient.updateMyProfile(token, displayName: normalized),
+      );
+      await _replaceSessionUser(user);
+    } finally {
+      _setWorking(false);
+    }
+  }
+
+  Future<void> uploadAvatar(String filePath) async {
+    _setWorking(true);
+    try {
+      final user = await runAuthorized(
+        (token) => _apiClient.uploadMyAvatar(token, filePath: filePath),
+      );
+      await _replaceSessionUser(user);
+    } finally {
+      _setWorking(false);
+    }
+  }
+
   Future<T> runAuthorized<T>(
     Future<T> Function(String accessToken) action,
   ) async {
@@ -183,6 +208,22 @@ class AuthController extends ChangeNotifier {
     if (value) {
       _errorMessage = null;
     }
+    notifyListeners();
+  }
+
+  Future<void> _replaceSessionUser(AuthUser user) async {
+    final current = _session;
+    if (current == null) {
+      return;
+    }
+    final next = Session(
+      accessToken: current.accessToken,
+      refreshToken: current.refreshToken,
+      user: user,
+    );
+    _session = next;
+    _errorMessage = null;
+    await _sessionStorage.saveSession(next);
     notifyListeners();
   }
 }

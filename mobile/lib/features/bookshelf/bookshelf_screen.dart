@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../data/models/book_models.dart';
 import '../../shared/theme/reader_theme_extension.dart';
 import '../../shared/utils/responsive.dart';
 import '../auth/auth_controller.dart';
@@ -20,7 +21,6 @@ class BookshelfScreen extends ConsumerWidget {
     final palette = AppReaderPalette.of(context);
     final tablet = Responsive.isTablet(context);
     final columns = tablet ? Responsive.bookshelfColumns(context) : 2;
-    final visibleBooks = controller.visibleBooks;
     const gridGap = 16.0;
     final horizontalPadding = tablet ? 24.0 : 16.0;
     final viewportWidth = MediaQuery.sizeOf(context).width;
@@ -56,13 +56,35 @@ class BookshelfScreen extends ConsumerWidget {
                     children: [
                       Row(
                         children: [
-                          CircleAvatar(
-                            radius: 22,
-                            backgroundColor: palette.accent.withValues(
-                              alpha: 0.12,
+                          SizedBox(
+                            width: 44,
+                            height: 44,
+                            child: Material(
+                              color: palette.accent.withValues(alpha: 0.12),
+                              shape: const CircleBorder(),
+                              clipBehavior: Clip.antiAlias,
+                              child:
+                                  auth.user?.hasAvatar == true &&
+                                      auth.accessToken != null
+                                  ? Image.network(
+                                      ref
+                                          .read(apiClientProvider)
+                                          .buildUrl('/api/me/profile/avatar'),
+                                      key: ValueKey(auth.user?.avatarVersion),
+                                      headers: ref
+                                          .read(apiClientProvider)
+                                          .coverHeaders(auth.accessToken!),
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, _, _) => Center(
+                                        child: Text(
+                                          auth.user?.initials ?? 'PR',
+                                        ),
+                                      ),
+                                    )
+                                  : Center(
+                                      child: Text(auth.user?.initials ?? 'PR'),
+                                    ),
                             ),
-                            foregroundColor: palette.accent,
-                            child: Text(auth.user?.initials ?? 'PR'),
                           ),
                           const SizedBox(width: 12),
                           Expanded(
@@ -97,7 +119,7 @@ class BookshelfScreen extends ConsumerWidget {
                       ),
                       const SizedBox(height: 20),
                       Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           Expanded(
                             child: SingleChildScrollView(
@@ -114,13 +136,6 @@ class BookshelfScreen extends ConsumerWidget {
                                     label: '待同步',
                                     value: controller.pendingCount.toString(),
                                   ),
-                                  if (controller.hasSearchQuery) ...[
-                                    const SizedBox(width: 12),
-                                    _SummaryChip(
-                                      label: '结果',
-                                      value: visibleBooks.length.toString(),
-                                    ),
-                                  ],
                                 ],
                               ),
                             ),
@@ -128,26 +143,12 @@ class BookshelfScreen extends ConsumerWidget {
                           const SizedBox(width: 12),
                           SizedBox(
                             width: tablet ? 260 : 156,
-                            child: _BookshelfSearchBar(
-                              query: controller.searchQuery,
-                              onChanged: ref
-                                  .read(bookshelfControllerProvider)
-                                  .updateSearchQuery,
-                              onClear: ref
-                                  .read(bookshelfControllerProvider)
-                                  .clearSearchQuery,
+                            child: _BookshelfSearchButton(
+                              onTap: () => context.push('/search'),
                             ),
                           ),
                         ],
                       ),
-                      if (controller.hasSearchQuery) ...[
-                        const SizedBox(height: 10),
-                        _SearchResultHint(
-                          query: controller.searchQuery,
-                          totalCount: controller.books.length,
-                          visibleCount: visibleBooks.length,
-                        ),
-                      ],
                       if (controller.error != null) ...[
                         const SizedBox(height: 14),
                         _BookshelfErrorBanner(
@@ -163,6 +164,19 @@ class BookshelfScreen extends ConsumerWidget {
                   ),
                 ),
               ),
+              if (controller.recentBooks.isNotEmpty)
+                SliverToBoxAdapter(
+                  child: _RecentReadingSection(
+                    books: controller.recentBooks,
+                    controller: controller,
+                    accessToken: auth.accessToken,
+                    onOpenBook: (bookId) => _openBook(
+                      context,
+                      ref.read(bookshelfControllerProvider),
+                      bookId,
+                    ),
+                  ),
+                ),
               if (controller.isLoading && controller.books.isEmpty)
                 const SliverFillRemaining(
                   hasScrollBody: false,
@@ -190,18 +204,6 @@ class BookshelfScreen extends ConsumerWidget {
                     ),
                   ),
                 )
-              else if (visibleBooks.isEmpty)
-                SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: _BookshelfEmptyState(
-                    title: '没有找到匹配的书',
-                    message: '试试换个关键词，按书名、作者或简介片段继续找。',
-                    onRetry: controller.hasSearchQuery
-                        ? controller.clearSearchQuery
-                        : null,
-                    actionLabel: controller.hasSearchQuery ? '清空搜索' : '重新加载',
-                  ),
-                )
               else
                 SliverPadding(
                   padding: EdgeInsets.fromLTRB(
@@ -212,7 +214,7 @@ class BookshelfScreen extends ConsumerWidget {
                   ),
                   sliver: SliverGrid(
                     delegate: SliverChildBuilderDelegate((context, index) {
-                      final book = visibleBooks[index];
+                      final book = controller.books[index];
                       return _BookTile(
                         title: book.title,
                         author: book.author,
@@ -229,9 +231,13 @@ class BookshelfScreen extends ConsumerWidget {
                                   .read(apiClientProvider)
                                   .coverHeaders(auth.accessToken!),
                         badge: book.format.toUpperCase(),
-                        onTap: () => context.push('/reader/${book.id}'),
+                        onTap: () => _openBook(
+                          context,
+                          ref.read(bookshelfControllerProvider),
+                          book.id,
+                        ),
                       );
-                    }, childCount: visibleBooks.length),
+                    }, childCount: controller.books.length),
                     gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: columns,
                       crossAxisSpacing: gridGap,
@@ -246,6 +252,282 @@ class BookshelfScreen extends ConsumerWidget {
       ),
     );
   }
+}
+
+class BookshelfSearchScreen extends ConsumerStatefulWidget {
+  const BookshelfSearchScreen({super.key});
+
+  @override
+  ConsumerState<BookshelfSearchScreen> createState() =>
+      _BookshelfSearchScreenState();
+}
+
+class _BookshelfSearchScreenState extends ConsumerState<BookshelfSearchScreen> {
+  String _query = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = ref.watch(bookshelfControllerProvider);
+    final auth = ref.watch(authControllerProvider);
+    final tablet = Responsive.isTablet(context);
+    final results = controller.searchBooks(_query);
+    final columns = tablet ? Responsive.bookshelfColumns(context) : 2;
+    const gridGap = 16.0;
+    final horizontalPadding = tablet ? 24.0 : 16.0;
+    final viewportWidth = MediaQuery.sizeOf(context).width;
+    final tileWidth =
+        (viewportWidth - (horizontalPadding * 2) - (gridGap * (columns - 1))) /
+        columns;
+    final coverAspectRatio = tablet
+        ? BookshelfScreen._wideCoverAspectRatio
+        : BookshelfScreen._phoneCoverAspectRatio;
+    final imageHeight = tileWidth / coverAspectRatio;
+    final tileHeight = imageHeight + (tablet ? 82 : 102);
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('搜索藏书')),
+      body: SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                horizontalPadding,
+                12,
+                horizontalPadding,
+                12,
+              ),
+              child: _BookshelfSearchBar(
+                query: _query,
+                autofocus: true,
+                onChanged: (value) => setState(() => _query = value),
+                onClear: () => setState(() => _query = ''),
+              ),
+            ),
+            if (_query.trim().isNotEmpty)
+              Padding(
+                padding: EdgeInsets.fromLTRB(
+                  horizontalPadding,
+                  0,
+                  horizontalPadding,
+                  10,
+                ),
+                child: _SearchResultHint(
+                  query: _query,
+                  totalCount: controller.books.length,
+                  visibleCount: results.length,
+                ),
+              ),
+            Expanded(
+              child: _query.trim().isEmpty
+                  ? const _SearchPrompt()
+                  : results.isEmpty
+                  ? const _SearchPrompt(
+                      icon: Icons.search_off_rounded,
+                      title: '没有找到匹配的书',
+                      message: '试试书名、作者或简介中的其他关键词。',
+                    )
+                  : GridView.builder(
+                      padding: EdgeInsets.fromLTRB(
+                        horizontalPadding,
+                        6,
+                        horizontalPadding,
+                        24,
+                      ),
+                      physics: const BouncingScrollPhysics(),
+                      itemCount: results.length,
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: columns,
+                        crossAxisSpacing: gridGap,
+                        mainAxisSpacing: gridGap,
+                        childAspectRatio: tileWidth / tileHeight,
+                      ),
+                      itemBuilder: (context, index) {
+                        final book = results[index];
+                        return _BookTile(
+                          title: book.title,
+                          author: book.author,
+                          description: book.description,
+                          coverAspectRatio: coverAspectRatio,
+                          imageUrl: auth.accessToken == null
+                              ? null
+                              : ref
+                                    .read(apiClientProvider)
+                                    .buildUrl('/api/me/books/${book.id}/cover'),
+                          headers: auth.accessToken == null
+                              ? null
+                              : ref
+                                    .read(apiClientProvider)
+                                    .coverHeaders(auth.accessToken!),
+                          badge: book.format.toUpperCase(),
+                          onTap: () => _openBook(
+                            context,
+                            ref.read(bookshelfControllerProvider),
+                            book.id,
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SearchPrompt extends StatelessWidget {
+  const _SearchPrompt({
+    this.icon = Icons.manage_search_rounded,
+    this.title = '搜索你的藏书',
+    this.message = '输入书名、作者或简介关键词。',
+  });
+
+  final IconData icon;
+  final String title;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppReaderPalette.of(context);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 42, color: palette.inkTertiary),
+            const SizedBox(height: 14),
+            Text(
+              title,
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: palette.inkSecondary),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RecentReadingSection extends ConsumerWidget {
+  const _RecentReadingSection({
+    required this.books,
+    required this.controller,
+    required this.accessToken,
+    required this.onOpenBook,
+  });
+
+  final List<BookSummary> books;
+  final BookshelfController controller;
+  final String? accessToken;
+  final ValueChanged<int> onOpenBook;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final palette = AppReaderPalette.of(context);
+    final horizontalPadding = Responsive.isTablet(context) ? 24.0 : 16.0;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(horizontalPadding, 4, 0, 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '最近阅读',
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 210,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              padding: EdgeInsets.only(right: horizontalPadding),
+              itemCount: books.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 14),
+              itemBuilder: (context, index) {
+                final book = books[index];
+                final progress = controller.progressForBook(book.id);
+                return SizedBox(
+                  width: 112,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(14),
+                    onTap: () => onOpenBook(book.id),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        AspectRatio(
+                          aspectRatio: 0.68,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: accessToken == null
+                                ? _BookFallback(title: book.title)
+                                : Image.network(
+                                    ref
+                                        .read(apiClientProvider)
+                                        .buildUrl(
+                                          '/api/me/books/${book.id}/cover',
+                                        ),
+                                    headers: ref
+                                        .read(apiClientProvider)
+                                        .coverHeaders(accessToken!),
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, _, _) =>
+                                        _BookFallback(title: book.title),
+                                  ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          book.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 5),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(999),
+                          child: LinearProgressIndicator(
+                            value:
+                                (progress?.progressPercent ?? 0).clamp(0, 100) /
+                                100,
+                            minHeight: 4,
+                            color: palette.accent,
+                            backgroundColor: palette.backgroundSoft,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+Future<void> _openBook(
+  BuildContext context,
+  BookshelfController controller,
+  int bookId,
+) async {
+  await context.push('/reader/$bookId');
+  await controller.refresh();
 }
 
 class _BookshelfErrorBanner extends StatelessWidget {
@@ -289,17 +571,10 @@ class _BookshelfErrorBanner extends StatelessWidget {
 }
 
 class _BookshelfEmptyState extends StatelessWidget {
-  const _BookshelfEmptyState({
-    this.title = '书架暂时没加载出来',
-    required this.message,
-    this.onRetry,
-    this.actionLabel = '重新加载',
-  });
+  const _BookshelfEmptyState({required this.message, this.onRetry});
 
-  final String title;
   final String message;
   final VoidCallback? onRetry;
-  final String actionLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -320,7 +595,7 @@ class _BookshelfEmptyState extends StatelessWidget {
               ),
               const SizedBox(height: 16),
               Text(
-                title,
+                '书架暂时没加载出来',
                 textAlign: TextAlign.center,
                 style: Theme.of(
                   context,
@@ -340,7 +615,7 @@ class _BookshelfEmptyState extends StatelessWidget {
                 FilledButton.icon(
                   onPressed: onRetry,
                   icon: const Icon(Icons.refresh),
-                  label: Text(actionLabel),
+                  label: const Text('重新加载'),
                 ),
             ],
           ),
@@ -360,30 +635,79 @@ class _SummaryChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = AppReaderPalette.of(context);
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
+    return SizedBox(
+      height: 56,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: palette.backgroundSoft,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: palette.inkSecondary),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                value,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BookshelfSearchButton extends StatelessWidget {
+  const _BookshelfSearchButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppReaderPalette.of(context);
+    return SizedBox(
+      height: 56,
+      child: Material(
         color: palette.backgroundSoft,
         borderRadius: BorderRadius.circular(18),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              label,
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: palette.inkSecondary),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(18),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 15),
+            child: Row(
+              children: [
+                const Icon(Icons.search_rounded),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    '搜索藏书',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: palette.inkSecondary,
+                    ),
+                  ),
+                ),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 18,
+                  color: palette.inkTertiary,
+                ),
+              ],
             ),
-            const SizedBox(width: 10),
-            Text(
-              value,
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -429,11 +753,13 @@ class _BookshelfSearchBar extends StatefulWidget {
     required this.query,
     required this.onChanged,
     required this.onClear,
+    this.autofocus = false,
   });
 
   final String query;
   final ValueChanged<String> onChanged;
   final VoidCallback onClear;
+  final bool autofocus;
 
   @override
   State<_BookshelfSearchBar> createState() => _BookshelfSearchBarState();
@@ -472,6 +798,7 @@ class _BookshelfSearchBarState extends State<_BookshelfSearchBar> {
 
     return TextField(
       controller: _controller,
+      autofocus: widget.autofocus,
       onChanged: widget.onChanged,
       textInputAction: TextInputAction.search,
       decoration: InputDecoration(

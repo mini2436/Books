@@ -12,6 +12,14 @@ data class UserRecord(
     val passwordHash: String,
     val role: String,
     val enabled: Boolean,
+    val displayName: String? = null,
+    val avatarUpdatedAt: Instant? = null,
+)
+
+data class UserAvatarRecord(
+    val bytes: ByteArray,
+    val contentType: String,
+    val updatedAt: Instant,
 )
 
 data class TokenRecord(
@@ -32,7 +40,7 @@ class AuthRepository(
         // 查询指定用户名的用户记录，用于登录时校验密码与账号状态。
         jdbcClient.sql(
             """
-            select id, username, password_hash, role, enabled
+            select id, username, password_hash, role, enabled, display_name, avatar_updated_at
             from users
             where username = :username
             """.trimIndent(),
@@ -46,7 +54,7 @@ class AuthRepository(
         // 按用户 ID 查询用户记录，用于令牌刷新、权限判断和后台管理回显。
         jdbcClient.sql(
             """
-            select id, username, password_hash, role, enabled
+            select id, username, password_hash, role, enabled, display_name, avatar_updated_at
             from users
             where id = :id
             """.trimIndent(),
@@ -159,12 +167,68 @@ class AuthRepository(
             .query(Long::class.java)
             .single()
 
+    fun updateDisplayName(userId: Long, displayName: String?): UserRecord {
+        jdbcClient.sql(
+            """
+            update users
+            set display_name = :displayName, updated_at = :updatedAt
+            where id = :userId
+            """.trimIndent(),
+        )
+            .param("displayName", displayName)
+            .param("updatedAt", Instant.now().toSqlTimestamp())
+            .param("userId", userId)
+            .update()
+        return requireNotNull(findUserById(userId)) { "User not found" }
+    }
+
+    fun updateAvatar(userId: Long, bytes: ByteArray, contentType: String): UserRecord {
+        val now = Instant.now()
+        jdbcClient.sql(
+            """
+            update users
+            set avatar_data = :bytes,
+                avatar_content_type = :contentType,
+                avatar_updated_at = :updatedAt,
+                updated_at = :updatedAt
+            where id = :userId
+            """.trimIndent(),
+        )
+            .param("bytes", bytes)
+            .param("contentType", contentType)
+            .param("updatedAt", now.toSqlTimestamp())
+            .param("userId", userId)
+            .update()
+        return requireNotNull(findUserById(userId)) { "User not found" }
+    }
+
+    fun findAvatar(userId: Long): UserAvatarRecord? =
+        jdbcClient.sql(
+            """
+            select avatar_data, avatar_content_type, avatar_updated_at
+            from users
+            where id = :userId and avatar_data is not null
+            """.trimIndent(),
+        )
+            .param("userId", userId)
+            .query { rs, _ ->
+                UserAvatarRecord(
+                    bytes = rs.getBytes("avatar_data"),
+                    contentType = rs.getString("avatar_content_type"),
+                    updatedAt = rs.getTimestamp("avatar_updated_at").toInstant(),
+                )
+            }
+            .optional()
+            .orElse(null)
+
     private fun ResultSet.toUserRecord(): UserRecord = UserRecord(
         id = getLong("id"),
         username = getString("username"),
         passwordHash = getString("password_hash"),
         role = getString("role"),
         enabled = getBoolean("enabled"),
+        displayName = getString("display_name"),
+        avatarUpdatedAt = getTimestamp("avatar_updated_at")?.toInstant(),
     )
 
     private fun ResultSet.toTokenRecord(): TokenRecord = TokenRecord(
@@ -177,3 +241,12 @@ class AuthRepository(
         revoked = getBoolean("revoked"),
     )
 }
+
+fun UserRecord.toAuthUserView(): AuthUserView = AuthUserView(
+    id = id,
+    username = username,
+    displayName = displayName,
+    role = role,
+    hasAvatar = avatarUpdatedAt != null,
+    avatarVersion = avatarUpdatedAt?.toEpochMilli()?.toString(),
+)

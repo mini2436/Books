@@ -4,12 +4,23 @@ class AuthUser {
   const AuthUser({
     required this.id,
     required this.username,
+    required this.displayName,
     required this.role,
+    required this.hasAvatar,
+    required this.avatarVersion,
   });
 
   final int id;
   final String username;
+  final String? displayName;
   final String role;
+  final bool hasAvatar;
+  final String? avatarVersion;
+
+  String get displayLabel {
+    final normalized = displayName?.trim();
+    return normalized == null || normalized.isEmpty ? username : normalized;
+  }
 
   UserRole get userRole => UserRole.fromValue(role);
 
@@ -18,7 +29,7 @@ class AuthUser {
   bool get canManageAdminUsers => userRole.canManageAdminUsers;
 
   String get initials {
-    final trimmed = username.trim();
+    final trimmed = displayLabel.trim();
     if (trimmed.isEmpty) {
       return 'PR';
     }
@@ -29,14 +40,34 @@ class AuthUser {
     return AuthUser(
       id: (json['id'] as num).toInt(),
       username: json['username'] as String? ?? '',
+      displayName: json['displayName'] as String?,
       role: json['role'] as String? ?? UserRole.reader.value,
+      hasAvatar: json['hasAvatar'] as bool? ?? false,
+      avatarVersion: json['avatarVersion']?.toString(),
     );
   }
+
+  AuthUser copyWith({
+    String? displayName,
+    bool clearDisplayName = false,
+    bool? hasAvatar,
+    String? avatarVersion,
+  }) => AuthUser(
+    id: id,
+    username: username,
+    displayName: clearDisplayName ? null : displayName ?? this.displayName,
+    role: role,
+    hasAvatar: hasAvatar ?? this.hasAvatar,
+    avatarVersion: avatarVersion ?? this.avatarVersion,
+  );
 
   Map<String, dynamic> toJson() => {
     'id': id,
     'username': username,
+    'displayName': displayName,
     'role': role,
+    'hasAvatar': hasAvatar,
+    'avatarVersion': avatarVersion,
   };
 }
 

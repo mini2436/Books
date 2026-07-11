@@ -13,7 +13,7 @@ import '../features/reader/reader_screen.dart';
 import 'app_shell.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
-  final authController = ref.watch(authControllerProvider);
+  final authController = ref.read(authControllerProvider);
 
   return GoRouter(
     initialLocation: '/splash',
@@ -94,6 +94,10 @@ final routerProvider = Provider<GoRouter>((ref) {
             ],
           ),
         ],
+      ),
+      GoRoute(
+        path: '/search',
+        builder: (context, state) => const BookshelfSearchScreen(),
       ),
       GoRoute(
         path: '/reader/:bookId',

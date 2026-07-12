@@ -7,6 +7,7 @@ import com.privatereader.auth.UserPrincipal
 import com.privatereader.auth.UserRole
 import com.privatereader.common.toSqlTimestamp
 import com.privatereader.config.AppProperties
+import com.privatereader.plugin.CoverExtractionResult
 import com.privatereader.plugin.StructuredBlockType
 import com.privatereader.plugin.StructuredBookContent
 import com.privatereader.pluginruntime.PluginRegistryService
@@ -17,6 +18,7 @@ import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.multipart.MultipartFile
+import org.slf4j.LoggerFactory
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
@@ -33,7 +35,10 @@ class BookService(
     private val objectMapper: ObjectMapper,
     private val appProperties: AppProperties,
     private val authRepository: AuthRepository,
+    private val bookResourceStorageService: BookResourceStorageService,
 ) {
+    private val logger = LoggerFactory.getLogger(javaClass)
+
     @Transactional
     fun uploadBook(file: MultipartFile, actor: UserPrincipal): BookDetailView {
         require(!file.isEmpty) { "Uploaded file must not be empty" }
@@ -80,7 +85,9 @@ class BookService(
                 sourcePathOverride,
             )
             reconcileExistingImport(existing.bookId, filePath, preparedImport)
+            storeBookCover(existing.bookId, fileHash, preparedImport.cover)
             refreshStructuredContent(existing.bookId, existing.fileId, fileHash, plugin.pluginId, filePath)
+            bookResourceStorageService.cacheReferencedResources(existing.bookId, fileHash, plugin.pluginId, filePath)
             insertImportJob(existing.bookId, sourceId, existing.fileId, "Reused existing import from ${plugin.pluginId}")
             if (actorId != null) {
                 grantBook(existing.bookId, actorId, actorId)
@@ -131,7 +138,9 @@ class BookService(
             .single()
 
         upsertBookFormat(bookId, preparedImport)
+        storeBookCover(bookId, fileHash, preparedImport.cover)
         refreshStructuredContent(bookId, fileId, fileHash, plugin.pluginId, filePath)
+        bookResourceStorageService.cacheReferencedResources(bookId, fileHash, plugin.pluginId, filePath)
         insertImportJob(bookId, sourceId, fileId, "Imported by ${plugin.pluginId}")
 
         if (actorId != null) {
@@ -370,22 +379,47 @@ class BookService(
         return FileSystemResource(resolveBookFileRef(bookId).storagePath)
     }
 
+    @Transactional
     fun getBookCover(userId: Long, bookId: Long): BookCoverResource? {
         require(hasAccess(userId, bookId)) { "Book access denied" }
+        findStoredBookCover(bookId)?.let { return it }
+
         val fileRef = resolveBookFileRef(bookId)
         val plugin = pluginRegistryService.findPluginById(fileRef.pluginId) ?: return null
-        val cover = plugin.extractCover(Path.of(fileRef.storagePath)) ?: return null
-        return BookCoverResource(
-            mimeType = cover.mimeType,
-            resource = ByteArrayResource(cover.bytes),
-        )
+        val cover = runCatching { plugin.extractCover(Path.of(fileRef.storagePath)) }
+            .onFailure { exception ->
+                logger.warn("Unable to extract fallback cover for book {} from {}", bookId, fileRef.storagePath, exception)
+            }
+            .getOrNull()
+            ?: return null
+        storeBookCover(bookId, fileRef.fileHash, cover)
+        return cover.toResource()
     }
 
     fun getBookResource(userId: Long, bookId: Long, resourceId: String): BookBinaryResource? {
         require(hasAccess(userId, bookId)) { "Book access denied" }
+        bookResourceStorageService.find(bookId, resourceId)?.let { resource ->
+            return BookBinaryResource(
+                mimeType = resource.mimeType,
+                resource = ByteArrayResource(resource.bytes),
+            )
+        }
+
         val fileRef = resolveBookFileRef(bookId)
         val plugin = pluginRegistryService.findPluginById(fileRef.pluginId) ?: return null
-        val resource = plugin.extractResource(Path.of(fileRef.storagePath), resourceId) ?: return null
+        val resource = runCatching { plugin.extractResource(Path.of(fileRef.storagePath), resourceId) }
+            .onFailure { exception ->
+                logger.warn(
+                    "Unable to extract fallback resource {} for book {} from {}",
+                    resourceId,
+                    bookId,
+                    fileRef.storagePath,
+                    exception,
+                )
+            }
+            .getOrNull()
+            ?: return null
+        bookResourceStorageService.store(bookId, resourceId, fileRef.fileHash, resource)
         return BookBinaryResource(
             mimeType = resource.mimeType,
             resource = ByteArrayResource(resource.bytes),
@@ -753,8 +787,57 @@ class BookService(
             manifestJson = manifestJson,
             onlineReadable = plugin.capabilities.any { it.name == "READ_ONLINE" },
             indexExcerpt = plugin.extractIndexableContent(filePath)?.text?.toPostgresText()?.take(10_000),
+            cover = runCatching { plugin.extractCover(filePath) }
+                .onFailure { exception ->
+                    logger.warn("Unable to extract cover while importing {}", filePath, exception)
+                }
+                .getOrNull(),
         )
     }
+
+    private fun findStoredBookCover(bookId: Long): BookCoverResource? =
+        jdbcClient.sql(
+            """
+            select cover_content_type, cover_data
+            from books
+            where id = :bookId and cover_data is not null and cover_content_type is not null
+            """.trimIndent(),
+        )
+            .param("bookId", bookId)
+            .query { rs, _ ->
+                BookCoverResource(
+                    mimeType = rs.getString("cover_content_type"),
+                    resource = ByteArrayResource(rs.getBytes("cover_data")),
+                )
+            }
+            .optional()
+            .orElse(null)
+
+    private fun storeBookCover(bookId: Long, sourceFileHash: String, cover: CoverExtractionResult?) {
+        if (cover == null || cover.bytes.isEmpty()) return
+        jdbcClient.sql(
+            """
+            update books
+            set cover_data = :coverData,
+                cover_content_type = :contentType,
+                cover_source_file_hash = :sourceFileHash,
+                cover_updated_at = :updatedAt
+            where id = :bookId
+            """.trimIndent(),
+        )
+            .param("coverData", cover.bytes)
+            .param("contentType", cover.mimeType)
+            .param("sourceFileHash", sourceFileHash)
+            .param("updatedAt", Instant.now().toSqlTimestamp())
+            .param("bookId", bookId)
+            .update()
+    }
+
+    private fun CoverExtractionResult.toResource(): BookCoverResource =
+        BookCoverResource(
+            mimeType = mimeType,
+            resource = ByteArrayResource(bytes),
+        )
 
     private fun String.toPostgresText(): String =
         buildString(length) {
@@ -1084,7 +1167,7 @@ class BookService(
         // 查询指定书籍最新的文件记录，用于读取源文件、封面和资源。
         jdbcClient.sql(
             """
-            select id, storage_path, plugin_id, format from book_files
+            select id, storage_path, plugin_id, format, file_hash from book_files
             where book_id = :bookId
             order by id desc
             limit 1
@@ -1097,6 +1180,7 @@ class BookService(
                     storagePath = rs.getString("storage_path"),
                     pluginId = rs.getString("plugin_id"),
                     format = rs.getString("format"),
+                    fileHash = rs.getString("file_hash"),
                 )
             }
             .single()
@@ -1161,6 +1245,7 @@ class BookService(
         val storagePath: String,
         val pluginId: String,
         val format: String,
+        val fileHash: String,
     )
 
     private data class PreparedImport(
@@ -1171,6 +1256,7 @@ class BookService(
         val manifestJson: String?,
         val onlineReadable: Boolean,
         val indexExcerpt: String?,
+        val cover: CoverExtractionResult?,
     )
 
     private data class StructuredContentVersionRef(

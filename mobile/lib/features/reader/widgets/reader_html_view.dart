@@ -147,6 +147,9 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
   bool get _useWindowsWebView =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
 
+  bool get _useAndroidAssetFont =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+
   bool get _forceFlutterReader =>
       kIsWeb || defaultTargetPlatform == TargetPlatform.linux;
 
@@ -3205,6 +3208,12 @@ font-family: ${_fontStackCss()};
     if (_useWindowsWebView) {
       final fileName = Uri.encodeComponent(assetPath.split('/').last);
       source = 'https://reader-fonts.local/$fileName';
+    } else if (_useAndroidAssetFont) {
+      final encodedPath = assetPath
+          .split('/')
+          .map(Uri.encodeComponent)
+          .join('/');
+      source = 'file:///android_asset/flutter_assets/$encodedPath';
     } else {
       final dataUri = _embeddedFontDataUri;
       if (_embeddedFontPreference != preference || dataUri == null) {
@@ -3228,6 +3237,7 @@ font-family: ${_fontStackCss()};
     final assetPath = preference.assetPath;
     if (_forceFlutterReader ||
         _useWindowsWebView ||
+        _useAndroidAssetFont ||
         assetPath == null ||
         (_embeddedFontPreference == preference &&
             _embeddedFontDataUri != null)) {

@@ -4,7 +4,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/services/settings_storage.dart';
 import '../../shared/theme/reader_theme_extension.dart';
 
-enum ReaderFontFamilyPreference { system, sans, serif }
+enum ReaderFontFamilyPreference {
+  system,
+  sans,
+  serif,
+  miSans,
+  sourceHanSerif,
+  wenKai,
+}
 
 enum TabletPageTurnAxis { horizontal, vertical }
 
@@ -32,6 +39,12 @@ extension ReaderFontFamilyPreferenceX on ReaderFontFamilyPreference {
         return 'sans-serif';
       case ReaderFontFamilyPreference.serif:
         return 'serif';
+      case ReaderFontFamilyPreference.miSans:
+        return 'MiSans';
+      case ReaderFontFamilyPreference.sourceHanSerif:
+        return 'SourceHanSerifSC';
+      case ReaderFontFamilyPreference.wenKai:
+        return 'LXGWWenKai';
     }
   }
 
@@ -43,7 +56,36 @@ extension ReaderFontFamilyPreferenceX on ReaderFontFamilyPreference {
         return '清晰黑体';
       case ReaderFontFamilyPreference.serif:
         return '阅读衬线';
+      case ReaderFontFamilyPreference.miSans:
+        return 'MiSans';
+      case ReaderFontFamilyPreference.sourceHanSerif:
+        return '思源宋体';
+      case ReaderFontFamilyPreference.wenKai:
+        return '霞鹜文楷';
     }
+  }
+
+  String? get assetPath {
+    return switch (this) {
+      ReaderFontFamilyPreference.miSans => 'assets/fonts/MiSans-Regular.ttf',
+      ReaderFontFamilyPreference.sourceHanSerif =>
+        'assets/fonts/SourceHanSerifSC-Regular.otf',
+      ReaderFontFamilyPreference.wenKai =>
+        'assets/fonts/LXGWWenKai-Regular.ttf',
+      _ => null,
+    };
+  }
+
+  String? get licenseNotice {
+    return switch (this) {
+      ReaderFontFamilyPreference.miSans =>
+        '本软件内置使用小米 MiSans 字体，依据 MiSans 字体知识产权许可协议使用。',
+      ReaderFontFamilyPreference.sourceHanSerif =>
+        '本软件内置使用 Adobe 思源宋体，依据 SIL Open Font License 1.1 使用。',
+      ReaderFontFamilyPreference.wenKai =>
+        '本软件内置使用霞鹜文楷，依据 SIL Open Font License 1.1 使用。',
+      _ => null,
+    };
   }
 
   static ReaderFontFamilyPreference fromStorage(String? value) {

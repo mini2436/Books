@@ -90,13 +90,18 @@ class ApiClient {
 
   Future<AuthUser> uploadMyAvatar(
     String accessToken, {
-    required String filePath,
+    String? filePath,
+    Uint8List? fileBytes,
+    String? fileName,
   }) async {
+    final resolvedFileName =
+        fileName ?? (filePath == null ? 'avatar.jpg' : path.basename(filePath));
     final formData = FormData.fromMap({
-      'file': await MultipartFile.fromFile(
-        filePath,
-        filename: path.basename(filePath),
-        contentType: DioMediaType.parse(_avatarContentType(filePath)),
+      'file': await _multipartFile(
+        filePath: filePath,
+        fileBytes: fileBytes,
+        fileName: resolvedFileName,
+        contentType: DioMediaType.parse(_avatarContentType(resolvedFileName)),
       ),
     });
     final data = await _request<Map<String, dynamic>>(
@@ -199,11 +204,18 @@ class ApiClient {
 
   Future<BookDetail> uploadAdminBook(
     String accessToken, {
-    required String filePath,
+    String? filePath,
+    Uint8List? fileBytes,
+    String? fileName,
   }) async {
-    final fileName = path.basename(filePath);
+    final resolvedFileName =
+        fileName ?? (filePath == null ? 'book.epub' : path.basename(filePath));
     final formData = FormData.fromMap({
-      'file': await MultipartFile.fromFile(filePath, filename: fileName),
+      'file': await _multipartFile(
+        filePath: filePath,
+        fileBytes: fileBytes,
+        fileName: resolvedFileName,
+      ),
     });
 
     final data = await _request<Map<String, dynamic>>(
@@ -654,6 +666,29 @@ class ApiClient {
   Map<String, String> _headers(String accessToken) => {
     'Authorization': 'Bearer $accessToken',
   };
+
+  Future<MultipartFile> _multipartFile({
+    required String? filePath,
+    required Uint8List? fileBytes,
+    required String fileName,
+    DioMediaType? contentType,
+  }) async {
+    if (fileBytes != null) {
+      return MultipartFile.fromBytes(
+        fileBytes,
+        filename: fileName,
+        contentType: contentType,
+      );
+    }
+    if (filePath != null && filePath.trim().isNotEmpty) {
+      return MultipartFile.fromFile(
+        filePath,
+        filename: fileName,
+        contentType: contentType,
+      );
+    }
+    throw const ApiException('未能读取所选文件');
+  }
 
   Future<T> _request<T>(Future<Response<T>> Function() action) async {
     try {

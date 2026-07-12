@@ -21,15 +21,23 @@ final routerProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       final location = state.matchedLocation;
       if (authController.isBootstrapping) {
-        return location == '/splash' ? null : '/splash';
+        return location == '/splash'
+            ? null
+            : _routeWithNext('/splash', state.uri.toString());
       }
 
       if (!authController.isAuthenticated) {
-        return location == '/login' ? null : '/login';
+        if (location == '/login') {
+          return null;
+        }
+        final next =
+            state.uri.queryParameters['next'] ??
+            (location == '/splash' ? null : state.uri.toString());
+        return next == null ? '/login' : _routeWithNext('/login', next);
       }
 
       if (location == '/login' || location == '/splash') {
-        return '/shelf';
+        return _safeNextRoute(state.uri.queryParameters['next']) ?? '/shelf';
       }
 
       if (location.startsWith('/admin') &&
@@ -112,6 +120,19 @@ final routerProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
+
+String _routeWithNext(String route, String next) =>
+    Uri(path: route, queryParameters: {'next': next}).toString();
+
+String? _safeNextRoute(String? next) {
+  if (next == null ||
+      !next.startsWith('/') ||
+      next.startsWith('/login') ||
+      next.startsWith('/splash')) {
+    return null;
+  }
+  return next;
+}
 
 class _SplashScreen extends StatelessWidget {
   const _SplashScreen();

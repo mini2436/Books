@@ -1,8 +1,8 @@
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../data/models/book_models.dart';
 import '../../../data/models/sync_models.dart';
@@ -86,6 +86,7 @@ class ReaderBlocksView extends StatelessWidget {
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.w700,
                     color: palette.ink,
+                    fontFamily: preferences.fontFamily.fontFamily,
                   ),
                 ),
               ),
@@ -493,56 +494,30 @@ class _SelectableBlockText extends StatelessWidget {
             ),
           ),
         ),
-        SelectableText(
+        _SelectableTextWithActions(
           text,
-          textAlign: TextAlign.justify,
           style: baseStyle,
-          contextMenuBuilder: (context, editableTextState) {
-            final selection = editableTextState.textEditingValue.selection;
-            final selectedText = selection.textInside(
-              editableTextState.textEditingValue.text,
-            );
+          onHighlight: (selection) async {
             final normalizedSelection = _normalizeSelection(selection);
-            final copyItems = editableTextState.contextMenuButtonItems
-                .where((item) => item.type == ContextMenuButtonType.copy)
-                .toList();
-
-            return AdaptiveTextSelectionToolbar.buttonItems(
-              anchors: editableTextState.contextMenuAnchors,
-              buttonItems: [
-                ...copyItems,
-                ContextMenuButtonItem(
-                  label: '高亮',
-                  onPressed: () {
-                    ContextMenuController.removeAny();
-                    if (selectedText.trim().isEmpty ||
-                        normalizedSelection == null) {
-                      return;
-                    }
-                    final intent = _resolveSelectionIntent(
-                      normalizedSelection,
-                      resolvedAnnotations,
-                    );
-                    onHighlight(intent.selection, intent.existingAnnotation);
-                  },
-                ),
-                ContextMenuButtonItem(
-                  label: '批注',
-                  onPressed: () {
-                    ContextMenuController.removeAny();
-                    if (selectedText.trim().isEmpty ||
-                        normalizedSelection == null) {
-                      return;
-                    }
-                    final intent = _resolveSelectionIntent(
-                      normalizedSelection,
-                      resolvedAnnotations,
-                    );
-                    onAnnotate(intent.selection, intent.existingAnnotation);
-                  },
-                ),
-              ],
+            if (normalizedSelection == null) {
+              return;
+            }
+            final intent = _resolveSelectionIntent(
+              normalizedSelection,
+              resolvedAnnotations,
             );
+            await onHighlight(intent.selection, intent.existingAnnotation);
+          },
+          onAnnotate: (selection) async {
+            final normalizedSelection = _normalizeSelection(selection);
+            if (normalizedSelection == null) {
+              return;
+            }
+            final intent = _resolveSelectionIntent(
+              normalizedSelection,
+              resolvedAnnotations,
+            );
+            await onAnnotate(intent.selection, intent.existingAnnotation);
           },
         ),
         Positioned.fill(
@@ -637,6 +612,215 @@ class _SelectableBlockText extends StatelessWidget {
       );
     }
     return _SelectionIntent(selection: selection, existingAnnotation: null);
+  }
+}
+
+class _SelectableTextWithActions extends StatefulWidget {
+  const _SelectableTextWithActions(
+    this.text, {
+    required this.style,
+    required this.onHighlight,
+    required this.onAnnotate,
+  });
+
+  final String text;
+  final TextStyle style;
+  final Future<void> Function(TextSelection selection) onHighlight;
+  final Future<void> Function(TextSelection selection) onAnnotate;
+
+  @override
+  State<_SelectableTextWithActions> createState() =>
+      _SelectableTextWithActionsState();
+}
+
+class _SelectableTextWithActionsState
+    extends State<_SelectableTextWithActions> {
+  final LayerLink _toolbarLink = LayerLink();
+  OverlayEntry? _toolbarEntry;
+  TextSelection? _selection;
+
+  @override
+  void dispose() {
+    _removeToolbar();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return CompositedTransformTarget(
+      link: _toolbarLink,
+      child: SelectableText(
+        widget.text,
+        textAlign: TextAlign.justify,
+        style: widget.style,
+        onSelectionChanged: _handleSelectionChanged,
+        contextMenuBuilder: (context, editableTextState) {
+          final selection = editableTextState.textEditingValue.selection;
+          final copyItems = editableTextState.contextMenuButtonItems
+              .where((item) => item.type == ContextMenuButtonType.copy)
+              .toList();
+
+          return AdaptiveTextSelectionToolbar.buttonItems(
+            anchors: editableTextState.contextMenuAnchors,
+            buttonItems: [
+              ...copyItems,
+              ContextMenuButtonItem(
+                label: '高亮',
+                onPressed: () {
+                  ContextMenuController.removeAny();
+                  _runAction(() => widget.onHighlight(selection));
+                },
+              ),
+              ContextMenuButtonItem(
+                label: '批注',
+                onPressed: () {
+                  ContextMenuController.removeAny();
+                  _runAction(() => widget.onAnnotate(selection));
+                },
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  void _handleSelectionChanged(
+    TextSelection selection,
+    SelectionChangedCause? cause,
+  ) {
+    if (!selection.isValid || selection.isCollapsed) {
+      _selection = null;
+      _removeToolbar();
+      return;
+    }
+    final selectedText = selection.textInside(widget.text).trim();
+    if (selectedText.isEmpty) {
+      _selection = null;
+      _removeToolbar();
+      return;
+    }
+    _selection = selection;
+    if (_toolbarEntry == null) {
+      _toolbarEntry = OverlayEntry(builder: _buildFloatingToolbar);
+      Overlay.of(context).insert(_toolbarEntry!);
+    } else {
+      _toolbarEntry!.markNeedsBuild();
+    }
+  }
+
+  Widget _buildFloatingToolbar(BuildContext context) {
+    final palette = AppReaderPalette.of(this.context);
+    return UnconstrainedBox(
+      alignment: Alignment.topLeft,
+      child: CompositedTransformFollower(
+        link: _toolbarLink,
+        showWhenUnlinked: false,
+        targetAnchor: Alignment.topLeft,
+        followerAnchor: Alignment.topLeft,
+        offset: const Offset(0, 8),
+        child: SizedBox(
+          width: 252,
+          height: 44,
+          child: Material(
+            color: palette.panel,
+            elevation: 10,
+            shadowColor: Colors.black.withValues(alpha: 0.22),
+            borderRadius: BorderRadius.circular(14),
+            clipBehavior: Clip.antiAlias,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                border: Border.all(color: palette.line),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _SelectionActionButton(
+                      icon: Icons.copy_rounded,
+                      label: '复制',
+                      onPressed: _copySelection,
+                    ),
+                  ),
+                  Expanded(
+                    child: _SelectionActionButton(
+                      icon: Icons.border_color_rounded,
+                      label: '高亮',
+                      onPressed: () {
+                        final selection = _selection;
+                        if (selection != null) {
+                          _runAction(() => widget.onHighlight(selection));
+                        }
+                      },
+                    ),
+                  ),
+                  Expanded(
+                    child: _SelectionActionButton(
+                      icon: Icons.mode_comment_outlined,
+                      label: '批注',
+                      onPressed: () {
+                        final selection = _selection;
+                        if (selection != null) {
+                          _runAction(() => widget.onAnnotate(selection));
+                        }
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _copySelection() async {
+    final selection = _selection;
+    if (selection == null) {
+      return;
+    }
+    await Clipboard.setData(
+      ClipboardData(text: selection.textInside(widget.text)),
+    );
+    _removeToolbar();
+  }
+
+  Future<void> _runAction(Future<void> Function() action) async {
+    _removeToolbar();
+    await action();
+  }
+
+  void _removeToolbar() {
+    _toolbarEntry?.remove();
+    _toolbarEntry = null;
+  }
+}
+
+class _SelectionActionButton extends StatelessWidget {
+  const _SelectionActionButton({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton.icon(
+      onPressed: onPressed,
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        minimumSize: const Size(0, 42),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        shape: const RoundedRectangleBorder(),
+      ),
+      icon: Icon(icon, size: 16),
+      label: Text(label),
+    );
   }
 }
 

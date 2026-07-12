@@ -1,4 +1,5 @@
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -912,14 +913,21 @@ class _UploadBookButton extends ConsumerWidget {
       allowMultiple: false,
       type: FileType.custom,
       allowedExtensions: const ['txt', 'epub', 'pdf'],
-      withData: false,
+      withData: kIsWeb,
     );
     if (result == null || result.files.isEmpty) {
       return;
     }
 
-    final filePath = result.files.single.path;
-    if (filePath == null || filePath.trim().isEmpty) {
+    final file = result.files.single;
+    final filePath = file.path;
+    final fileBytes = file.bytes;
+    if ((filePath == null || filePath.trim().isEmpty) && fileBytes == null) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('无法读取所选文件，请重新选择')));
+      }
       return;
     }
 
@@ -927,7 +935,13 @@ class _UploadBookButton extends ConsumerWidget {
       return;
     }
 
-    await ref.read(adminCenterControllerProvider).uploadBook(filePath);
+    await ref
+        .read(adminCenterControllerProvider)
+        .uploadBook(
+          filePath: filePath,
+          fileBytes: fileBytes,
+          fileName: file.name,
+        );
   }
 }
 

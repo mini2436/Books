@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:private_reader_mobile/data/models/book_models.dart';
 import 'package:private_reader_mobile/data/models/sync_models.dart';
 import 'package:private_reader_mobile/features/reader/widgets/reader_blocks.dart';
+import 'package:private_reader_mobile/features/reader/models/annotation_anchor.dart';
 import 'package:private_reader_mobile/features/settings/reader_preferences_controller.dart';
 import 'package:private_reader_mobile/shared/theme/reader_theme_extension.dart';
 
@@ -79,6 +80,58 @@ void main() {
     );
 
     expect(find.text('图片无法加载'), findsOneWidget);
+  });
+
+  testWidgets('ReaderBlocksView shows annotation actions after selection', (
+    tester,
+  ) async {
+    const block = BookContentBlock(
+      blockIndex: 0,
+      type: 'paragraph',
+      anchor: 'chapter-0-block-1',
+      text: '选择这段文字进行批注',
+      plainText: '选择这段文字进行批注',
+      meta: {},
+    );
+    AnnotationSelection? highlightedSelection;
+
+    await tester.pumpWidget(
+      _testApp(
+        ReaderBlocksView(
+          blocks: const [block],
+          imageResources: const {},
+          failedImageResourceIds: const {},
+          constrainImagesToViewport: false,
+          annotations: const <AnnotationView>[],
+          preferences: _preferences,
+          keyForAnchor: (_) => GlobalKey(),
+          onHighlight: (selection, _) async {
+            highlightedSelection = selection;
+          },
+          onAnnotate: (_, _) async {},
+          onOpenAnnotations: (_) async {},
+        ),
+      ),
+    );
+
+    final selectable = tester.widget<SelectableText>(
+      find.byType(SelectableText),
+    );
+    selectable.onSelectionChanged!(
+      const TextSelection(baseOffset: 0, extentOffset: 4),
+      SelectionChangedCause.drag,
+    );
+    await tester.pump();
+
+    expect(find.text('复制'), findsOneWidget);
+    expect(find.text('高亮'), findsOneWidget);
+    expect(find.text('批注'), findsOneWidget);
+
+    await tester.tap(find.text('高亮'));
+    await tester.pump();
+
+    expect(highlightedSelection?.selectedText, '选择这段');
+    expect(find.text('复制'), findsNothing);
   });
 }
 

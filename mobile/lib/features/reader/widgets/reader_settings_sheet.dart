@@ -97,6 +97,16 @@ class ReaderSettingsPanelContent extends ConsumerWidget {
             );
           }).toList(),
         ),
+        if (preferences.fontFamily.licenseNotice != null) ...[
+          SizedBox(height: compact ? 6 : 8),
+          Text(
+            preferences.fontFamily.licenseNotice!,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: palette.inkTertiary,
+              height: 1.35,
+            ),
+          ),
+        ],
         SizedBox(height: sectionGap),
         _SectionTitle(title: '行高', bottomSpacing: compact ? 8 : 12),
         SegmentedButton<double>(

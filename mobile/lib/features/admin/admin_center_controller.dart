@@ -282,10 +282,19 @@ class AdminCenterController extends ChangeNotifier {
     });
   }
 
-  Future<void> uploadBook(String filePath) async {
+  Future<void> uploadBook({
+    String? filePath,
+    Uint8List? fileBytes,
+    String? fileName,
+  }) async {
     await _runMutation(() async {
       final uploaded = await _authController.runAuthorized(
-        (token) => _apiClient.uploadAdminBook(token, filePath: filePath),
+        (token) => _apiClient.uploadAdminBook(
+          token,
+          filePath: filePath,
+          fileBytes: fileBytes,
+          fileName: fileName,
+        ),
       );
       await refresh();
       _notice = '已导入《${uploaded.title}》';

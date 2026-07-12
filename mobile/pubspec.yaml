@@ -45,3 +45,20 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/fonts/MiSans-LICENSE.txt
+    - assets/fonts/SourceHanSerif-OFL.txt
+    - assets/fonts/LXGWWenKai-OFL.txt
+  fonts:
+    - family: MiSans
+      fonts:
+        - asset: assets/fonts/MiSans-Regular.ttf
+          weight: 400
+    - family: SourceHanSerifSC
+      fonts:
+        - asset: assets/fonts/SourceHanSerifSC-Regular.otf
+          weight: 400
+    - family: LXGWWenKai
+      fonts:
+        - asset: assets/fonts/LXGWWenKai-Regular.ttf
+          weight: 400

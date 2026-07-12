@@ -1,4 +1,5 @@
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -221,13 +222,26 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.image,
       allowMultiple: false,
+      withData: kIsWeb,
     );
-    final filePath = result?.files.single.path;
-    if (filePath == null || !mounted) {
+    if (result == null || !mounted) {
+      return;
+    }
+    final file = result.files.single;
+    final filePath = file.path;
+    final fileBytes = file.bytes;
+    if ((filePath == null || filePath.trim().isEmpty) && fileBytes == null) {
+      _showError('无法读取所选图片，请重新选择');
       return;
     }
     try {
-      await ref.read(authControllerProvider).uploadAvatar(filePath);
+      await ref
+          .read(authControllerProvider)
+          .uploadAvatar(
+            filePath: filePath,
+            fileBytes: fileBytes,
+            fileName: file.name,
+          );
       if (mounted) {
         ScaffoldMessenger.of(
           context,

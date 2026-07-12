@@ -5,6 +5,7 @@ import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_windows/webview_windows.dart' as windows_webview;
 
@@ -12,8 +13,10 @@ import '../../../data/models/book_models.dart';
 import '../../../data/models/sync_models.dart';
 import '../../../features/settings/reader_preferences_controller.dart';
 import '../../../shared/theme/reader_theme_extension.dart';
+import '../../../shared/utils/responsive.dart';
 import '../reader_controller.dart';
 import '../models/annotation_anchor.dart';
+import 'reader_font_asset_path.dart';
 import 'reader_blocks.dart';
 
 const List<String> _webAnnotationColors = [
@@ -110,6 +113,9 @@ class ReaderHtmlView extends StatefulWidget {
 }
 
 class _ReaderHtmlViewState extends State<ReaderHtmlView> {
+  static ReaderFontFamilyPreference? _cachedEmbeddedFontPreference;
+  static Future<String>? _cachedEmbeddedFontDataUriFuture;
+
   late final WebViewController _controller;
   windows_webview.WebviewController? _windowsController;
   StreamSubscription<dynamic>? _windowsWebMessageSubscription;
@@ -134,12 +140,15 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
   DateTime? _webAutoScrollTick;
   bool _fallbackBoundaryPending = false;
   bool _webAutoScrollStepBusy = false;
+  ReaderFontFamilyPreference? _embeddedFontPreference;
+  String? _embeddedFontDataUri;
+  bool _embeddedFontReloadPending = false;
 
   bool get _useWindowsWebView =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
 
   bool get _forceFlutterReader =>
-      !kIsWeb && defaultTargetPlatform == TargetPlatform.linux;
+      kIsWeb || defaultTargetPlatform == TargetPlatform.linux;
 
   bool get _allowFlutterFallback =>
       !_useWindowsWebView && (_forceFlutterReader || !widget.pagedMode);
@@ -148,6 +157,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
   void initState() {
     super.initState();
     _lastHtml = _buildHtml();
+    unawaited(_ensureEmbeddedFontLoaded());
     if (_forceFlutterReader) {
       _useFlutterFallback = true;
       _attachFallbackScrollListener();
@@ -209,6 +219,14 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         controller.dispose();
         return;
       }
+      final bundledFontDirectory = bundledFontAssetDirectoryPath();
+      if (bundledFontDirectory != null) {
+        await controller.addVirtualHostNameMapping(
+          'reader-fonts.local',
+          bundledFontDirectory,
+          windows_webview.WebviewHostResourceAccessKind.allow,
+        );
+      }
       await controller.setBackgroundColor(widget.palette.background);
       _windowsWebMessageSubscription = controller.webMessage.listen(
         _handleWindowsBridgeMessage,
@@ -240,6 +258,10 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
   @override
   void didUpdateWidget(covariant ReaderHtmlView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.preferences.fontFamily != widget.preferences.fontFamily &&
+        widget.preferences.fontFamily.assetPath != null) {
+      unawaited(_ensureEmbeddedFontLoaded());
+    }
     final chapterChanged = oldWidget.chapter.anchor != widget.chapter.anchor;
     final nextRootHtml = _buildRootHtml();
     final nextHtml = _buildHtml(rootHtml: nextRootHtml);
@@ -319,18 +341,25 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
               },
               child: SingleChildScrollView(
                 controller: _fallbackScrollController,
-                padding: const EdgeInsets.only(bottom: 12),
-                child: ReaderBlocksView(
-                  blocks: widget.chapter.blocks,
-                  imageResources: widget.imageResources,
-                  failedImageResourceIds: widget.failedImageResourceIds,
-                  constrainImagesToViewport: widget.pagedMode,
-                  annotations: widget.annotations,
-                  preferences: widget.preferences,
-                  keyForAnchor: _fallbackKeyForAnchor,
-                  onHighlight: widget.onHighlight,
-                  onAnnotate: widget.onAnnotate,
-                  onOpenAnnotations: widget.onOpenAnnotations,
+                padding: const EdgeInsets.fromLTRB(20, 24, 20, 28),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      maxWidth: Responsive.readerMaxWidth,
+                    ),
+                    child: ReaderBlocksView(
+                      blocks: widget.chapter.blocks,
+                      imageResources: widget.imageResources,
+                      failedImageResourceIds: widget.failedImageResourceIds,
+                      constrainImagesToViewport: widget.pagedMode,
+                      annotations: widget.annotations,
+                      preferences: widget.preferences,
+                      keyForAnchor: _fallbackKeyForAnchor,
+                      onHighlight: widget.onHighlight,
+                      onAnnotate: widget.onAnnotate,
+                      onOpenAnnotations: widget.onOpenAnnotations,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -682,11 +711,12 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       return;
     }
     final ratio = localDx / width;
-    if (ratio <= 0.32) {
+    final edgeRatio = kIsWeb ? 0.10 : 0.32;
+    if (ratio <= edgeRatio) {
       unawaited(_handleFallbackTapZone('left'));
       return;
     }
-    if (ratio >= 0.68) {
+    if (ratio >= 1 - edgeRatio) {
       unawaited(_handleFallbackTapZone('right'));
       return;
     }
@@ -941,6 +971,14 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
   Future<void> _handlePageReady() async {
     if (_pageReady || _useFlutterFallback) {
       return;
+    }
+    if (_embeddedFontReloadPending) {
+      _embeddedFontReloadPending = false;
+      final nextHtml = _buildHtml();
+      if (nextHtml != _lastHtml) {
+        await _reloadHtml(nextHtml, chapterChanged: false);
+        return;
+      }
     }
     await _verifyRenderedContent();
     if (!mounted || _useFlutterFallback) {
@@ -1296,6 +1334,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <style>
+    ${_embeddedFontFaceCss()}
     :root {
       --reader-bg: ${_cssColor(widget.palette.background)};
       --reader-bg-soft: ${_cssColor(widget.palette.backgroundSoft)};
@@ -3138,6 +3177,12 @@ font-family: ${_fontStackCss()};
 
   String _fontStackCss() {
     return switch (widget.preferences.fontFamily) {
+      ReaderFontFamilyPreference.miSans =>
+        '"MiSans Embedded", "MiSans", "Microsoft YaHei", sans-serif',
+      ReaderFontFamilyPreference.sourceHanSerif =>
+        '"SourceHanSerifSC Embedded", "Source Han Serif SC", "Songti SC", serif',
+      ReaderFontFamilyPreference.wenKai =>
+        '"LXGWWenKai Embedded", "LXGW WenKai", "Microsoft YaHei", sans-serif',
       ReaderFontFamilyPreference.sans =>
         '"Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif',
       ReaderFontFamilyPreference.serif =>
@@ -3145,6 +3190,78 @@ font-family: ${_fontStackCss()};
       ReaderFontFamilyPreference.system =>
         '"PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif',
     };
+  }
+
+  String _embeddedFontFaceCss() {
+    final preference = widget.preferences.fontFamily;
+    final assetPath = preference.assetPath;
+    if (assetPath == null) {
+      return '';
+    }
+    final isOpenType = assetPath.toLowerCase().endsWith('.otf');
+    final format = isOpenType ? 'opentype' : 'truetype';
+    final embeddedFamily = '${preference.fontFamily} Embedded';
+    String source;
+    if (_useWindowsWebView) {
+      final fileName = Uri.encodeComponent(assetPath.split('/').last);
+      source = 'https://reader-fonts.local/$fileName';
+    } else {
+      final dataUri = _embeddedFontDataUri;
+      if (_embeddedFontPreference != preference || dataUri == null) {
+        return '';
+      }
+      source = dataUri;
+    }
+    return '''
+@font-face {
+  font-family: "$embeddedFamily";
+  src: url("$source") format("$format");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+''';
+  }
+
+  Future<void> _ensureEmbeddedFontLoaded() async {
+    final preference = widget.preferences.fontFamily;
+    final assetPath = preference.assetPath;
+    if (_forceFlutterReader ||
+        _useWindowsWebView ||
+        assetPath == null ||
+        (_embeddedFontPreference == preference &&
+            _embeddedFontDataUri != null)) {
+      return;
+    }
+
+    if (_cachedEmbeddedFontPreference != preference) {
+      _cachedEmbeddedFontPreference = preference;
+      final mimeType = assetPath.toLowerCase().endsWith('.otf')
+          ? 'font/otf'
+          : 'font/ttf';
+      _cachedEmbeddedFontDataUriFuture = rootBundle
+          .load(assetPath)
+          .then(
+            (data) =>
+                'data:$mimeType;base64,${base64Encode(data.buffer.asUint8List())}',
+          );
+    }
+    final dataUri = await _cachedEmbeddedFontDataUriFuture!;
+    if (!mounted || widget.preferences.fontFamily != preference) {
+      return;
+    }
+
+    _embeddedFontPreference = preference;
+    _embeddedFontDataUri = dataUri;
+    final nextHtml = _buildHtml();
+    if (nextHtml == _lastHtml) {
+      return;
+    }
+    if (_pageReady) {
+      await _reloadHtml(nextHtml, chapterChanged: false);
+    } else {
+      _embeddedFontReloadPending = true;
+    }
   }
 
   String _cssColor(Color color) {

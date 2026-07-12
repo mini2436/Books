@@ -113,11 +113,20 @@ class AuthController extends ChangeNotifier {
     }
   }
 
-  Future<void> uploadAvatar(String filePath) async {
+  Future<void> uploadAvatar({
+    String? filePath,
+    Uint8List? fileBytes,
+    String? fileName,
+  }) async {
     _setWorking(true);
     try {
       final user = await runAuthorized(
-        (token) => _apiClient.uploadMyAvatar(token, filePath: filePath),
+        (token) => _apiClient.uploadMyAvatar(
+          token,
+          filePath: filePath,
+          fileBytes: fileBytes,
+          fileName: fileName,
+        ),
       );
       await _replaceSessionUser(user);
     } finally {

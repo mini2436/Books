@@ -62,3 +62,23 @@ flutter analyze
 flutter test
 flutter build apk --debug --dart-define=API_BASE_URL=http://10.0.2.2:8080
 ```
+
+## Web 端
+
+Web 端复用 Pad 的响应式布局。书架、批注、后台、个人设置、PDF 阅读均使用同一套界面；TXT / EPUB 在浏览器中使用纯 Flutter 正文视图，保留点击翻页、目录、书签、批注和阅读设置，双栏排版暂时降级为居中的单栏阅读。
+
+本地运行：
+
+```powershell
+flutter run -d edge --dart-define=API_BASE_URL=http://localhost:8080
+```
+
+构建静态产物：
+
+```powershell
+flutter build web --release --dart-define=API_BASE_URL=http://reader-server:8080
+```
+
+产物位于 `build/web/`，可由任意静态 Web 服务器托管。浏览器访问地址与 API 地址不同时，后端需要允许对应来源；HTTPS 页面必须使用 HTTPS API。
+
+Web 端离线同步队列存放在浏览器本地存储中。图书和头像上传会在浏览器中读取文件内容，因此上传大文件时会占用相应的浏览器内存。

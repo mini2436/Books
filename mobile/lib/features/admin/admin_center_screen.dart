@@ -406,8 +406,9 @@ class _RoleManagementSection extends ConsumerWidget {
               .toList(),
         ),
         const SizedBox(height: 14),
-        ...controller.users.map(
-          (user) => Padding(
+        ...controller.users.map((user) {
+          final isCurrentUser = controller.isCurrentUser(user);
+          return Padding(
             padding: const EdgeInsets.only(bottom: 14),
             child: _PanelCard(
               child: Row(
@@ -423,39 +424,81 @@ class _RoleManagementSection extends ConsumerWidget {
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          user.enabled ? '当前启用' : '当前停用',
+                          isCurrentUser
+                              ? '当前账号 · 角色已锁定'
+                              : user.enabled
+                              ? '当前启用'
+                              : '当前停用',
                           style: Theme.of(context).textTheme.bodySmall
                               ?.copyWith(color: palette.inkSecondary),
                         ),
                       ],
                     ),
                   ),
-                  DropdownButton<String>(
-                    value: user.role,
-                    items: adminRoles
-                        .map(
-                          (role) => DropdownMenuItem(
-                            value: role.value,
-                            child: Text(role.label),
+                  if (isCurrentUser)
+                    Material(
+                      color: palette.backgroundSoft,
+                      borderRadius: BorderRadius.circular(14),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.lock_outline_rounded,
+                              size: 17,
+                              color: palette.inkSecondary,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              adminRoleLabel(user.role),
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(fontWeight: FontWeight.w700),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  else
+                    Material(
+                      color: palette.backgroundSoft,
+                      borderRadius: BorderRadius.circular(14),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            value: user.role,
+                            borderRadius: BorderRadius.circular(16),
+                            items: adminRoles
+                                .map(
+                                  (role) => DropdownMenuItem(
+                                    value: role.value,
+                                    child: Text(role.label),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: controller.isWorking
+                                ? null
+                                : (role) {
+                                    if (role == null) {
+                                      return;
+                                    }
+                                    ref
+                                        .read(adminCenterControllerProvider)
+                                        .updateUserRole(user, role);
+                                  },
                           ),
-                        )
-                        .toList(),
-                    onChanged: controller.isWorking
-                        ? null
-                        : (role) {
-                            if (role == null) {
-                              return;
-                            }
-                            ref
-                                .read(adminCenterControllerProvider)
-                                .updateUserRole(user, role);
-                          },
-                  ),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
-          ),
-        ),
+          );
+        }),
       ],
     );
   }
@@ -1619,6 +1662,7 @@ class _CreateUserDialogState extends State<CreateUserDialog> {
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
               initialValue: _role,
+              borderRadius: BorderRadius.circular(16),
               items: adminRoles
                   .map(
                     (role) => DropdownMenuItem(
@@ -1634,7 +1678,12 @@ class _CreateUserDialogState extends State<CreateUserDialog> {
                   });
                 }
               },
-              decoration: const InputDecoration(labelText: '角色'),
+              decoration: const InputDecoration(
+                labelText: '角色',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.all(Radius.circular(16)),
+                ),
+              ),
             ),
           ],
         ),

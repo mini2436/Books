@@ -146,7 +146,7 @@ class BookService(
             // 查询全局角色可访问的全部书籍，每本书只取最新文件记录用于列表展示。
             return jdbcClient.sql(
                 """
-                select b.id, b.title, b.author, b.description, bf.plugin_id, bf.format, bf.source_type, bf.source_missing, b.updated_at
+                select b.id, b.title, b.author, b.group_name, b.description, bf.plugin_id, bf.format, bf.source_type, bf.source_missing, b.updated_at
                 from books b
                 join book_files bf on bf.book_id = b.id
                 where bf.id = (
@@ -163,7 +163,7 @@ class BookService(
         // 查询普通读者被显式授权的书籍列表，并带出最新文件信息。
         return jdbcClient.sql(
             """
-            select b.id, b.title, b.author, b.description, bf.plugin_id, bf.format, bf.source_type, bf.source_missing, b.updated_at
+            select b.id, b.title, b.author, b.group_name, b.description, bf.plugin_id, bf.format, bf.source_type, bf.source_missing, b.updated_at
             from books b
             join book_files bf on bf.book_id = b.id
             join user_book_access uba on uba.book_id = b.id and uba.user_id = :userId
@@ -666,6 +666,7 @@ class BookService(
             id = getLong("id"),
             title = getString("title"),
             author = getString("author"),
+            groupName = getString("group_name"),
             description = getString("description"),
             pluginId = getString("plugin_id"),
             format = getString("format"),

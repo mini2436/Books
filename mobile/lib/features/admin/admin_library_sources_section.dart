@@ -379,7 +379,13 @@ class _LibrarySourceDialogState extends ConsumerState<_LibrarySourceDialog> {
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
               initialValue: _sourceType,
-              decoration: const InputDecoration(labelText: '资源类型'),
+              borderRadius: BorderRadius.circular(16),
+              decoration: const InputDecoration(
+                labelText: '资源类型',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.all(Radius.circular(16)),
+                ),
+              ),
               items: const [
                 DropdownMenuItem(value: 'WEBDAV', child: Text('WebDAV')),
                 DropdownMenuItem(value: 'WATCHED_FOLDER', child: Text('本地目录')),

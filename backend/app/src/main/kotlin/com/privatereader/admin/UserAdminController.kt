@@ -1,11 +1,13 @@
 package com.privatereader.admin
 
 import com.privatereader.auth.RoleExpressions
+import com.privatereader.auth.UserPrincipal
 import com.privatereader.books.CreateUserRequest
 import com.privatereader.books.UpdateUserRequest
 import com.privatereader.books.UserView
 import jakarta.validation.Valid
 import org.springframework.security.access.prepost.PreAuthorize
+import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -33,8 +35,9 @@ class UserAdminController(
     @PatchMapping("/{userId}")
     @PreAuthorize(RoleExpressions.SUPER_ADMIN_ONLY)
     fun updateUser(
+        @AuthenticationPrincipal principal: UserPrincipal,
         @PathVariable userId: Long,
         @RequestBody request: UpdateUserRequest,
-    ): UserView = userAdminService.updateUser(userId, request)
+    ): UserView = userAdminService.updateUser(principal.id, userId, request)
 }
 

@@ -33,6 +33,7 @@ class BookshelfScreen extends ConsumerWidget {
     final imageHeight = tileWidth / coverAspectRatio;
     final tileHeight = imageHeight + (tablet ? 82 : 102);
     final childAspectRatio = tileWidth / tileHeight;
+    final filteredBooks = controller.filteredBooks;
 
     return Scaffold(
       body: SafeArea(
@@ -204,48 +205,71 @@ class BookshelfScreen extends ConsumerWidget {
                     ),
                   ),
                 )
-              else
-                SliverPadding(
-                  padding: EdgeInsets.fromLTRB(
-                    horizontalPadding,
-                    8,
-                    horizontalPadding,
-                    24,
-                  ),
-                  sliver: SliverGrid(
-                    delegate: SliverChildBuilderDelegate((context, index) {
-                      final book = controller.books[index];
-                      return _BookTile(
-                        title: book.title,
-                        author: book.author,
-                        description: book.description,
-                        coverAspectRatio: coverAspectRatio,
-                        imageUrl: auth.accessToken == null
-                            ? null
-                            : ref
-                                  .read(apiClientProvider)
-                                  .buildUrl('/api/me/books/${book.id}/cover'),
-                        headers: auth.accessToken == null
-                            ? null
-                            : ref
-                                  .read(apiClientProvider)
-                                  .coverHeaders(auth.accessToken!),
-                        badge: book.format.toUpperCase(),
-                        onTap: () => _openBook(
-                          context,
-                          ref.read(bookshelfControllerProvider),
-                          book.id,
-                        ),
-                      );
-                    }, childCount: controller.books.length),
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: columns,
-                      crossAxisSpacing: gridGap,
-                      mainAxisSpacing: gridGap,
-                      childAspectRatio: childAspectRatio,
-                    ),
+              else ...[
+                SliverToBoxAdapter(
+                  child: _AllBooksHeader(
+                    horizontalPadding: horizontalPadding,
+                    selectedFilterKey: controller.selectedFilterKey,
+                    options: controller.filterOptions,
+                    onFilterChanged: controller.setFilter,
                   ),
                 ),
+                if (filteredBooks.isEmpty)
+                  SliverToBoxAdapter(
+                    child: SizedBox(
+                      height: 180,
+                      child: Center(
+                        child: Text(
+                          '当前筛选下没有书籍',
+                          style: Theme.of(context).textTheme.bodyLarge
+                              ?.copyWith(color: palette.inkSecondary),
+                        ),
+                      ),
+                    ),
+                  )
+                else
+                  SliverPadding(
+                    padding: EdgeInsets.fromLTRB(
+                      horizontalPadding,
+                      8,
+                      horizontalPadding,
+                      24,
+                    ),
+                    sliver: SliverGrid(
+                      delegate: SliverChildBuilderDelegate((context, index) {
+                        final book = filteredBooks[index];
+                        return _BookTile(
+                          title: book.title,
+                          author: book.author,
+                          description: book.description,
+                          coverAspectRatio: coverAspectRatio,
+                          imageUrl: auth.accessToken == null
+                              ? null
+                              : ref
+                                    .read(apiClientProvider)
+                                    .buildUrl('/api/me/books/${book.id}/cover'),
+                          headers: auth.accessToken == null
+                              ? null
+                              : ref
+                                    .read(apiClientProvider)
+                                    .coverHeaders(auth.accessToken!),
+                          badge: book.format.toUpperCase(),
+                          onTap: () => _openBook(
+                            context,
+                            ref.read(bookshelfControllerProvider),
+                            book.id,
+                          ),
+                        );
+                      }, childCount: filteredBooks.length),
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: columns,
+                        crossAxisSpacing: gridGap,
+                        mainAxisSpacing: gridGap,
+                        childAspectRatio: childAspectRatio,
+                      ),
+                    ),
+                  ),
+              ],
             ],
           ),
         ),
@@ -414,6 +438,71 @@ class _SearchPrompt extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _AllBooksHeader extends StatelessWidget {
+  const _AllBooksHeader({
+    required this.horizontalPadding,
+    required this.selectedFilterKey,
+    required this.options,
+    required this.onFilterChanged,
+  });
+
+  final double horizontalPadding;
+  final String selectedFilterKey;
+  final List<BookshelfFilterOption> options;
+  final ValueChanged<String> onFilterChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppReaderPalette.of(context);
+    return Padding(
+      padding: EdgeInsets.fromLTRB(horizontalPadding, 4, horizontalPadding, 6),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '全部书籍',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+            ),
+          ),
+          Material(
+            color: palette.backgroundSoft,
+            borderRadius: BorderRadius.circular(14),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: selectedFilterKey,
+                  borderRadius: BorderRadius.circular(16),
+                  icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: palette.ink,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  items: options
+                      .map(
+                        (option) => DropdownMenuItem<String>(
+                          value: option.key,
+                          child: Text(option.label),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) {
+                    if (value != null) {
+                      onFilterChanged(value);
+                    }
+                  },
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

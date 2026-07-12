@@ -28,8 +28,12 @@ class UserAdminService(
         return UserView(id = userId, username = request.username, role = normalizedRole, enabled = true)
     }
 
-    fun updateUser(userId: Long, request: UpdateUserRequest): UserView {
+    fun updateUser(actorId: Long, userId: Long, request: UpdateUserRequest): UserView {
         val existing = authRepository.findUserById(userId) ?: throw IllegalArgumentException("User not found")
+        if (actorId == userId && request.role != null) {
+            val requestedRole = normalizeRole(request.role)
+            require(requestedRole == existing.role) { "Administrators cannot change their own role" }
+        }
         val newRole = request.role?.let(::normalizeRole) ?: existing.role
         val newEnabled = request.enabled ?: existing.enabled
         // 更新指定用户的角色和启用状态，用于超级管理员维护账号权限。

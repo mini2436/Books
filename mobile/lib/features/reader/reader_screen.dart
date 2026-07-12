@@ -32,6 +32,8 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   _TabletReaderPanel? _tabletPanel;
   int _viewportTapZoneVersion = 0;
   String? _viewportTapZone;
+  bool _autoScrollEnabled = false;
+  double _autoScrollSpeed = 32;
 
   void _dispatchViewportTapZone(String zone) {
     setState(() {
@@ -164,6 +166,8 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
             preferences: preferences,
             palette: palette,
             uiVisible: controller.uiVisible,
+            autoScrollEnabled: _autoScrollEnabled && !wideReader,
+            autoScrollPixelsPerSecond: _autoScrollSpeed,
             pagedMode: wideReader,
             dualColumn: wideReader,
             focusedAnchor: controller.focusedAnchor,
@@ -227,6 +231,9 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
             onPageBoundaryNext: controller.nextChapterFromPageBoundary,
             onToggleUi: handleChromeToggle,
             onMenuRequest: handleTabletMenuRequest,
+            onAutoScrollInterrupted: _stopAutoScroll,
+            onAutoScrollBoundaryNext: () =>
+                _handleAutoScrollBoundary(controller),
             viewportTapZone: _viewportTapZone,
             viewportTapZoneVersion: _viewportTapZoneVersion,
           );
@@ -376,6 +383,8 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                   onOpenMenu: () => _scaffoldKey.currentState?.openDrawer(),
                   onOpenBookmarks: () => _openBookmarksSheet(controller),
                   onOpenNotes: () => _openNotesSheet(controller),
+                  autoScrollEnabled: _autoScrollEnabled,
+                  onAutoScroll: () => _toggleAutoScroll(controller),
                   onOpenSettings: () => showModalBottomSheet<void>(
                     context: context,
                     isScrollControlled: true,
@@ -394,10 +403,73 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                 child: _MobileReaderBottomBar(controller: controller),
               ),
             ),
+            Positioned(
+              right: 16,
+              bottom: controller.uiVisible ? 132 : 16,
+              child: _AutoScrollStatus(
+                visible: _autoScrollEnabled,
+                speedLabel: _autoScrollSpeedLabel,
+                onStop: _stopAutoScroll,
+              ),
+            ),
           ],
         ),
       ),
     );
+  }
+
+  String get _autoScrollSpeedLabel => switch (_autoScrollSpeed) {
+    <= 20 => '慢速',
+    >= 45 => '快速',
+    _ => '标准',
+  };
+
+  void _stopAutoScroll() {
+    if (!mounted || !_autoScrollEnabled) {
+      return;
+    }
+    setState(() => _autoScrollEnabled = false);
+  }
+
+  Future<void> _toggleAutoScroll(ReaderController controller) async {
+    if (_autoScrollEnabled) {
+      _stopAutoScroll();
+      return;
+    }
+    if (controller.isPdf) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('自动滚动暂不支持 PDF')));
+      return;
+    }
+    final speed = await showModalBottomSheet<double>(
+      context: context,
+      builder: (context) =>
+          _AutoScrollSpeedSheet(selectedSpeed: _autoScrollSpeed),
+    );
+    if (!mounted || speed == null) {
+      return;
+    }
+    setState(() {
+      _autoScrollSpeed = speed;
+      _autoScrollEnabled = true;
+    });
+    controller.setUiVisible(false);
+  }
+
+  Future<void> _handleAutoScrollBoundary(ReaderController controller) async {
+    final chapterCount = controller.content?.chapters.length ?? 0;
+    if (chapterCount == 0 ||
+        controller.currentChapterIndex >= chapterCount - 1) {
+      _stopAutoScroll();
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('已读完本书')));
+      }
+      return;
+    }
+    await controller.nextChapterFromPageBoundary();
   }
 
   Future<void> _openNotesSheet(ReaderController controller) {
@@ -1199,6 +1271,8 @@ class _MobileReaderTopBar extends StatelessWidget {
     required this.onOpenMenu,
     required this.onOpenBookmarks,
     required this.onOpenNotes,
+    required this.autoScrollEnabled,
+    required this.onAutoScroll,
     required this.onOpenSettings,
   });
 
@@ -1206,6 +1280,8 @@ class _MobileReaderTopBar extends StatelessWidget {
   final VoidCallback onOpenMenu;
   final VoidCallback onOpenBookmarks;
   final VoidCallback onOpenNotes;
+  final bool autoScrollEnabled;
+  final VoidCallback onAutoScroll;
   final VoidCallback onOpenSettings;
 
   @override
@@ -1257,12 +1333,139 @@ class _MobileReaderTopBar extends StatelessWidget {
                 tooltip: '批注',
               ),
               IconButton(
+                onPressed: onAutoScroll,
+                icon: Icon(
+                  autoScrollEnabled
+                      ? Icons.pause_circle_filled_rounded
+                      : Icons.slow_motion_video_rounded,
+                ),
+                color: autoScrollEnabled ? palette.accent : null,
+                tooltip: autoScrollEnabled ? '暂停自动滚动' : '自动滚动',
+              ),
+              IconButton(
                 onPressed: onOpenSettings,
                 icon: const Icon(Icons.tune_rounded),
                 tooltip: '设置',
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AutoScrollStatus extends StatelessWidget {
+  const _AutoScrollStatus({
+    required this.visible,
+    required this.speedLabel,
+    required this.onStop,
+  });
+
+  final bool visible;
+  final String speedLabel;
+  final VoidCallback onStop;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppReaderPalette.of(context);
+    return IgnorePointer(
+      ignoring: !visible,
+      child: AnimatedScale(
+        scale: visible ? 1 : 0.88,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        child: AnimatedOpacity(
+          opacity: visible ? 1 : 0,
+          duration: const Duration(milliseconds: 160),
+          child: Material(
+            color: palette.panel.withValues(alpha: 0.96),
+            elevation: 10,
+            shadowColor: Colors.black.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(999),
+            child: InkWell(
+              onTap: onStop,
+              borderRadius: BorderRadius.circular(999),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 14, 8),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.pause_rounded, size: 20, color: palette.accent),
+                    const SizedBox(width: 5),
+                    Text(
+                      '$speedLabel · 暂停',
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        color: palette.ink,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AutoScrollSpeedSheet extends StatelessWidget {
+  const _AutoScrollSpeedSheet({required this.selectedSpeed});
+
+  final double selectedSpeed;
+
+  static const _speeds = <(String, String, double)>[
+    ('慢速', '适合精读', 18),
+    ('标准', '自然阅读节奏', 32),
+    ('快速', '适合浏览', 52),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppReaderPalette.of(context);
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '自动滚动',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '触摸正文即可暂停，滚动到章节末尾会继续下一章。',
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: palette.inkSecondary),
+            ),
+            const SizedBox(height: 18),
+            ..._speeds.map((option) {
+              final selected = option.$3 == selectedSpeed;
+              return ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(
+                  selected
+                      ? Icons.radio_button_checked_rounded
+                      : Icons.radio_button_off_rounded,
+                  color: selected ? palette.accent : palette.inkTertiary,
+                ),
+                title: Text(
+                  option.$1,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                subtitle: Text(option.$2),
+                trailing: const Icon(Icons.play_arrow_rounded),
+                onTap: () => Navigator.of(context).pop(option.$3),
+              );
+            }),
+          ],
         ),
       ),
     );

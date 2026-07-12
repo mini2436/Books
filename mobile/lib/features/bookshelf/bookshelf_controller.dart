@@ -9,6 +9,18 @@ import '../../data/services/api_client.dart';
 import '../../data/services/offline_queue_service.dart';
 import '../auth/auth_controller.dart';
 
+const String bookshelfFilterAll = 'all';
+const String bookshelfFilterRead = 'read';
+const String bookshelfFilterUnread = 'unread';
+const String _bookshelfFilterGroupPrefix = 'group:';
+
+class BookshelfFilterOption {
+  const BookshelfFilterOption({required this.key, required this.label});
+
+  final String key;
+  final String label;
+}
+
 final bookshelfControllerProvider = ChangeNotifierProvider<BookshelfController>(
   (ref) {
     return BookshelfController(
@@ -40,8 +52,48 @@ class BookshelfController extends ChangeNotifier {
   String? _error;
   int _pendingCount = 0;
   List<ReadingProgressView> _readingProgresses = const [];
+  String _selectedFilterKey = bookshelfFilterAll;
 
   List<BookSummary> get books => _books;
+  String get selectedFilterKey => _selectedFilterKey;
+  List<String> get groupNames {
+    final groups = _books
+        .map((book) => book.groupName?.trim())
+        .whereType<String>()
+        .where((group) => group.isNotEmpty)
+        .toSet()
+        .toList();
+    groups.sort((left, right) => left.compareTo(right));
+    return groups;
+  }
+
+  List<BookshelfFilterOption> get filterOptions => [
+    const BookshelfFilterOption(key: bookshelfFilterAll, label: '全部书籍'),
+    const BookshelfFilterOption(key: bookshelfFilterRead, label: '已读书籍'),
+    const BookshelfFilterOption(key: bookshelfFilterUnread, label: '未读书籍'),
+    ...groupNames.map(
+      (group) => BookshelfFilterOption(
+        key: '$_bookshelfFilterGroupPrefix$group',
+        label: '分类 · $group',
+      ),
+    ),
+  ];
+
+  List<BookSummary> get filteredBooks => switch (_selectedFilterKey) {
+    bookshelfFilterRead =>
+      _books.where((book) => _hasBeenRead(book.id)).toList(),
+    bookshelfFilterUnread =>
+      _books.where((book) => !_hasBeenRead(book.id)).toList(),
+    final key when key.startsWith(_bookshelfFilterGroupPrefix) =>
+      _books
+          .where(
+            (book) =>
+                book.groupName?.trim() ==
+                key.substring(_bookshelfFilterGroupPrefix.length),
+          )
+          .toList(),
+    _ => _books,
+  };
   List<BookSummary> get recentBooks {
     final booksById = {for (final book in _books) book.id: book};
     final progresses = [..._readingProgresses]
@@ -66,6 +118,15 @@ class BookshelfController extends ChangeNotifier {
     return null;
   }
 
+  void setFilter(String key) {
+    if (_selectedFilterKey == key ||
+        !filterOptions.any((option) => option.key == key)) {
+      return;
+    }
+    _selectedFilterKey = key;
+    notifyListeners();
+  }
+
   List<BookSummary> searchBooks(String query) {
     final normalizedQuery = _normalizeForSearch(query);
     if (normalizedQuery.isEmpty) {
@@ -80,6 +141,7 @@ class BookshelfController extends ChangeNotifier {
     if (!_authController.isAuthenticated) {
       _books = const [];
       _readingProgresses = const [];
+      _selectedFilterKey = bookshelfFilterAll;
       _pendingCount = 0;
       _error = null;
       notifyListeners();
@@ -121,6 +183,9 @@ class BookshelfController extends ChangeNotifier {
       }
       _books = nextBooks;
       _readingProgresses = nextProgresses;
+      if (!filterOptions.any((option) => option.key == _selectedFilterKey)) {
+        _selectedFilterKey = bookshelfFilterAll;
+      }
       _pendingCount = count;
     } catch (error, stackTrace) {
       _error = '书架加载失败，请检查服务地址、登录状态或网络后重试。\n当前服务：${_apiClient.baseUrl}\n$error';
@@ -148,6 +213,7 @@ class BookshelfController extends ChangeNotifier {
     } else {
       _books = const [];
       _readingProgresses = const [];
+      _selectedFilterKey = bookshelfFilterAll;
       _pendingCount = 0;
       _error = null;
       notifyListeners();
@@ -159,6 +225,7 @@ class BookshelfController extends ChangeNotifier {
       book.title,
       book.author,
       book.description,
+      book.groupName,
       book.format,
       book.pluginId,
     ];
@@ -166,6 +233,11 @@ class BookshelfController extends ChangeNotifier {
         .whereType<String>()
         .map(_normalizeForSearch)
         .any((candidate) => candidate.contains(normalizedQuery));
+  }
+
+  bool _hasBeenRead(int bookId) {
+    final progress = progressForBook(bookId);
+    return progress != null && progress.progressPercent > 0;
   }
 
   String _normalizeForSearch(String input) =>

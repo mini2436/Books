@@ -71,6 +71,7 @@ class AdminCenterController extends ChangeNotifier {
   bool get canAccessAdmin => _authController.user?.canAccessAdmin ?? false;
   bool get canManageUsers => _authController.user?.canManageAdminUsers ?? false;
   bool get canAssignBooks => canAccessAdmin;
+  bool isCurrentUser(AdminUserView user) => _authController.user?.id == user.id;
 
   List<AdminSection> get availableSections => [
     if (canManageUsers) ...[AdminSection.users, AdminSection.roles],
@@ -582,7 +583,7 @@ class AdminCenterController extends ChangeNotifier {
   }
 
   Future<void> updateUserRole(AdminUserView user, String role) async {
-    if (!canManageUsers || role == user.role) {
+    if (!canManageUsers || isCurrentUser(user) || role == user.role) {
       return;
     }
 

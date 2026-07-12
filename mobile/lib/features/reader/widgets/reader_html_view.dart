@@ -4,6 +4,7 @@ import 'dart:developer' as developer;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_windows/webview_windows.dart' as windows_webview;
 
@@ -40,6 +41,8 @@ class ReaderHtmlView extends StatefulWidget {
     required this.preferences,
     required this.palette,
     required this.uiVisible,
+    required this.autoScrollEnabled,
+    required this.autoScrollPixelsPerSecond,
     required this.pagedMode,
     required this.dualColumn,
     required this.anchorJumpVersion,
@@ -52,6 +55,8 @@ class ReaderHtmlView extends StatefulWidget {
     required this.onPageBoundaryNext,
     required this.onToggleUi,
     required this.onMenuRequest,
+    required this.onAutoScrollInterrupted,
+    required this.onAutoScrollBoundaryNext,
     required this.viewportTapZoneVersion,
     this.viewportTapZone,
     this.focusedAnchor,
@@ -64,6 +69,8 @@ class ReaderHtmlView extends StatefulWidget {
   final ReaderPreferences preferences;
   final AppReaderPalette palette;
   final bool uiVisible;
+  final bool autoScrollEnabled;
+  final double autoScrollPixelsPerSecond;
   final bool pagedMode;
   final bool dualColumn;
   final int anchorJumpVersion;
@@ -93,6 +100,8 @@ class ReaderHtmlView extends StatefulWidget {
   final Future<void> Function() onPageBoundaryNext;
   final VoidCallback onToggleUi;
   final VoidCallback onMenuRequest;
+  final VoidCallback onAutoScrollInterrupted;
+  final Future<void> Function() onAutoScrollBoundaryNext;
   final int viewportTapZoneVersion;
   final String? viewportTapZone;
 
@@ -118,7 +127,13 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
   final ScrollController _fallbackScrollController = ScrollController();
   Timer? _blankPageGuard;
   Timer? _fallbackAnchorReportTimer;
+  Timer? _fallbackAutoScrollTimer;
+  Timer? _webAutoScrollTimer;
   bool _fallbackScrollListenerAttached = false;
+  DateTime? _fallbackAutoScrollTick;
+  DateTime? _webAutoScrollTick;
+  bool _fallbackBoundaryPending = false;
+  bool _webAutoScrollStepBusy = false;
 
   bool get _useWindowsWebView =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
@@ -139,6 +154,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _scrollFallbackToFocusedAnchor(force: true);
         _reportFallbackVisibleAnchor();
+        _syncFallbackAutoScroll();
       });
       return;
     }
@@ -167,6 +183,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
                 await _runReaderJavaScript(
                   'if (window.readerApplyLayout) { window.readerApplyLayout(); }',
                 );
+                await _applyWebAutoScrollState();
               },
             ),
           )
@@ -234,7 +251,13 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _scrollFallbackToFocusedAnchor(force: chapterChanged);
           _reportFallbackVisibleAnchor();
+          _syncFallbackAutoScroll();
         });
+      }
+      if (widget.autoScrollEnabled != oldWidget.autoScrollEnabled ||
+          widget.autoScrollPixelsPerSecond !=
+              oldWidget.autoScrollPixelsPerSecond) {
+        _syncFallbackAutoScroll();
       }
       if (widget.viewportTapZoneVersion != oldWidget.viewportTapZoneVersion) {
         _handleViewportTapZone();
@@ -265,6 +288,11 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         'window.readerSetChromeVisible(${widget.uiVisible ? 'true' : 'false'});',
       );
     }
+    if (widget.autoScrollEnabled != oldWidget.autoScrollEnabled ||
+        widget.autoScrollPixelsPerSecond !=
+            oldWidget.autoScrollPixelsPerSecond) {
+      unawaited(_applyWebAutoScrollState());
+    }
   }
 
   @override
@@ -277,22 +305,33 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
             behavior: HitTestBehavior.translucent,
             onTapUp: (details) => _handleFallbackViewportTap(
               details.localPosition.dx,
+              details.localPosition.dy,
               constraints.maxWidth,
+              constraints.maxHeight,
             ),
-            child: SingleChildScrollView(
-              controller: _fallbackScrollController,
-              padding: const EdgeInsets.only(bottom: 12),
-              child: ReaderBlocksView(
-                blocks: widget.chapter.blocks,
-                imageResources: widget.imageResources,
-                failedImageResourceIds: widget.failedImageResourceIds,
-                constrainImagesToViewport: widget.pagedMode,
-                annotations: widget.annotations,
-                preferences: widget.preferences,
-                keyForAnchor: _fallbackKeyForAnchor,
-                onHighlight: widget.onHighlight,
-                onAnnotate: widget.onAnnotate,
-                onOpenAnnotations: widget.onOpenAnnotations,
+            child: NotificationListener<UserScrollNotification>(
+              onNotification: (notification) {
+                if (widget.autoScrollEnabled &&
+                    notification.direction != ScrollDirection.idle) {
+                  _stopFallbackAutoScroll(notify: true);
+                }
+                return false;
+              },
+              child: SingleChildScrollView(
+                controller: _fallbackScrollController,
+                padding: const EdgeInsets.only(bottom: 12),
+                child: ReaderBlocksView(
+                  blocks: widget.chapter.blocks,
+                  imageResources: widget.imageResources,
+                  failedImageResourceIds: widget.failedImageResourceIds,
+                  constrainImagesToViewport: widget.pagedMode,
+                  annotations: widget.annotations,
+                  preferences: widget.preferences,
+                  keyForAnchor: _fallbackKeyForAnchor,
+                  onHighlight: widget.onHighlight,
+                  onAnnotate: widget.onAnnotate,
+                  onOpenAnnotations: widget.onOpenAnnotations,
+                ),
               ),
             ),
           );
@@ -363,6 +402,8 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
   void dispose() {
     _blankPageGuard?.cancel();
     _fallbackAnchorReportTimer?.cancel();
+    _fallbackAutoScrollTimer?.cancel();
+    _webAutoScrollTimer?.cancel();
     unawaited(_windowsWebMessageSubscription?.cancel());
     unawaited(_windowsLoadingSubscription?.cancel());
     unawaited(_windowsController?.dispose());
@@ -417,6 +458,12 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         break;
       case 'nextChapter':
         await widget.onPageBoundaryNext();
+        break;
+      case 'autoScrollInterrupted':
+        widget.onAutoScrollInterrupted();
+        break;
+      case 'autoScrollBoundaryNext':
+        await widget.onAutoScrollBoundaryNext();
         break;
       case 'highlight':
       case 'annotate':
@@ -477,6 +524,119 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     await _runReaderJavaScript('window.readerClearSelectionUi();');
   }
 
+  Future<void> _applyWebAutoScrollState() async {
+    if (_useFlutterFallback || !_pageReady) {
+      return;
+    }
+    final enabled = widget.autoScrollEnabled && !widget.pagedMode;
+    final speed = widget.autoScrollPixelsPerSecond.clamp(8, 120);
+    await _runReaderJavaScript(
+      'if (window.readerSetAutoScroll) { window.readerSetAutoScroll($enabled, $speed); }',
+    );
+    if (enabled) {
+      _startWebAutoScrollDriver();
+    } else {
+      _stopWebAutoScrollDriver();
+    }
+  }
+
+  void _startWebAutoScrollDriver() {
+    if (_webAutoScrollTimer != null) {
+      return;
+    }
+    _webAutoScrollTick = DateTime.now();
+    _webAutoScrollTimer = Timer.periodic(
+      const Duration(milliseconds: 32),
+      (_) => unawaited(_tickWebAutoScroll()),
+    );
+  }
+
+  Future<void> _tickWebAutoScroll() async {
+    if (_webAutoScrollStepBusy ||
+        !mounted ||
+        !_pageReady ||
+        !widget.autoScrollEnabled) {
+      return;
+    }
+    final now = DateTime.now();
+    final previous = _webAutoScrollTick ?? now;
+    _webAutoScrollTick = now;
+    final elapsedSeconds = (now.difference(previous).inMicroseconds / 1000000)
+        .clamp(0.0, 0.08);
+    final delta = widget.autoScrollPixelsPerSecond * elapsedSeconds;
+    if (delta <= 0) {
+      return;
+    }
+    _webAutoScrollStepBusy = true;
+    try {
+      await _runReaderJavaScript(
+        'if (window.readerAutoScrollBy) { window.readerAutoScrollBy($delta); }',
+      );
+    } catch (_) {
+      // A chapter reload can replace the page while a scheduled step is running.
+    } finally {
+      _webAutoScrollStepBusy = false;
+    }
+  }
+
+  void _stopWebAutoScrollDriver() {
+    _webAutoScrollTimer?.cancel();
+    _webAutoScrollTimer = null;
+    _webAutoScrollTick = null;
+  }
+
+  void _syncFallbackAutoScroll() {
+    if (!_useFlutterFallback || !widget.autoScrollEnabled || widget.pagedMode) {
+      _stopFallbackAutoScroll();
+      return;
+    }
+    if (_fallbackAutoScrollTimer != null) {
+      return;
+    }
+    _fallbackBoundaryPending = false;
+    _fallbackAutoScrollTick = DateTime.now();
+    _fallbackAutoScrollTimer = Timer.periodic(
+      const Duration(milliseconds: 16),
+      (_) => _tickFallbackAutoScroll(),
+    );
+  }
+
+  void _tickFallbackAutoScroll() {
+    if (!mounted ||
+        !widget.autoScrollEnabled ||
+        !_fallbackScrollController.hasClients) {
+      _stopFallbackAutoScroll();
+      return;
+    }
+    final now = DateTime.now();
+    final previous = _fallbackAutoScrollTick ?? now;
+    _fallbackAutoScrollTick = now;
+    final elapsedSeconds = now.difference(previous).inMicroseconds / 1000000;
+    final position = _fallbackScrollController.position;
+    final target =
+        position.pixels +
+        widget.autoScrollPixelsPerSecond * elapsedSeconds.clamp(0, 0.05);
+    if (target >= position.maxScrollExtent - 0.5) {
+      _fallbackScrollController.jumpTo(position.maxScrollExtent);
+      _stopFallbackAutoScroll();
+      if (!_fallbackBoundaryPending) {
+        _fallbackBoundaryPending = true;
+        unawaited(widget.onAutoScrollBoundaryNext());
+      }
+      return;
+    }
+    _fallbackScrollController.jumpTo(target);
+  }
+
+  void _stopFallbackAutoScroll({bool notify = false}) {
+    _fallbackAutoScrollTimer?.cancel();
+    _fallbackAutoScrollTimer = null;
+    _fallbackAutoScrollTick = null;
+    if (notify) {
+      widget.onAutoScrollInterrupted();
+    }
+  }
+
   Future<void> _handleExternalTapZone(String zone) async {
     if (_useFlutterFallback) {
       await _handleFallbackTapZone(zone);
@@ -494,8 +654,30 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     await _runReaderJavaScript('window.readerHandleTapZone($escapedZone);');
   }
 
-  void _handleFallbackViewportTap(double localDx, double width) {
-    if (width <= 0 || !widget.pagedMode) {
+  void _handleFallbackViewportTap(
+    double localDx,
+    double localDy,
+    double width,
+    double height,
+  ) {
+    if (!widget.pagedMode) {
+      if (height <= 0) {
+        widget.onToggleUi();
+        return;
+      }
+      final verticalRatio = localDy / height;
+      if (verticalRatio <= 0.30) {
+        unawaited(_turnFallbackPage(-1));
+        return;
+      }
+      if (verticalRatio >= 0.70) {
+        unawaited(_turnFallbackPage(1));
+        return;
+      }
+      widget.onToggleUi();
+      return;
+    }
+    if (width <= 0) {
       widget.onToggleUi();
       return;
     }
@@ -529,6 +711,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     String nextHtml, {
     required bool chapterChanged,
   }) async {
+    _stopWebAutoScrollDriver();
     final generation = ++_reloadGeneration;
     String? viewportSnapshotJson;
     if (!chapterChanged && _pageReady && !_useFlutterFallback) {
@@ -773,6 +956,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     await _scrollToFocusedAnchor();
     await _playPendingBoundaryAnimation();
     await _flushPendingTapZones();
+    await _applyWebAutoScrollState();
   }
 
   Future<void> _handleViewportTapZone() async {
@@ -1540,6 +1724,9 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       let lastToolbarTouchActionAt = 0;
       let progressAnchorTimer = null;
       let lastProgressAnchor = '';
+      let autoScrollSpeed = 0;
+      let autoScrollLastAnchorReport = 0;
+      let autoScrollBoundarySent = false;
 
       function send(payload) {
         if (!bridge || !bridge.postMessage) return;
@@ -1552,6 +1739,45 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         }
         readySent = true;
         send({ type: 'ready' });
+      }
+
+      function stopAutoScroll(notify) {
+        autoScrollSpeed = 0;
+        if (notify) {
+          send({ type: 'autoScrollInterrupted' });
+        }
+      }
+
+      function autoScrollBy(delta) {
+        if (!stage || pagedMode || autoScrollSpeed <= 0) {
+          return;
+        }
+        const maxScroll = Math.max(0, stage.scrollHeight - stage.clientHeight);
+        const nextTop = Math.min(maxScroll, stage.scrollTop + Math.max(0, Number(delta) || 0));
+        stage.scrollTop = nextTop;
+        const now = Date.now();
+        if (now - autoScrollLastAnchorReport >= 600) {
+          autoScrollLastAnchorReport = now;
+          reportCurrentViewportAnchor();
+        }
+        if (maxScroll <= 0 || nextTop >= maxScroll - 0.5) {
+          stopAutoScroll(false);
+          if (!autoScrollBoundarySent) {
+            autoScrollBoundarySent = true;
+            reportCurrentViewportAnchor();
+            send({ type: 'autoScrollBoundaryNext' });
+          }
+        }
+      }
+
+      function startAutoScroll(speed) {
+        if (!stage || pagedMode) {
+          return;
+        }
+        stopAutoScroll(false);
+        autoScrollSpeed = Math.max(8, Math.min(120, Number(speed) || 32));
+        autoScrollBoundarySent = false;
+        autoScrollLastAnchorReport = Date.now();
       }
 
       function currentViewportAnchor() {
@@ -2303,7 +2529,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         }
       }
 
-      function handleDocumentTap(target, clientX) {
+      function handleDocumentTap(target, clientX, clientY) {
         const annotationTarget = target && typeof target.closest === 'function'
           ? target.closest('[data-annotation-ids]')
           : null;
@@ -2341,12 +2567,13 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
           send({ type: 'toggleUi' });
           return;
         }
-        const ratio = window.innerWidth <= 0 ? 0.5 : clientX / window.innerWidth;
-        if (ratio <= 0.18) {
+        const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 1;
+        const verticalRatio = clientY / viewportHeight;
+        if (verticalRatio <= 0.30) {
           handleMobilePageTurn(-1);
           return;
         }
-        if (ratio >= 0.82) {
+        if (verticalRatio >= 0.70) {
           handleMobilePageTurn(1);
           return;
         }
@@ -2355,6 +2582,9 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
 
       document.addEventListener('selectionchange', handleSelectionChange);
       document.addEventListener('touchstart', function(event) {
+        if (autoScrollSpeed > 0) {
+          stopAutoScroll(true);
+        }
         cancelNativeSelectionClear();
         cancelSelectionRefresh();
         const touch = event.touches && event.touches.length > 0 ? event.touches[0] : null;
@@ -2404,7 +2634,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         if (!currentSelection && !domSelectionActive && !selectionGesture) {
           if (touchTracking && !touchMoved && touch) {
             lastTouchHandledAt = Date.now();
-            handleDocumentTap(event.target, touch.clientX);
+            handleDocumentTap(event.target, touch.clientX, touch.clientY);
           }
           touchTracking = false;
           touchMoved = false;
@@ -2421,6 +2651,11 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       document.addEventListener('mouseup', function() {
         scheduleSelectionRefresh(20);
       });
+      document.addEventListener('wheel', function() {
+        if (autoScrollSpeed > 0) {
+          stopAutoScroll(true);
+        }
+      }, { passive: true });
       document.addEventListener('scroll', function(event) {
         if (toolbar && event.target && toolbar.contains(event.target)) {
           return;
@@ -2540,7 +2775,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         if (Date.now() - lastTouchHandledAt < 400) {
           return;
         }
-        handleDocumentTap(event.target, event.clientX);
+        handleDocumentTap(event.target, event.clientX, event.clientY);
       });
 
       window.readerCaptureViewport = function() {
@@ -2617,6 +2852,18 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
 
       window.readerSetChromeVisible = function(visible) {
         document.body.classList.toggle('reader-ui-hidden', !visible);
+      };
+
+      window.readerSetAutoScroll = function(enabled, speed) {
+        if (enabled) {
+          startAutoScroll(speed);
+          return;
+        }
+        stopAutoScroll(false);
+      };
+
+      window.readerAutoScrollBy = function(delta) {
+        autoScrollBy(delta);
       };
 
       window.readerApplyLayout = function() {

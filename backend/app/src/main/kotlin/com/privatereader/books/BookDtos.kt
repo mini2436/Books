@@ -8,6 +8,7 @@ data class BookView(
     val id: Long,
     val title: String,
     val author: String?,
+    val groupName: String?,
     val description: String?,
     val pluginId: String,
     val format: String,

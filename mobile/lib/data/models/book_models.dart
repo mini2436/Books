@@ -3,6 +3,7 @@ class BookSummary {
     required this.id,
     required this.title,
     required this.author,
+    required this.groupName,
     required this.description,
     required this.pluginId,
     required this.format,
@@ -13,6 +14,7 @@ class BookSummary {
   final int id;
   final String title;
   final String? author;
+  final String? groupName;
   final String? description;
   final String pluginId;
   final String format;
@@ -24,6 +26,7 @@ class BookSummary {
       id: (json['id'] as num).toInt(),
       title: json['title'] as String? ?? '未命名书籍',
       author: json['author'] as String?,
+      groupName: json['groupName'] as String?,
       description: json['description'] as String?,
       pluginId: json['pluginId'] as String? ?? '',
       format: (json['format'] as String? ?? '').toLowerCase(),
@@ -38,6 +41,7 @@ class BookDetail extends BookSummary {
     required super.id,
     required super.title,
     required super.author,
+    required super.groupName,
     required super.description,
     required super.pluginId,
     required super.format,
@@ -73,6 +77,7 @@ class BookDetail extends BookSummary {
       id: (json['id'] as num).toInt(),
       title: json['title'] as String? ?? '未命名书籍',
       author: json['author'] as String?,
+      groupName: json['groupName'] as String?,
       description: json['description'] as String?,
       pluginId: json['pluginId'] as String? ?? '',
       format: (json['format'] as String? ?? '').toLowerCase(),

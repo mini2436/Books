@@ -1913,39 +1913,6 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         turnShadow.style.background = 'transparent';
       }
 
-      function updateTurnShadow(direction, intensity, incoming) {
-        if (!turnShadow) {
-          return;
-        }
-        const shadowStrength = Math.max(0, Math.min(0.28, intensity));
-        if (shadowStrength <= 0.001) {
-          clearTurnShadow();
-          return;
-        }
-        let gradient;
-        if (pageTurnAxis === 'horizontal') {
-          if (direction > 0) {
-            gradient = incoming
-              ? 'linear-gradient(270deg, rgba(0,0,0,' + (shadowStrength * 0.92) + ') 0%, rgba(0,0,0,' + (shadowStrength * 0.38) + ') 18%, rgba(255,255,255,' + (shadowStrength * 0.28) + ') 48%, rgba(255,255,255,0) 74%)'
-              : 'linear-gradient(90deg, rgba(255,255,255,' + (shadowStrength * 0.22) + ') 0%, rgba(0,0,0,' + (shadowStrength * 0.72) + ') 24%, rgba(0,0,0,0) 62%)';
-          } else {
-            gradient = incoming
-              ? 'linear-gradient(90deg, rgba(0,0,0,' + (shadowStrength * 0.92) + ') 0%, rgba(0,0,0,' + (shadowStrength * 0.38) + ') 18%, rgba(255,255,255,' + (shadowStrength * 0.28) + ') 48%, rgba(255,255,255,0) 74%)'
-              : 'linear-gradient(270deg, rgba(255,255,255,' + (shadowStrength * 0.22) + ') 0%, rgba(0,0,0,' + (shadowStrength * 0.72) + ') 24%, rgba(0,0,0,0) 62%)';
-          }
-        } else if (direction > 0) {
-          gradient = incoming
-            ? 'linear-gradient(180deg, rgba(0,0,0,' + (shadowStrength * 0.9) + ') 0%, rgba(0,0,0,' + (shadowStrength * 0.34) + ') 18%, rgba(255,255,255,' + (shadowStrength * 0.2) + ') 42%, rgba(255,255,255,0) 70%)'
-            : 'linear-gradient(0deg, rgba(255,255,255,' + (shadowStrength * 0.18) + ') 0%, rgba(0,0,0,' + (shadowStrength * 0.72) + ') 22%, rgba(0,0,0,0) 58%)';
-        } else {
-          gradient = incoming
-            ? 'linear-gradient(0deg, rgba(0,0,0,' + (shadowStrength * 0.9) + ') 0%, rgba(0,0,0,' + (shadowStrength * 0.34) + ') 18%, rgba(255,255,255,' + (shadowStrength * 0.2) + ') 42%, rgba(255,255,255,0) 70%)'
-            : 'linear-gradient(180deg, rgba(255,255,255,' + (shadowStrength * 0.18) + ') 0%, rgba(0,0,0,' + (shadowStrength * 0.72) + ') 22%, rgba(0,0,0,0) 58%)';
-        }
-        turnShadow.style.background = gradient;
-        turnShadow.style.opacity = '1';
-      }
-
       function clearStageAnimationState() {
         if (!stage) {
           clearTurnShadow();
@@ -1959,40 +1926,54 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         clearTurnShadow();
       }
 
+      function pageTurnTransform(direction, incoming, distance) {
+        const signedDistance = (direction > 0 ? 1 : -1) * (incoming ? 1 : -1) * distance;
+        if (pageTurnAxis === 'vertical') {
+          return 'translate3d(0,' + signedDistance + '%,0) scale(0.996)';
+        }
+        return 'translate3d(' + signedDistance + '%,0,0) scale(0.996)';
+      }
+
       function animateSmoothPagedCommit(direction, commit) {
         stage.style.transformOrigin = 'center center';
         stage.style.transform = 'translate3d(0,0,0)';
-        stage.style.transition = 'opacity 130ms ease, filter 130ms ease';
-        stage.style.opacity = '0.9';
-        stage.style.filter = 'brightness(0.985)';
-        updateTurnShadow(direction, 0.08, false);
+        stage.style.opacity = '1';
+        stage.style.filter = 'none';
+        clearTurnShadow();
 
-        window.setTimeout(function() {
-          commit();
-          stage.style.transition = 'none';
-          stage.style.transform = 'translate3d(0,0,0)';
-          stage.style.opacity = '0.94';
-          stage.style.filter = 'brightness(1.01)';
-          updateTurnShadow(direction, 0.06, true);
-          afterTwoFrames(function() {
-            stage.style.transition = 'opacity 210ms ease-out, filter 210ms ease-out';
+        window.requestAnimationFrame(function() {
+          stage.style.transition = 'transform 240ms cubic-bezier(0.4, 0, 1, 1)';
+          stage.style.transform = pageTurnTransform(direction, false, 7);
+
+          window.setTimeout(function() {
+            commit();
+            stage.style.transition = 'none';
+            stage.style.transform = pageTurnTransform(direction, true, 7);
             stage.style.opacity = '1';
             stage.style.filter = 'none';
-            if (turnShadow) {
-              turnShadow.style.transition = 'opacity 200ms ease-out';
-              turnShadow.style.opacity = '0';
-            }
-            window.setTimeout(function() {
-              clearStageAnimationState();
-              pageAnimationBusy = false;
-            }, 210);
-          });
-        }, 105);
+            clearTurnShadow();
+            void stage.offsetWidth;
+            window.requestAnimationFrame(function() {
+              stage.style.transition = 'transform 360ms cubic-bezier(0.16, 1, 0.3, 1)';
+              stage.style.transform = 'translate3d(0,0,0) scale(1)';
+              stage.style.opacity = '1';
+              stage.style.filter = 'none';
+              clearTurnShadow();
+              window.setTimeout(function() {
+                clearStageAnimationState();
+                pageAnimationBusy = false;
+              }, 370);
+            });
+          }, 245);
+        });
       }
 
       function animatePagedCommit(direction, commit) {
-        if (!stage || pageAnimationBusy) {
+        if (!stage) {
           commit();
+          return;
+        }
+        if (pageAnimationBusy) {
           return;
         }
         pageAnimationBusy = true;
@@ -2002,23 +1983,22 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
 
       function playSmoothBoundaryTransition(direction) {
         stage.style.transformOrigin = 'center center';
-        stage.style.transform = 'translate3d(0,0,0)';
+        stage.style.transform = pageTurnTransform(direction, true, 7);
         stage.style.transition = 'none';
-        stage.style.opacity = '0.94';
-        stage.style.filter = 'brightness(1.01)';
-        updateTurnShadow(direction, 0.06, true);
+        stage.style.opacity = '1';
+        stage.style.filter = 'none';
+        clearTurnShadow();
+        void stage.offsetWidth;
         afterTwoFrames(function() {
-          stage.style.transition = 'opacity 210ms ease-out, filter 210ms ease-out';
+          stage.style.transition = 'transform 420ms cubic-bezier(0.16, 1, 0.3, 1)';
+          stage.style.transform = 'translate3d(0,0,0) scale(1)';
           stage.style.opacity = '1';
           stage.style.filter = 'none';
-          if (turnShadow) {
-            turnShadow.style.transition = 'opacity 200ms ease-out';
-            turnShadow.style.opacity = '0';
-          }
+          clearTurnShadow();
           window.setTimeout(function() {
             clearStageAnimationState();
             pageAnimationBusy = false;
-          }, 210);
+          }, 430);
         });
       }
 
@@ -2597,7 +2577,11 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
           return;
         }
         if (pagedMode) {
-          const ratio = window.innerWidth <= 0 ? 0.5 : clientX / window.innerWidth;
+          const axisExtent = pageTurnAxis === 'vertical'
+            ? (window.innerHeight || document.documentElement.clientHeight || 1)
+            : (window.innerWidth || document.documentElement.clientWidth || 1);
+          const axisPosition = pageTurnAxis === 'vertical' ? clientY : clientX;
+          const ratio = axisPosition / axisExtent;
           if (ratio <= 0.32) {
             handlePageTurn(-1);
             return;
@@ -2674,9 +2658,22 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         const domSelectionActive = hasActiveDomSelection();
         scheduleSelectionRefresh(selectionGesture ? 20 : 60);
         if (!currentSelection && !domSelectionActive && !selectionGesture) {
-          if (touchTracking && !touchMoved && touch) {
-            lastTouchHandledAt = Date.now();
-            handleDocumentTap(event.target, touch.clientX, touch.clientY);
+          if (touchTracking && touch) {
+            if (!touchMoved) {
+              lastTouchHandledAt = Date.now();
+              handleDocumentTap(event.target, touch.clientX, touch.clientY);
+            } else if (pagedMode) {
+              const delta = pageTurnAxis === 'vertical'
+                ? touch.clientY - touchStartY
+                : touch.clientX - touchStartX;
+              const crossDelta = pageTurnAxis === 'vertical'
+                ? touch.clientX - touchStartX
+                : touch.clientY - touchStartY;
+              if (Math.abs(delta) >= 48 && Math.abs(delta) > Math.abs(crossDelta) * 1.15) {
+                lastTouchHandledAt = Date.now();
+                handlePageTurn(delta < 0 ? 1 : -1);
+              }
+            }
           }
           touchTracking = false;
           touchMoved = false;
@@ -2920,11 +2917,11 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       };
 
       window.readerHandleTapZone = function(zone) {
-        if (zone === 'left') {
+        if (zone === 'left' || zone === 'top') {
           handlePageTurn(-1);
           return;
         }
-        if (zone === 'right') {
+        if (zone === 'right' || zone === 'bottom') {
           handlePageTurn(1);
           return;
         }

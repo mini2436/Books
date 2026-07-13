@@ -245,6 +245,10 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
               _dispatchViewportTapZone('left'),
           const SingleActivator(LogicalKeyboardKey.arrowRight): () =>
               _dispatchViewportTapZone('right'),
+          const SingleActivator(LogicalKeyboardKey.arrowUp): () =>
+              _dispatchViewportTapZone('top'),
+          const SingleActivator(LogicalKeyboardKey.arrowDown): () =>
+              _dispatchViewportTapZone('bottom'),
           const SingleActivator(LogicalKeyboardKey.space): () =>
               _dispatchViewportTapZone('center'),
           const SingleActivator(LogicalKeyboardKey.keyM):

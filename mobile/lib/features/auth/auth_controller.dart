@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/auth_models.dart';
 import '../../data/services/api_client.dart';
 import '../../data/services/offline_queue_service.dart';
+import '../../data/services/offline_book_cache_service.dart';
 import '../../data/services/session_storage.dart';
 import '../../data/services/sync_coordinator.dart';
 
@@ -15,6 +16,9 @@ final sessionStorageProvider = Provider<SessionStorage>(
 );
 final offlineQueueServiceProvider = Provider<OfflineQueueService>(
   (ref) => OfflineQueueService(),
+);
+final offlineBookCacheServiceProvider = Provider<OfflineBookCacheService>(
+  (ref) => OfflineBookCacheService(),
 );
 
 final authControllerProvider = ChangeNotifierProvider<AuthController>(
@@ -52,6 +56,7 @@ class AuthController extends ChangeNotifier {
   Session? _session;
   bool _isBootstrapping = true;
   bool _isWorking = false;
+  bool _isOfflineMode = false;
   String? _errorMessage;
   Future<Session?>? _refreshInFlight;
 
@@ -61,7 +66,20 @@ class AuthController extends ChangeNotifier {
   bool get isAuthenticated => _session != null;
   bool get isBootstrapping => _isBootstrapping;
   bool get isWorking => _isWorking;
+  bool get isOfflineMode => _isOfflineMode;
   String? get errorMessage => _errorMessage;
+
+  void markServerReachable() {
+    if (!_isOfflineMode) return;
+    _isOfflineMode = false;
+    notifyListeners();
+  }
+
+  void markServerUnavailable() {
+    if (_isOfflineMode || _session == null) return;
+    _isOfflineMode = true;
+    notifyListeners();
+  }
 
   Future<void> signIn({
     required String username,
@@ -74,6 +92,7 @@ class AuthController extends ChangeNotifier {
         password: password,
       );
       _session = session;
+      _isOfflineMode = false;
       _errorMessage = null;
       await _sessionStorage.saveSession(session);
     } on ApiException catch (error) {
@@ -87,6 +106,7 @@ class AuthController extends ChangeNotifier {
   Future<void> signOut() async {
     final current = _session;
     _session = null;
+    _isOfflineMode = false;
     _errorMessage = null;
     notifyListeners();
 
@@ -165,27 +185,27 @@ class AuthController extends ChangeNotifier {
   }
 
   Future<void> _restoreSession() async {
+    Session? stored;
     try {
-      final stored = await _sessionStorage.readSession();
-      if (stored == null) {
-        _session = null;
-        return;
-      }
-
-      final refreshed = await _apiClient.refresh(stored.refreshToken);
-      _session = refreshed;
-      _errorMessage = null;
-      await _sessionStorage.saveSession(refreshed);
-    } on ApiException {
-      _session = null;
-      _errorMessage = '登录状态已过期，请重新登录。';
-      await _sessionStorage.clear();
+      stored = await _sessionStorage.readSession();
     } catch (_) {
-      _session = null;
+      stored = null;
+    }
+
+    _session = stored;
+    _isOfflineMode = stored != null;
+    _errorMessage = null;
+    _isBootstrapping = false;
+    notifyListeners();
+
+    if (stored != null) {
+      try {
+        await refreshSession();
+      } catch (_) {
+        // _refreshSessionInternal keeps a usable local session on network errors.
+      }
+    } else {
       _errorMessage = null;
-      await _sessionStorage.clear();
-    } finally {
-      _isBootstrapping = false;
       notifyListeners();
     }
   }
@@ -199,12 +219,19 @@ class AuthController extends ChangeNotifier {
     try {
       final refreshed = await _apiClient.refresh(current.refreshToken);
       _session = refreshed;
+      _isOfflineMode = false;
       _errorMessage = null;
       await _sessionStorage.saveSession(refreshed);
       notifyListeners();
       return refreshed;
-    } on ApiException {
+    } on ApiException catch (error) {
+      if (error.isNetworkFailure) {
+        _isOfflineMode = true;
+        notifyListeners();
+        return null;
+      }
       _session = null;
+      _isOfflineMode = false;
       _errorMessage = '登录状态已过期，请重新登录。';
       await _sessionStorage.clear();
       notifyListeners();

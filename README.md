@@ -34,6 +34,26 @@
 
 以下截图来自项目实际运行界面，原图统一存放在 [`docs/screenshots`](docs/screenshots/) 目录。
 
+### 一套书架，适配手机、平板与桌面
+
+手机端使用底部透明悬浮导航，平板与 Windows 桌面端则使用左侧垂直悬浮导航；书架密度、封面比例和内容间距会随可用空间自动调整。
+
+<table>
+  <tr>
+    <th align="center">Android 手机</th>
+    <th align="center">Android 平板</th>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/app-phone.png" alt="轻阅 Android 手机端书架" width="280"></td>
+    <td align="center"><img src="docs/screenshots/app-tablet.png" alt="轻阅 Android 平板端书架" width="560"></td>
+  </tr>
+</table>
+
+<p align="center">
+  <strong>Windows 桌面端</strong><br>
+  <img src="docs/screenshots/app-windows.png" alt="轻阅 Windows 桌面端" width="760">
+</p>
+
 ### 沉浸式正文阅读
 
 正文区域保持克制，点击页面中部显示工具栏，可随时打开目录、批注、书签和阅读设置。

@@ -13,13 +13,16 @@ Private Reader turns ebooks scattered across computers, NAS storage, and family 
 - Shared family library with individual accounts and per-book access control
 - EPUB, TXT, PDF, CBZ, FB2, and MOBI import through compile-time format plugins
 - Flutter clients for Web, Windows, and Android/tablets
-- Progress, bookmarks, highlights, annotations, and an offline operation queue
+- Full offline downloads for EPUB, TXT, PDF, CBZ, FB2, and MOBI
+- Offline startup with locally persisted progress, bookmarks, and annotations that synchronize automatically after reconnection
 - Upload and NAS/directory scanning workflows
 - Responsive reader with themes, typography controls, and bundled Chinese fonts
 - Administration for books, users, grants, library sources, and scan jobs
 - Self-hosted Kotlin/Spring Boot backend backed by PostgreSQL, Redis, and RabbitMQ
 
 ## Screenshots
+
+These screenshots come from the running application. Their original files are tracked under [`docs/screenshots`](docs/screenshots/).
 
 ### Reader
 

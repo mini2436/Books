@@ -119,23 +119,41 @@ class AdminCenterScreen extends ConsumerWidget {
                         ],
                       ),
                       const SizedBox(height: 18),
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: SegmentedButton<AdminSection>(
-                          showSelectedIcon: false,
-                          segments: controller.availableSections
-                              .map(
-                                (section) => ButtonSegment<AdminSection>(
-                                  value: section,
-                                  icon: Icon(_sectionIcon(section), size: 17),
-                                  label: Text(_sectionLabel(section)),
-                                ),
-                              )
-                              .toList(),
-                          selected: {controller.selectedSection},
-                          onSelectionChanged: (selection) => ref
-                              .read(adminCenterControllerProvider)
-                              .setSection(selection.first),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(999),
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: SegmentedButton<AdminSection>(
+                            style: tablet
+                                ? null
+                                : const ButtonStyle(
+                                    minimumSize: WidgetStatePropertyAll(
+                                      Size(0, 52),
+                                    ),
+                                    padding: WidgetStatePropertyAll(
+                                      EdgeInsets.symmetric(
+                                        horizontal: 18,
+                                        vertical: 14,
+                                      ),
+                                    ),
+                                    visualDensity: VisualDensity.standard,
+                                    tapTargetSize: MaterialTapTargetSize.padded,
+                                  ),
+                            showSelectedIcon: false,
+                            segments: controller.availableSections
+                                .map(
+                                  (section) => ButtonSegment<AdminSection>(
+                                    value: section,
+                                    icon: Icon(_sectionIcon(section), size: 17),
+                                    label: Text(_sectionLabel(section)),
+                                  ),
+                                )
+                                .toList(),
+                            selected: {controller.selectedSection},
+                            onSelectionChanged: (selection) => ref
+                                .read(adminCenterControllerProvider)
+                                .setSection(selection.first),
+                          ),
                         ),
                       ),
                       if (controller.notice != null) ...[
@@ -184,9 +202,12 @@ class AdminCenterScreen extends ConsumerWidget {
                     24,
                   ),
                   sliver: SliverToBoxAdapter(
-                    child: _SectionBody(
-                      section: controller.selectedSection,
-                      controller: controller,
+                    child: _ContentSwapTransition(
+                      transitionKey: controller.selectedSection,
+                      child: _SectionBody(
+                        section: controller.selectedSection,
+                        controller: controller,
+                      ),
                     ),
                   ),
                 ),
@@ -216,6 +237,37 @@ class AdminCenterScreen extends ConsumerWidget {
               label: const Text('新建用户'),
             )
           : null,
+    );
+  }
+}
+
+class _ContentSwapTransition extends StatelessWidget {
+  const _ContentSwapTransition({
+    required this.transitionKey,
+    required this.child,
+  });
+
+  final Object transitionKey;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final duration = MediaQuery.of(context).disableAnimations
+        ? Duration.zero
+        : const Duration(milliseconds: 220);
+    return TweenAnimationBuilder<double>(
+      key: ValueKey(transitionKey),
+      tween: Tween(begin: 0, end: 1),
+      duration: duration,
+      curve: Curves.easeOutCubic,
+      child: child,
+      builder: (context, value, child) => Opacity(
+        opacity: 0.35 + value * 0.65,
+        child: Transform.translate(
+          offset: Offset(0, 8 * (1 - value)),
+          child: child,
+        ),
+      ),
     );
   }
 }
@@ -560,7 +612,11 @@ class _BookManagementSection extends ConsumerWidget {
     final isTablet = Responsive.isTablet(context);
     final isDesktop = Responsive.isDesktop(context);
     final bookTileMaxWidth = isDesktop ? 176.0 : (isTablet ? 168.0 : 156.0);
-    final bookTileHeight = isDesktop ? 266.0 : (isTablet ? 256.0 : 248.0);
+    final double? bookTileHeight = isDesktop
+        ? 266
+        : isTablet
+        ? 256
+        : null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -639,27 +695,30 @@ class _BookManagementSection extends ConsumerWidget {
                 ),
               ),
               const SizedBox(height: 14),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: SegmentedButton<String>(
-                  showSelectedIcon: false,
-                  segments: controller.availableBookGroups
-                      .map(
-                        (group) => ButtonSegment<String>(
-                          value: group,
-                          icon: Icon(
-                            group == AdminCenterController.allBookGroupsLabel
-                                ? Icons.apps_rounded
-                                : Icons.folder_outlined,
-                            size: 17,
+              ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: SegmentedButton<String>(
+                    showSelectedIcon: false,
+                    segments: controller.availableBookGroups
+                        .map(
+                          (group) => ButtonSegment<String>(
+                            value: group,
+                            icon: Icon(
+                              group == AdminCenterController.allBookGroupsLabel
+                                  ? Icons.apps_rounded
+                                  : Icons.folder_outlined,
+                              size: 17,
+                            ),
+                            label: Text(group),
                           ),
-                          label: Text(group),
-                        ),
-                      )
-                      .toList(),
-                  selected: {controller.selectedBookGroup},
-                  onSelectionChanged: (selection) =>
-                      controller.setBookGroupFilter(selection.first),
+                        )
+                        .toList(),
+                    selected: {controller.selectedBookGroup},
+                    onSelectionChanged: (selection) =>
+                        controller.setBookGroupFilter(selection.first),
+                  ),
                 ),
               ),
               const SizedBox(height: 14),
@@ -730,42 +789,51 @@ class _BookManagementSection extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: 14),
-        if (controller.books.isEmpty)
-          const _EmptyPanel(title: '还没有可管理的书籍', body: '先导入一本图书，这里会自动切到封面管理视图。')
-        else if (filteredBooks.isEmpty)
-          const _EmptyPanel(title: '没有找到匹配图书', body: '试试更换搜索词，或切换到其他分组查看。')
-        else
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: filteredBooks.length,
-            gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-              maxCrossAxisExtent: bookTileMaxWidth,
-              mainAxisExtent: bookTileHeight,
-              mainAxisSpacing: isTablet ? 16 : 12,
-              crossAxisSpacing: isTablet ? 16 : 12,
-            ),
-            itemBuilder: (context, index) {
-              final book = filteredBooks[index];
-              return _AdminBookTile(
-                book: book,
-                selected: controller.selectedBookIds.contains(book.id),
-                imageUrl: auth.accessToken == null
-                    ? null
-                    : ref
-                          .read(apiClientProvider)
-                          .buildUrl('/api/me/books/${book.id}/cover'),
-                headers: auth.accessToken == null
-                    ? null
-                    : ref
-                          .read(apiClientProvider)
-                          .coverHeaders(auth.accessToken!),
-                onTap: () => context.push('/admin/books/${book.id}'),
-                onSelectionToggle: () =>
-                    controller.toggleBookSelection(book.id),
-              );
-            },
-          ),
+        _ContentSwapTransition(
+          transitionKey: controller.selectedBookGroup,
+          child: controller.books.isEmpty
+              ? const _EmptyPanel(
+                  title: '还没有可管理的书籍',
+                  body: '先导入一本图书，这里会自动切到封面管理视图。',
+                )
+              : filteredBooks.isEmpty
+              ? const _EmptyPanel(
+                  title: '没有找到匹配图书',
+                  body: '试试更换搜索词，或切换到其他分组查看。',
+                )
+              : GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: filteredBooks.length,
+                  gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: bookTileMaxWidth,
+                    mainAxisExtent: bookTileHeight,
+                    childAspectRatio: isTablet || isDesktop ? 1 : 0.55,
+                    mainAxisSpacing: isTablet ? 16 : 12,
+                    crossAxisSpacing: isTablet ? 16 : 12,
+                  ),
+                  itemBuilder: (context, index) {
+                    final book = filteredBooks[index];
+                    return _AdminBookTile(
+                      book: book,
+                      selected: controller.selectedBookIds.contains(book.id),
+                      imageUrl: auth.accessToken == null
+                          ? null
+                          : ref
+                                .read(apiClientProvider)
+                                .buildUrl('/api/me/books/${book.id}/cover'),
+                      headers: auth.accessToken == null
+                          ? null
+                          : ref
+                                .read(apiClientProvider)
+                                .coverHeaders(auth.accessToken!),
+                      onTap: () => context.push('/admin/books/${book.id}'),
+                      onSelectionToggle: () =>
+                          controller.toggleBookSelection(book.id),
+                    );
+                  },
+                ),
+        ),
       ],
     );
   }
@@ -791,6 +859,13 @@ class _AdminBookTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = AppReaderPalette.of(context);
+    final titleStyle = Theme.of(
+      context,
+    ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700);
+    final titleFontSize = titleStyle?.fontSize ?? 12;
+    final titleLineHeight =
+        MediaQuery.textScalerOf(context).scale(titleFontSize) *
+        (titleStyle?.height ?? 1.3);
 
     return InkWell(
       borderRadius: BorderRadius.circular(14),
@@ -910,13 +985,17 @@ class _AdminBookTile extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 9),
-              Text(
-                book.title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
+              SizedBox(
+                height: titleLineHeight * 2,
+                child: Align(
+                  alignment: Alignment.topLeft,
+                  child: Text(
+                    book.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: titleStyle,
+                  ),
+                ),
               ),
             ],
           ),

@@ -21,8 +21,57 @@ class BookshelfScreen extends ConsumerStatefulWidget {
   ConsumerState<BookshelfScreen> createState() => _BookshelfScreenState();
 }
 
-class _BookshelfScreenState extends ConsumerState<BookshelfScreen> {
+class _BookshelfScreenState extends ConsumerState<BookshelfScreen>
+    with SingleTickerProviderStateMixin {
   _ShelfView _view = _ShelfView.all;
+  late final AnimationController _contentTransitionController;
+  late final Animation<double> _contentFadeAnimation;
+  late final Animation<Offset> _contentSlideAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _contentTransitionController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 220),
+      value: 1,
+    );
+    final curve = CurvedAnimation(
+      parent: _contentTransitionController,
+      curve: Curves.easeOutCubic,
+    );
+    _contentFadeAnimation = Tween<double>(begin: 0.35, end: 1).animate(curve);
+    _contentSlideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.018),
+      end: Offset.zero,
+    ).animate(curve);
+  }
+
+  @override
+  void dispose() {
+    _contentTransitionController.dispose();
+    super.dispose();
+  }
+
+  void _restartContentTransition() {
+    if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) {
+      _contentTransitionController.value = 1;
+      return;
+    }
+    _contentTransitionController.forward(from: 0);
+  }
+
+  void _selectShelfView(_ShelfView view) {
+    if (_view == view) return;
+    setState(() => _view = view);
+    _restartContentTransition();
+  }
+
+  void _selectBookFilter(BookshelfController controller, String filter) {
+    if (controller.selectedFilterKey == filter) return;
+    controller.setFilter(filter);
+    _restartContentTransition();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -47,6 +96,83 @@ class _BookshelfScreenState extends ConsumerState<BookshelfScreen> {
                 : '/api/me/profile/avatar?v=${Uri.encodeQueryComponent(avatarVersion)}',
           )
         : null;
+    final motionDuration = MediaQuery.of(context).disableAnimations
+        ? Duration.zero
+        : const Duration(milliseconds: 220);
+    final mobileSegmentStyle = Responsive.usesWideLayout(context)
+        ? null
+        : const ButtonStyle(
+            minimumSize: WidgetStatePropertyAll(Size(0, 52)),
+            padding: WidgetStatePropertyAll(
+              EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+            ),
+            visualDensity: VisualDensity.standard,
+            tapTargetSize: MaterialTapTargetSize.padded,
+          );
+    final showFilters =
+        _view == _ShelfView.all && controller.filterOptions.length > 1;
+    final selectedFilter = controller.filterOptions.firstWhere(
+      (option) => option.key == controller.selectedFilterKey,
+    );
+    final selectedFilterTitle = selectedFilter.label.replaceAll(' · ', '');
+
+    final Widget shelfContent;
+    if (controller.isLoading && controller.books.isEmpty) {
+      shelfContent = const SliverFillRemaining(
+        hasScrollBody: false,
+        child: Center(child: CircularProgressIndicator()),
+      );
+    } else if (controller.error != null && controller.books.isEmpty) {
+      shelfContent = SliverFillRemaining(
+        hasScrollBody: false,
+        child: _BookshelfEmptyState(
+          message: controller.error!,
+          onRetry: controller.isLoading ? null : controller.refresh,
+        ),
+      );
+    } else if (controller.books.isEmpty) {
+      shelfContent = SliverFillRemaining(
+        hasScrollBody: false,
+        child: Center(
+          child: Text(
+            '书架空空如也，先从后台导入一本书吧。',
+            style: Theme.of(
+              context,
+            ).textTheme.bodyLarge?.copyWith(color: palette.inkSecondary),
+          ),
+        ),
+      );
+    } else if (_view == _ShelfView.all) {
+      shelfContent = controller.filteredBooks.isEmpty
+          ? SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(
+                child: Text(
+                  '当前筛选下没有书籍',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyLarge?.copyWith(color: palette.inkSecondary),
+                ),
+              ),
+            )
+          : _buildBookGrid(
+              context,
+              controller: controller,
+              books: controller.filteredBooks,
+              horizontalPadding: horizontalPadding,
+              coverUrl: coverUrl,
+              coverHeaders: coverHeaders,
+            );
+    } else {
+      shelfContent = _buildGroupGrid(
+        context,
+        controller: controller,
+        groups: controller.groupedBooks,
+        horizontalPadding: horizontalPadding,
+        coverUrl: coverUrl,
+        coverHeaders: coverHeaders,
+      );
+    }
 
     return Scaffold(
       body: SafeArea(
@@ -156,17 +282,47 @@ class _BookshelfScreenState extends ConsumerState<BookshelfScreen> {
                   child: Row(
                     children: [
                       Expanded(
-                        child: _SectionHeading(
-                          title: _view == _ShelfView.all ? '全部书籍' : '书籍分组',
-                          detail: _view == _ShelfView.all
-                              ? controller.filteredBooks.length ==
-                                        controller.books.length
-                                    ? '${controller.books.length} 本'
-                                    : '${controller.filteredBooks.length}/${controller.books.length} 本'
-                              : '${controller.groupedBooks.length} 个分组',
+                        child: AnimatedSwitcher(
+                          duration: motionDuration,
+                          switchInCurve: Curves.easeOutCubic,
+                          switchOutCurve: Curves.easeOutCubic,
+                          layoutBuilder: (currentChild, previousChildren) =>
+                              Stack(
+                                alignment: Alignment.centerLeft,
+                                children: [...previousChildren, ?currentChild],
+                              ),
+                          transitionBuilder: (child, animation) =>
+                              FadeTransition(
+                                opacity: animation,
+                                child: SlideTransition(
+                                  position: Tween<Offset>(
+                                    begin: const Offset(0, 0.12),
+                                    end: Offset.zero,
+                                  ).animate(animation),
+                                  child: child,
+                                ),
+                              ),
+                          child: KeyedSubtree(
+                            key: ValueKey((
+                              _view,
+                              controller.selectedFilterKey,
+                            )),
+                            child: _SectionHeading(
+                              title: _view == _ShelfView.all
+                                  ? selectedFilterTitle
+                                  : '书籍分组',
+                              detail: _view == _ShelfView.all
+                                  ? controller.selectedFilterKey ==
+                                            bookshelfFilterAll
+                                        ? '${controller.books.length} 本'
+                                        : '${controller.filteredBooks.length}/${controller.books.length} 本'
+                                  : '${controller.groupedBooks.length} 个分组',
+                            ),
+                          ),
                         ),
                       ),
                       SegmentedButton<_ShelfView>(
+                        style: mobileSegmentStyle,
                         showSelectedIcon: false,
                         segments: const [
                           ButtonSegment(
@@ -181,129 +337,93 @@ class _BookshelfScreenState extends ConsumerState<BookshelfScreen> {
                           ),
                         ],
                         selected: {_view},
-                        onSelectionChanged: (value) => setState(() {
-                          _view = value.first;
-                        }),
+                        onSelectionChanged: (value) =>
+                            _selectShelfView(value.first),
                       ),
                     ],
                   ),
                 ),
               ),
-              if (_view == _ShelfView.all &&
-                  controller.filterOptions.length > 1)
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      horizontalPadding,
-                      0,
-                      horizontalPadding,
-                      18,
-                    ),
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        final isPrimaryFilterSet =
-                            controller.filterOptions.length == 3;
-                        final selector = SegmentedButton<String>(
-                          showSelectedIcon: false,
-                          expandedInsets: isPrimaryFilterSet
-                              ? EdgeInsets.zero
-                              : null,
-                          segments: controller.filterOptions
-                              .map(
-                                (option) => ButtonSegment<String>(
-                                  value: option.key,
-                                  icon: Icon(
-                                    option.key == bookshelfFilterAll
-                                        ? Icons.apps_rounded
-                                        : option.key == bookshelfFilterRead
-                                        ? Icons.check_circle_outline_rounded
-                                        : option.key == bookshelfFilterUnread
-                                        ? Icons.schedule_rounded
-                                        : Icons.folder_outlined,
-                                    size: 17,
+              SliverToBoxAdapter(
+                child: AnimatedSize(
+                  duration: motionDuration,
+                  curve: Curves.easeOutCubic,
+                  alignment: Alignment.topCenter,
+                  child: showFilters
+                      ? Padding(
+                          padding: EdgeInsets.fromLTRB(
+                            horizontalPadding,
+                            0,
+                            horizontalPadding,
+                            18,
+                          ),
+                          child: LayoutBuilder(
+                            builder: (context, constraints) {
+                              final isPrimaryFilterSet =
+                                  controller.filterOptions.length == 3;
+                              final selector = SegmentedButton<String>(
+                                style: mobileSegmentStyle,
+                                showSelectedIcon: false,
+                                expandedInsets: isPrimaryFilterSet
+                                    ? EdgeInsets.zero
+                                    : null,
+                                segments: controller.filterOptions
+                                    .map(
+                                      (option) => ButtonSegment<String>(
+                                        value: option.key,
+                                        icon: Icon(
+                                          option.key == bookshelfFilterAll
+                                              ? Icons.apps_rounded
+                                              : option.key ==
+                                                    bookshelfFilterRead
+                                              ? Icons
+                                                    .check_circle_outline_rounded
+                                              : option.key ==
+                                                    bookshelfFilterUnread
+                                              ? Icons.schedule_rounded
+                                              : Icons.folder_outlined,
+                                          size: 17,
+                                        ),
+                                        label: Text(option.label),
+                                      ),
+                                    )
+                                    .toList(),
+                                selected: {controller.selectedFilterKey},
+                                onSelectionChanged: (selection) =>
+                                    _selectBookFilter(
+                                      controller,
+                                      selection.first,
+                                    ),
+                              );
+                              if (!isPrimaryFilterSet) {
+                                return ClipRRect(
+                                  borderRadius: BorderRadius.circular(999),
+                                  child: SingleChildScrollView(
+                                    scrollDirection: Axis.horizontal,
+                                    child: selector,
                                   ),
-                                  label: Text(option.label),
+                                );
+                              }
+                              final selectorWidth = constraints.maxWidth > 480
+                                  ? 480.0
+                                  : constraints.maxWidth;
+                              return Align(
+                                alignment: Alignment.centerLeft,
+                                child: SizedBox(
+                                  width: selectorWidth,
+                                  child: selector,
                                 ),
-                              )
-                              .toList(),
-                          selected: {controller.selectedFilterKey},
-                          onSelectionChanged: (selection) =>
-                              controller.setFilter(selection.first),
-                        );
-                        if (!isPrimaryFilterSet) {
-                          return SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: selector,
-                          );
-                        }
-                        final selectorWidth = constraints.maxWidth > 480
-                            ? 480.0
-                            : constraints.maxWidth;
-                        return Align(
-                          alignment: Alignment.centerLeft,
-                          child: SizedBox(
-                            width: selectorWidth,
-                            child: selector,
+                              );
+                            },
                           ),
-                        );
-                      },
-                    ),
-                  ),
+                        )
+                      : const SizedBox.shrink(),
                 ),
-              if (controller.isLoading && controller.books.isEmpty)
-                const SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: Center(child: CircularProgressIndicator()),
-                )
-              else if (controller.error != null && controller.books.isEmpty)
-                SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: _BookshelfEmptyState(
-                    message: controller.error!,
-                    onRetry: controller.isLoading ? null : controller.refresh,
-                  ),
-                )
-              else if (controller.books.isEmpty)
-                SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: Center(
-                    child: Text(
-                      '书架空空如也，先从后台导入一本书吧。',
-                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        color: palette.inkSecondary,
-                      ),
-                    ),
-                  ),
-                )
-              else if (_view == _ShelfView.all)
-                controller.filteredBooks.isEmpty
-                    ? SliverFillRemaining(
-                        hasScrollBody: false,
-                        child: Center(
-                          child: Text(
-                            '当前筛选下没有书籍',
-                            style: Theme.of(context).textTheme.bodyLarge
-                                ?.copyWith(color: palette.inkSecondary),
-                          ),
-                        ),
-                      )
-                    : _buildBookGrid(
-                        context,
-                        controller: controller,
-                        books: controller.filteredBooks,
-                        horizontalPadding: horizontalPadding,
-                        coverUrl: coverUrl,
-                        coverHeaders: coverHeaders,
-                      )
-              else
-                _buildGroupGrid(
-                  context,
-                  controller: controller,
-                  groups: controller.groupedBooks,
-                  horizontalPadding: horizontalPadding,
-                  coverUrl: coverUrl,
-                  coverHeaders: coverHeaders,
-                ),
+              ),
+              SliverFadeTransition(
+                opacity: _contentFadeAnimation,
+                sliver: shelfContent,
+              ),
             ],
           ),
         ),
@@ -324,26 +444,29 @@ class _BookshelfScreenState extends ConsumerState<BookshelfScreen> {
       sliver: SliverGrid(
         delegate: SliverChildBuilderDelegate((context, index) {
           final book = books[index];
-          return _BookTile(
-            book: book,
-            imageUrl: coverUrl(book),
-            imageBytes: controller.offlineCoverForBook(book.id),
-            headers: coverHeaders,
-            isOfflineAvailable: controller.isBookCached(book.id),
-            isDownloading: controller.isBookDownloading(book.id),
-            onOfflinePressed: () =>
-                _toggleOfflineDownload(context, controller, book),
-            heroTag: 'book-cover-grid-${book.id}',
-            frameHeroTag: 'book-frame-grid-${book.id}',
-            onTap: () => _showBookDetails(
-              context,
+          return SlideTransition(
+            position: _contentSlideAnimation,
+            child: _BookTile(
               book: book,
-              controller: controller,
               imageUrl: coverUrl(book),
               imageBytes: controller.offlineCoverForBook(book.id),
               headers: coverHeaders,
+              isOfflineAvailable: controller.isBookCached(book.id),
+              isDownloading: controller.isBookDownloading(book.id),
+              onOfflinePressed: () =>
+                  _toggleOfflineDownload(context, controller, book),
               heroTag: 'book-cover-grid-${book.id}',
               frameHeroTag: 'book-frame-grid-${book.id}',
+              onTap: () => _showBookDetails(
+                context,
+                book: book,
+                controller: controller,
+                imageUrl: coverUrl(book),
+                imageBytes: controller.offlineCoverForBook(book.id),
+                headers: coverHeaders,
+                heroTag: 'book-cover-grid-${book.id}',
+                frameHeroTag: 'book-frame-grid-${book.id}',
+              ),
             ),
           );
         }, childCount: books.length),
@@ -351,7 +474,7 @@ class _BookshelfScreenState extends ConsumerState<BookshelfScreen> {
           crossAxisCount: Responsive.bookshelfColumns(context),
           crossAxisSpacing: Responsive.usesWideLayout(context) ? 18 : 14,
           mainAxisSpacing: Responsive.usesWideLayout(context) ? 20 : 16,
-          childAspectRatio: 0.58,
+          childAspectRatio: Responsive.usesWideLayout(context) ? 0.58 : 0.48,
         ),
       ),
     );
@@ -387,33 +510,36 @@ class _BookshelfScreenState extends ConsumerState<BookshelfScreen> {
           final entry = entries[index];
           final frameHeroTag = 'book-group-frame-${entry.key}';
           final titleHeroTag = 'book-group-title-${entry.key}';
-          return _GroupFolderTile(
-            name: entry.key,
-            books: entry.value,
-            imageUrlFor: coverUrl,
-            headers: coverHeaders,
-            frameHeroTag: frameHeroTag,
-            titleHeroTag: titleHeroTag,
-            onEdit: entry.key == '未分组'
-                ? null
-                : () async {
-                    await _showRenameGroupDialog(
-                      context,
-                      name: entry.key,
-                      controller: controller,
-                    );
-                  },
-            onTap: () async {
-              await _showGroupFolder(
-                context,
-                name: entry.key,
-                controller: controller,
-                imageUrlFor: coverUrl,
-                headers: coverHeaders,
-                frameHeroTag: frameHeroTag,
-                titleHeroTag: titleHeroTag,
-              );
-            },
+          return SlideTransition(
+            position: _contentSlideAnimation,
+            child: _GroupFolderTile(
+              name: entry.key,
+              books: entry.value,
+              imageUrlFor: coverUrl,
+              headers: coverHeaders,
+              frameHeroTag: frameHeroTag,
+              titleHeroTag: titleHeroTag,
+              onEdit: entry.key == '未分组'
+                  ? null
+                  : () async {
+                      await _showRenameGroupDialog(
+                        context,
+                        name: entry.key,
+                        controller: controller,
+                      );
+                    },
+              onTap: () async {
+                await _showGroupFolder(
+                  context,
+                  name: entry.key,
+                  controller: controller,
+                  imageUrlFor: coverUrl,
+                  headers: coverHeaders,
+                  frameHeroTag: frameHeroTag,
+                  titleHeroTag: titleHeroTag,
+                );
+              },
+            ),
           );
         }, childCount: entries.length),
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
@@ -840,12 +966,23 @@ class _RecentBookItem extends StatelessWidget {
                               ),
                             ],
                           ),
-                          Text(
-                            '最后阅读 · ${_formatLastReadTime(progress?.updatedAt)}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.labelSmall
-                                ?.copyWith(color: palette.inkTertiary),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '最后阅读',
+                                style: Theme.of(context).textTheme.labelSmall
+                                    ?.copyWith(color: palette.inkTertiary),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                _formatLastReadTime(progress?.updatedAt),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.labelSmall
+                                    ?.copyWith(color: palette.inkTertiary),
+                              ),
+                            ],
                           ),
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -915,6 +1052,15 @@ class _BookTileState extends State<_BookTile> {
   @override
   Widget build(BuildContext context) {
     final palette = AppReaderPalette.of(context);
+    final titleStyle =
+        Theme.of(context).textTheme.bodySmall?.copyWith(
+          fontWeight: FontWeight.w600,
+          height: 1.3,
+        ) ??
+        const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, height: 1.3);
+    final titleLineHeight =
+        MediaQuery.textScalerOf(context).scale(titleStyle.fontSize ?? 12) *
+        (titleStyle.height ?? 1);
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -956,13 +1102,16 @@ class _BookTileState extends State<_BookTile> {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      Text(
-                        widget.book.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          height: 1.3,
+                      SizedBox(
+                        height: titleLineHeight * 2,
+                        child: Align(
+                          alignment: Alignment.topLeft,
+                          child: Text(
+                            widget.book.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: titleStyle,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 3),
@@ -1246,28 +1395,31 @@ class _GroupFolderTile extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 9),
-          Row(
-            children: [
-              Expanded(
-                child: _GroupNameHero(
-                  name: name,
-                  heroTag: titleHeroTag,
-                  expanded: false,
-                ),
-              ),
-              if (onEdit != null)
-                IconButton(
-                  tooltip: '修改分组名称',
-                  onPressed: onEdit,
-                  visualDensity: VisualDensity.compact,
-                  constraints: const BoxConstraints.tightFor(
-                    width: 32,
-                    height: 32,
+          SizedBox(
+            height: 32,
+            child: Row(
+              children: [
+                Expanded(
+                  child: _GroupNameHero(
+                    name: name,
+                    heroTag: titleHeroTag,
+                    expanded: false,
                   ),
-                  padding: EdgeInsets.zero,
-                  icon: const Icon(Icons.edit_outlined, size: 18),
                 ),
-            ],
+                if (onEdit != null)
+                  IconButton(
+                    tooltip: '修改分组名称',
+                    onPressed: onEdit,
+                    visualDensity: VisualDensity.compact,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 32,
+                      height: 32,
+                    ),
+                    padding: EdgeInsets.zero,
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                  ),
+              ],
+            ),
           ),
           Text(
             '${books.length} 本书',
@@ -1290,7 +1442,9 @@ String _formatLastReadTime(String? value) {
   final date = DateUtils.dateOnly(parsed);
   final today = DateUtils.dateOnly(now);
   final time =
-      '${parsed.hour.toString().padLeft(2, '0')}:${parsed.minute.toString().padLeft(2, '0')}';
+      '${parsed.hour.toString().padLeft(2, '0')}:'
+      '${parsed.minute.toString().padLeft(2, '0')}:'
+      '${parsed.second.toString().padLeft(2, '0')}';
   if (date == today) {
     return '今天 $time';
   }
@@ -1300,7 +1454,7 @@ String _formatLastReadTime(String? value) {
   if (parsed.year == now.year) {
     return '${parsed.month}月${parsed.day}日 $time';
   }
-  return '${parsed.year}年${parsed.month}月${parsed.day}日';
+  return '${parsed.year}年${parsed.month}月${parsed.day}日 $time';
 }
 
 class _GroupNameHero extends StatelessWidget {
@@ -1567,20 +1721,47 @@ Future<void> _showGroupFolder(
           ? Duration.zero
           : const Duration(milliseconds: 220),
       pageBuilder: (dialogContext, _, _) {
-        final dialogHeight = (MediaQuery.sizeOf(dialogContext).height - 48)
-            .clamp(280.0, 680.0)
+        final screenSize = MediaQuery.sizeOf(dialogContext);
+        final wideDialog = Responsive.usesWideLayout(dialogContext);
+        final dialogInset = wideDialog ? 24.0 : 16.0;
+        final dialogWidth = (screenSize.width - dialogInset * 2)
+            .clamp(280.0, 880.0)
             .toDouble();
         return ListenableBuilder(
           listenable: controller,
           builder: (_, _) {
             final visibleBooks =
                 controller.groupedBooks[name] ?? const <BookSummary>[];
+            final gridWidth = dialogWidth - 48;
+            final columns = gridWidth >= 720
+                ? 6
+                : gridWidth >= 500
+                ? 4
+                : 3;
+            final tileAspectRatio = wideDialog ? 0.58 : 0.43;
+            final tileWidth = (gridWidth - (columns - 1) * 16) / columns;
+            final rows = visibleBooks.isEmpty
+                ? 0
+                : (visibleBooks.length + columns - 1) ~/ columns;
+            final naturalGridHeight = rows == 0
+                ? 0.0
+                : rows * (tileWidth / tileAspectRatio) + (rows - 1) * 18;
+            final maxDialogHeight = wideDialog
+                ? (screenSize.height - dialogInset * 2)
+                      .clamp(280.0, 680.0)
+                      .toDouble()
+                : (screenSize.height * 0.66).clamp(320.0, 560.0).toDouble();
+            final dialogHeight = wideDialog
+                ? maxDialogHeight
+                : (140 + naturalGridHeight)
+                      .clamp(280.0, maxDialogHeight)
+                      .toDouble();
             return Dialog(
               backgroundColor: Colors.transparent,
               elevation: 0,
-              insetPadding: const EdgeInsets.all(24),
+              insetPadding: EdgeInsets.all(dialogInset),
               child: SizedBox(
-                width: 880,
+                width: dialogWidth,
                 height: dialogHeight,
                 child: Stack(
                   fit: StackFit.expand,
@@ -1628,7 +1809,7 @@ Future<void> _showGroupFolder(
                                         crossAxisCount: columns,
                                         crossAxisSpacing: 16,
                                         mainAxisSpacing: 18,
-                                        childAspectRatio: 0.58,
+                                        childAspectRatio: tileAspectRatio,
                                       ),
                                   itemCount: visibleBooks.length,
                                   itemBuilder: (tileContext, index) {

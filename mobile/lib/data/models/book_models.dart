@@ -34,6 +34,18 @@ class BookSummary {
       updatedAt: json['updatedAt'] as String? ?? '',
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'title': title,
+    'author': author,
+    'groupName': groupName,
+    'description': description,
+    'pluginId': pluginId,
+    'format': format,
+    'sourceMissing': sourceMissing,
+    'updatedAt': updatedAt,
+  };
 }
 
 class BookDetail extends BookSummary {
@@ -94,6 +106,17 @@ class BookDetail extends BookSummary {
       latestContentVersionId: (json['latestContentVersionId'] as num?)?.toInt(),
     );
   }
+
+  @override
+  Map<String, dynamic> toJson() => {
+    ...super.toJson(),
+    'sourceType': sourceType,
+    'manifest': manifest,
+    'capabilities': capabilities,
+    'hasStructuredContent': hasStructuredContent,
+    'contentModel': contentModel,
+    'latestContentVersionId': latestContentVersionId,
+  };
 }
 
 class BookContent {
@@ -126,6 +149,14 @@ class BookContent {
           .toList(),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'bookId': bookId,
+    'contentModel': contentModel,
+    'contentVersionId': contentVersionId,
+    'hasStructuredContent': hasStructuredContent,
+    'chapters': chapters.map((chapter) => chapter.toJson()).toList(),
+  };
 }
 
 class BookContentChapterSummary {
@@ -146,6 +177,12 @@ class BookContentChapterSummary {
       anchor: json['anchor'] as String? ?? '',
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'chapterIndex': chapterIndex,
+    'title': title,
+    'anchor': anchor,
+  };
 }
 
 class BookContentChapter {
@@ -185,6 +222,17 @@ class BookContentChapter {
           .toList(),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'bookId': bookId,
+    'contentModel': contentModel,
+    'contentVersionId': contentVersionId,
+    'hasStructuredContent': hasStructuredContent,
+    'chapterIndex': chapterIndex,
+    'title': title,
+    'anchor': anchor,
+    'blocks': blocks.map((block) => block.toJson()).toList(),
+  };
 }
 
 class BookContentBlock {
@@ -230,6 +278,15 @@ class BookContentBlock {
       meta: (json['meta'] as Map<String, dynamic>?) ?? const {},
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'blockIndex': blockIndex,
+    'type': type,
+    'anchor': anchor,
+    'text': text,
+    'plainText': plainText,
+    'meta': meta,
+  };
 
   static int? _intFromMeta(Object? value) {
     if (value is int) {

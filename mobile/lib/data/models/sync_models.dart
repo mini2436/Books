@@ -38,6 +38,18 @@ class AnnotationView {
       updatedAt: json['updatedAt'] as String? ?? '',
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'bookId': bookId,
+    'quoteText': quoteText,
+    'noteText': noteText,
+    'color': color,
+    'anchor': anchor,
+    'version': version,
+    'deleted': deleted,
+    'updatedAt': updatedAt,
+  };
 }
 
 class BookmarkView {
@@ -67,6 +79,15 @@ class BookmarkView {
       updatedAt: json['updatedAt'] as String? ?? '',
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'bookId': bookId,
+    'location': location,
+    'label': label,
+    'deleted': deleted,
+    'updatedAt': updatedAt,
+  };
 }
 
 class ReadingProgressView {
@@ -90,6 +111,13 @@ class ReadingProgressView {
       updatedAt: json['updatedAt'] as String? ?? '',
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'bookId': bookId,
+    'location': location,
+    'progressPercent': progressPercent,
+    'updatedAt': updatedAt,
+  };
 }
 
 class AnnotationMutation {

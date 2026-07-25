@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -101,7 +103,9 @@ class BookshelfScreen extends ConsumerWidget {
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  '服务：${controller.serviceBaseUrl}',
+                                  controller.isOfflineMode
+                                      ? '离线模式 · 正在使用本地书库'
+                                      : '服务：${controller.serviceBaseUrl}',
                                   style: Theme.of(context).textTheme.bodySmall
                                       ?.copyWith(color: palette.inkTertiary),
                                 ),
@@ -136,6 +140,12 @@ class BookshelfScreen extends ConsumerWidget {
                                   _SummaryChip(
                                     label: '待同步',
                                     value: controller.pendingCount.toString(),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  _SummaryChip(
+                                    label: '可离线',
+                                    value: controller.offlineBookCount
+                                        .toString(),
                                   ),
                                 ],
                               ),
@@ -253,6 +263,14 @@ class BookshelfScreen extends ConsumerWidget {
                               : ref
                                     .read(apiClientProvider)
                                     .coverHeaders(auth.accessToken!),
+                          imageBytes: controller.offlineCoverForBook(book.id),
+                          isOfflineAvailable: controller.isBookCached(book.id),
+                          isDownloading: controller.isBookDownloading(book.id),
+                          onOfflinePressed: () => _toggleOfflineDownload(
+                            context,
+                            ref.read(bookshelfControllerProvider),
+                            book,
+                          ),
                           badge: book.format.toUpperCase(),
                           onTap: () => _openBook(
                             context,
@@ -383,6 +401,14 @@ class _BookshelfSearchScreenState extends ConsumerState<BookshelfSearchScreen> {
                               : ref
                                     .read(apiClientProvider)
                                     .coverHeaders(auth.accessToken!),
+                          imageBytes: controller.offlineCoverForBook(book.id),
+                          isOfflineAvailable: controller.isBookCached(book.id),
+                          isDownloading: controller.isBookDownloading(book.id),
+                          onOfflinePressed: () => _toggleOfflineDownload(
+                            context,
+                            ref.read(bookshelfControllerProvider),
+                            book,
+                          ),
                           badge: book.format.toUpperCase(),
                           onTap: () => _openBook(
                             context,
@@ -560,7 +586,13 @@ class _RecentReadingSection extends ConsumerWidget {
                           aspectRatio: 0.68,
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(12),
-                            child: accessToken == null
+                            child:
+                                controller.offlineCoverForBook(book.id) != null
+                                ? Image.memory(
+                                    controller.offlineCoverForBook(book.id)!,
+                                    fit: BoxFit.cover,
+                                  )
+                                : accessToken == null
                                 ? _BookFallback(title: book.title)
                                 : Image.network(
                                     ref
@@ -607,6 +639,56 @@ class _RecentReadingSection extends ConsumerWidget {
         ],
       ),
     );
+  }
+}
+
+Future<void> _toggleOfflineDownload(
+  BuildContext context,
+  BookshelfController controller,
+  BookSummary book,
+) async {
+  if (controller.isBookCached(book.id)) {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('删除离线下载？'),
+        content: Text('删除“${book.title}”的本地文件。在线书架中的书籍不会被删除。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('删除下载'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await controller.removeOfflineDownload(book.id);
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('已删除“${book.title}”的离线文件')));
+      }
+    }
+    return;
+  }
+
+  try {
+    await controller.downloadForOffline(book);
+    if (context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('“${book.title}”已可离线阅读')));
+    }
+  } catch (_) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(controller.error ?? '离线下载失败')));
+    }
   }
 }
 
@@ -933,6 +1015,10 @@ class _BookTile extends StatelessWidget {
     this.description,
     this.imageUrl,
     this.headers,
+    this.imageBytes,
+    required this.isOfflineAvailable,
+    required this.isDownloading,
+    required this.onOfflinePressed,
   });
 
   final String title;
@@ -943,6 +1029,10 @@ class _BookTile extends StatelessWidget {
   final String? description;
   final String? imageUrl;
   final Map<String, String>? headers;
+  final Uint8List? imageBytes;
+  final bool isOfflineAvailable;
+  final bool isDownloading;
+  final VoidCallback onOfflinePressed;
 
   @override
   Widget build(BuildContext context) {
@@ -982,7 +1072,12 @@ class _BookTile extends StatelessWidget {
                         ),
                       ],
                     ),
-                    child: imageUrl == null
+                    child: imageBytes != null
+                        ? ClipRRect(
+                            borderRadius: BorderRadius.circular(14),
+                            child: Image.memory(imageBytes!, fit: BoxFit.cover),
+                          )
+                        : imageUrl == null
                         ? _BookFallback(title: title)
                         : ClipRRect(
                             borderRadius: BorderRadius.circular(14),
@@ -1062,6 +1157,40 @@ class _BookTile extends StatelessWidget {
                           color: Colors.white,
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  right: 10,
+                  bottom: 10,
+                  child: Material(
+                    color: Colors.black.withValues(alpha: 0.58),
+                    shape: const CircleBorder(),
+                    child: InkWell(
+                      customBorder: const CircleBorder(),
+                      onTap: isDownloading ? null : onOfflinePressed,
+                      child: SizedBox(
+                        width: 34,
+                        height: 34,
+                        child: Center(
+                          child: isDownloading
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : Icon(
+                                  isOfflineAvailable
+                                      ? Icons.offline_pin_rounded
+                                      : Icons.download_for_offline_outlined,
+                                  size: 19,
+                                  color: Colors.white,
+                                ),
                         ),
                       ),
                     ),

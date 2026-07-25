@@ -7,6 +7,7 @@ import '../../data/models/book_models.dart';
 import '../../data/models/sync_models.dart';
 import '../../data/services/api_client.dart';
 import '../../data/services/offline_queue_service.dart';
+import '../../data/services/offline_book_cache_service.dart';
 import '../annotations/annotation_change_notifier.dart';
 import '../auth/auth_controller.dart';
 import 'models/annotation_anchor.dart';
@@ -21,6 +22,7 @@ final readerControllerProvider = ChangeNotifierProvider.autoDispose
         authController: ref.read(authControllerProvider),
         apiClient: ref.watch(apiClientProvider),
         offlineQueueService: ref.watch(offlineQueueServiceProvider),
+        offlineBookCacheService: ref.watch(offlineBookCacheServiceProvider),
         annotationChangeNotifier: ref.read(annotationChangeNotifierProvider),
       ),
     );
@@ -55,10 +57,12 @@ class ReaderController extends ChangeNotifier {
     required AuthController authController,
     required ApiClient apiClient,
     required OfflineQueueService offlineQueueService,
+    required OfflineBookCacheService offlineBookCacheService,
     required AnnotationChangeNotifier annotationChangeNotifier,
   }) : _authController = authController,
        _apiClient = apiClient,
        _offlineQueueService = offlineQueueService,
+       _offlineBookCacheService = offlineBookCacheService,
        _annotationChangeNotifier = annotationChangeNotifier {
     unawaited(load());
   }
@@ -68,6 +72,7 @@ class ReaderController extends ChangeNotifier {
   final AuthController _authController;
   final ApiClient _apiClient;
   final OfflineQueueService _offlineQueueService;
+  final OfflineBookCacheService _offlineBookCacheService;
   final AnnotationChangeNotifier _annotationChangeNotifier;
 
   BookDetail? detail;
@@ -161,6 +166,13 @@ class ReaderController extends ChangeNotifier {
     notifyListeners();
 
     try {
+      final userId = _authController.user?.id;
+      if (_authController.isOfflineMode &&
+          userId != null &&
+          await _offlineBookCacheService.isBookCached(userId, bookId)) {
+        await _loadOffline();
+        return;
+      }
       final loadedDetail = await _authController.runAuthorized(
         (accessToken) => _apiClient.getMyBook(accessToken, bookId),
       );
@@ -207,6 +219,8 @@ class ReaderController extends ChangeNotifier {
         pdfPageCount = loadedDetail.pdfPageCount ?? 0;
         pdfPageNumber = _parsePdfPage(initialLocation) ?? 1;
         pdfBytes = results[3] as Uint8List;
+        await _persistReaderState(progress: progress);
+        _authController.markServerReachable();
         return;
       }
 
@@ -255,12 +269,72 @@ class ReaderController extends ChangeNotifier {
         anchorJumpVersion += 1;
       }
       await openChapter(currentChapterIndex, persistProgress: false);
+      await _persistReaderState(progress: progress);
+      _authController.markServerReachable();
     } catch (caught) {
-      error = caught.toString();
+      if (caught is ApiException && caught.isNetworkFailure) {
+        _authController.markServerUnavailable();
+      }
+      try {
+        await _loadOffline();
+      } catch (_) {
+        error = '此书尚未下载，连接服务器后请先在书架中下载到本地。\n$caught';
+      }
     } finally {
       isLoading = false;
       notifyListeners();
     }
+  }
+
+  Future<void> _loadOffline() async {
+    final userId = _authController.user?.id;
+    if (userId == null) throw StateError('没有可用的本地用户');
+    final loadedDetail = await _offlineBookCacheService.loadDetail(
+      userId,
+      bookId,
+    );
+    if (loadedDetail == null) throw StateError('书籍未下载');
+    detail = loadedDetail;
+    annotations = await _offlineBookCacheService.loadAnnotations(
+      userId,
+      bookId,
+    );
+    annotations = [...annotations]
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    bookmarks = await _offlineBookCacheService.loadBookmarks(userId, bookId);
+    bookmarks = [...bookmarks]
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    final progress = await _offlineBookCacheService.loadProgress(
+      userId,
+      bookId,
+    );
+
+    if (loadedDetail.isPdf) {
+      pdfBytes = await _offlineBookCacheService.loadFile(userId, bookId);
+      if (pdfBytes == null) throw StateError('离线 PDF 文件不完整');
+      pdfPageCount = loadedDetail.pdfPageCount ?? 0;
+      final initialLocation =
+          initialAnchor ??
+          progress?.location ??
+          loadedDetail.manifest?['primaryLocation'] as String?;
+      pdfPageNumber = _parsePdfPage(initialLocation) ?? 1;
+      return;
+    }
+
+    content = await _offlineBookCacheService.loadContent(userId, bookId);
+    if (content == null || !loadedDetail.supportsStructuredReader) {
+      throw StateError('离线章节数据不完整');
+    }
+    final initialLocation = initialAnchor ?? progress?.location;
+    currentChapterIndex = await _resolveChapterIndex(initialLocation) ?? 0;
+    if (initialLocation != null && initialLocation.isNotEmpty) {
+      focusedAnchor = initialLocation;
+      _currentVisibleAnchor = AnnotationAnchor.parse(
+        initialLocation,
+      ).blockAnchor;
+      anchorJumpVersion += 1;
+    }
+    await openChapter(currentChapterIndex, persistProgress: false);
   }
 
   Future<void> openChapter(
@@ -428,6 +502,7 @@ class ReaderController extends ChangeNotifier {
       ];
     }
 
+    await _persistReaderState();
     notifyListeners();
   }
 
@@ -441,8 +516,8 @@ class ReaderController extends ChangeNotifier {
       updatedAt: DateTime.now().toUtc().toIso8601String(),
     );
 
-    final previous = bookmarks;
     bookmarks = bookmarks.where((item) => item.id != bookmark.id).toList();
+    await _persistReaderState();
     notifyListeners();
 
     try {
@@ -454,8 +529,6 @@ class ReaderController extends ChangeNotifier {
       );
       await _refreshBookmarks();
     } catch (_) {
-      bookmarks = previous;
-      notifyListeners();
       await _offlineQueueService.enqueue(
         PendingOperation(
           id: _localId('bookmark'),
@@ -465,6 +538,7 @@ class ReaderController extends ChangeNotifier {
         ),
       );
     }
+    await _persistReaderState();
   }
 
   Future<void> addHighlight({
@@ -546,6 +620,7 @@ class ReaderController extends ChangeNotifier {
     annotations = annotations
         .where((item) => item.id != annotation.id)
         .toList();
+    await _persistReaderState();
     notifyListeners();
 
     try {
@@ -571,6 +646,7 @@ class ReaderController extends ChangeNotifier {
         ),
       );
     }
+    await _persistReaderState();
   }
 
   void toggleUi() {
@@ -663,6 +739,7 @@ class ReaderController extends ChangeNotifier {
       optimistic,
       ...annotations.where((item) => item.id != optimistic.id),
     ]..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    await _persistReaderState();
     notifyListeners();
 
     try {
@@ -688,6 +765,7 @@ class ReaderController extends ChangeNotifier {
         ),
       );
     }
+    await _persistReaderState();
     notifyListeners();
   }
 
@@ -701,11 +779,28 @@ class ReaderController extends ChangeNotifier {
     _loadingChapters.add(index);
     notifyListeners();
     try {
+      final userId = _authController.user?.id;
+      if (userId != null) {
+        final local = await _offlineBookCacheService.loadChapter(
+          userId,
+          bookId,
+          index,
+        );
+        if (local != null) {
+          _chapterCache[index] = local;
+          unawaited(_prefetchImageResources(local));
+          return local;
+        }
+      }
       final chapter = await _authController.runAuthorized(
         (accessToken) =>
             _apiClient.getStructuredChapter(accessToken, bookId, index),
       );
       _chapterCache[index] = chapter;
+      if (userId != null &&
+          await _offlineBookCacheService.isBookCached(userId, bookId)) {
+        await _offlineBookCacheService.saveChapter(userId, bookId, chapter);
+      }
       unawaited(_prefetchImageResources(chapter));
       return chapter;
     } finally {
@@ -782,11 +877,33 @@ class ReaderController extends ChangeNotifier {
       loadingImageResourceIds.add(resourceId);
       notifyListeners();
       try {
+        final userId = _authController.user?.id;
+        if (userId != null) {
+          final local = await _offlineBookCacheService.loadResource(
+            userId,
+            bookId,
+            resourceId,
+          );
+          if (local != null) {
+            imageResourceBytes[resourceId] = local;
+            failedImageResourceIds.remove(resourceId);
+            continue;
+          }
+        }
         final bytes = await _authController.runAuthorized(
           (accessToken) =>
               _apiClient.downloadBookResource(accessToken, bookId, resourceId),
         );
         imageResourceBytes[resourceId] = bytes;
+        if (userId != null &&
+            await _offlineBookCacheService.isBookCached(userId, bookId)) {
+          await _offlineBookCacheService.saveResource(
+            userId,
+            bookId,
+            resourceId,
+            bytes,
+          );
+        }
         failedImageResourceIds.remove(resourceId);
       } catch (_) {
         failedImageResourceIds.add(resourceId);
@@ -835,6 +952,15 @@ class ReaderController extends ChangeNotifier {
         updatedAt: DateTime.now().toUtc().toIso8601String(),
       );
 
+      await _persistReaderState(
+        progress: ReadingProgressView(
+          bookId: bookId,
+          location: mutation.location,
+          progressPercent: mutation.progressPercent,
+          updatedAt: mutation.updatedAt,
+        ),
+      );
+
       try {
         await _authController.runAuthorized(
           (accessToken) =>
@@ -851,6 +977,18 @@ class ReaderController extends ChangeNotifier {
         );
       }
     });
+  }
+
+  Future<void> _persistReaderState({ReadingProgressView? progress}) async {
+    final userId = _authController.user?.id;
+    if (userId == null) return;
+    await _offlineBookCacheService.saveReaderState(
+      userId: userId,
+      bookId: bookId,
+      annotations: annotations,
+      bookmarks: bookmarks,
+      progress: progress,
+    );
   }
 
   String _localId(String prefix) =>

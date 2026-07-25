@@ -17,6 +17,7 @@ class ApiException implements Exception {
 
   bool get isUnauthorized => statusCode == 401;
   bool get isAuthenticationFailure => statusCode == 401 || statusCode == 403;
+  bool get isNetworkFailure => statusCode == null || statusCode! >= 500;
 
   @override
   String toString() => message;
@@ -583,6 +584,19 @@ class ApiClient {
       ),
     );
 
+    return Uint8List.fromList(data);
+  }
+
+  Future<Uint8List> downloadBookCover(String accessToken, int bookId) async {
+    final data = await _request<List<int>>(
+      () => _dio.get<List<int>>(
+        '/api/me/books/$bookId/cover',
+        options: Options(
+          headers: _headers(accessToken),
+          responseType: ResponseType.bytes,
+        ),
+      ),
+    );
     return Uint8List.fromList(data);
   }
 

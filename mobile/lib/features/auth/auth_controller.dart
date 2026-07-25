@@ -133,6 +133,24 @@ class AuthController extends ChangeNotifier {
     }
   }
 
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    _setWorking(true);
+    try {
+      await runAuthorized(
+        (token) => _apiClient.changeMyPassword(
+          token,
+          currentPassword: currentPassword,
+          newPassword: newPassword,
+        ),
+      );
+    } finally {
+      _setWorking(false);
+    }
+  }
+
   Future<void> uploadAvatar({
     String? filePath,
     Uint8List? fileBytes,

@@ -1,6 +1,7 @@
 package com.privatereader.books
 
 import com.privatereader.auth.UserPrincipal
+import jakarta.validation.Valid
 import org.springframework.core.io.Resource
 import org.springframework.http.CacheControl
 import org.springframework.http.ContentDisposition
@@ -9,7 +10,9 @@ import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
+import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import java.nio.charset.StandardCharsets
@@ -31,6 +34,19 @@ class ReaderBookController(
         @AuthenticationPrincipal principal: UserPrincipal,
         @PathVariable bookId: Long,
     ): BookDetailView = bookService.getAccessibleBook(principal.id, bookId)
+
+    @PatchMapping("/{bookId}/group")
+    fun updateBookGroup(
+        @AuthenticationPrincipal principal: UserPrincipal,
+        @PathVariable bookId: Long,
+        @RequestBody request: UpdateBookGroupRequest,
+    ): BookDetailView = bookService.updateAccessibleBookGroup(principal.id, bookId, request)
+
+    @PatchMapping("/groups")
+    fun renameBookGroup(
+        @AuthenticationPrincipal principal: UserPrincipal,
+        @Valid @RequestBody request: RenameBookGroupRequest,
+    ): RenameBookGroupResponse = bookService.renameAccessibleBookGroup(principal.id, request)
 
     // 阅读清单接口：返回插件生成的 manifest，用于旧阅读器和导航入口。
     @GetMapping("/{bookId}/content-manifest")

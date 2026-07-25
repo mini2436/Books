@@ -78,6 +78,20 @@ class BookshelfController extends ChangeNotifier {
     return groups;
   }
 
+  Map<String, List<BookSummary>> get groupedBooks {
+    final result = <String, List<BookSummary>>{};
+    for (final book in _books) {
+      final name = book.groupName?.trim();
+      result
+          .putIfAbsent(
+            name == null || name.isEmpty ? '未分组' : name,
+            () => <BookSummary>[],
+          )
+          .add(book);
+    }
+    return result;
+  }
+
   List<BookshelfFilterOption> get filterOptions => [
     const BookshelfFilterOption(key: bookshelfFilterAll, label: '全部书籍'),
     const BookshelfFilterOption(key: bookshelfFilterRead, label: '已读书籍'),
@@ -133,6 +147,79 @@ class BookshelfController extends ChangeNotifier {
       }
     }
     return null;
+  }
+
+  ReadingProgressView? progressFor(int bookId) => progressForBook(bookId);
+
+  Future<List<AnnotationView>> loadAnnotations(int bookId) async {
+    List<AnnotationView> annotations;
+    try {
+      annotations = await _authController.runAuthorized(
+        (accessToken) => _apiClient.listAnnotations(accessToken, bookId),
+      );
+    } catch (_) {
+      final userId = _authController.user?.id;
+      if (userId == null ||
+          !await _offlineBookCacheService.isBookCached(userId, bookId)) {
+        rethrow;
+      }
+      annotations = await _offlineBookCacheService.loadAnnotations(
+        userId,
+        bookId,
+      );
+    }
+    return annotations.where((item) => !item.deleted).toList()
+      ..sort((left, right) => right.updatedAt.compareTo(left.updatedAt));
+  }
+
+  Future<void> updateBookGroup(int bookId, String? groupName) async {
+    final normalized = groupName?.trim();
+    final updated = await _authController.runAuthorized(
+      (accessToken) => _apiClient.updateMyBookGroup(
+        accessToken,
+        bookId,
+        groupName: normalized == null || normalized.isEmpty ? null : normalized,
+      ),
+    );
+    _books = _books
+        .map(
+          (book) => book.id == bookId
+              ? book.copyWith(
+                  groupName: updated.groupName,
+                  clearGroup: updated.groupName == null,
+                )
+              : book,
+        )
+        .toList();
+    notifyListeners();
+  }
+
+  Future<int> renameGroup(String oldName, String newName) async {
+    final normalizedOldName = oldName.trim();
+    final normalizedNewName = newName.trim();
+    if (normalizedOldName == normalizedNewName) {
+      return 0;
+    }
+    final updatedBooks = await _authController.runAuthorized(
+      (accessToken) => _apiClient.renameMyBookGroup(
+        accessToken,
+        oldName: normalizedOldName,
+        newName: normalizedNewName,
+      ),
+    );
+    _books = _books
+        .map(
+          (book) => book.groupName?.trim() == normalizedOldName
+              ? book.copyWith(groupName: normalizedNewName)
+              : book,
+        )
+        .toList();
+    if (_selectedFilterKey ==
+        '$_bookshelfFilterGroupPrefix$normalizedOldName') {
+      _selectedFilterKey = '$_bookshelfFilterGroupPrefix$normalizedNewName';
+    }
+    notifyListeners();
+    return updatedBooks;
   }
 
   void setFilter(String key) {

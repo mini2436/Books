@@ -11,7 +11,7 @@ Private Reader turns ebooks scattered across computers, NAS storage, and family 
 ## Highlights
 
 - Shared family library with individual accounts and per-book access control
-- EPUB, TXT, and PDF import through compile-time format plugins
+- EPUB, TXT, PDF, CBZ, FB2, and MOBI import through compile-time format plugins
 - Flutter clients for Web, Windows, and Android/tablets
 - Progress, bookmarks, highlights, annotations, and an offline operation queue
 - Upload and NAS/directory scanning workflows
@@ -48,7 +48,7 @@ Flutter Web / Windows / Android
         Local storage / NAS
 ```
 
-The backend is a Kotlin 2.1 and Spring Boot 3.5 multi-module project. EPUB, TXT, and PDF support is integrated through compile-time plugins. The frontend is a shared Flutter application using Riverpod, GoRouter, and Dio.
+The backend is a Kotlin 2.1 and Spring Boot 3.5 multi-module project. EPUB, TXT, PDF, CBZ, FB2, and MOBI support is integrated through compile-time plugins. The frontend is a shared Flutter application using Riverpod, GoRouter, and Dio.
 
 ## Quick start
 

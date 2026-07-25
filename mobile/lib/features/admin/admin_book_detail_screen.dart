@@ -199,29 +199,39 @@ class _BookProfileCard extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            AspectRatio(
-              aspectRatio: 0.72,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(18),
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF5D3A22), Color(0xFF93633A)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                ),
-                child: imageUrl == null
-                    ? _DetailCoverFallback(title: title)
-                    : ClipRRect(
+            HeroMode(
+              enabled: !MediaQuery.of(context).disableAnimations,
+              child: Hero(
+                tag: 'admin-book-cover-$bookId',
+                transitionOnUserGestures: true,
+                child: Material(
+                  color: Colors.transparent,
+                  child: AspectRatio(
+                    aspectRatio: 0.72,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(18),
-                        child: Image.network(
-                          imageUrl,
-                          headers: headers,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) =>
-                              _DetailCoverFallback(title: title),
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF5D3A22), Color(0xFF93633A)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
                         ),
                       ),
+                      child: imageUrl == null
+                          ? _DetailCoverFallback(title: title)
+                          : ClipRRect(
+                              borderRadius: BorderRadius.circular(18),
+                              child: Image.network(
+                                imageUrl,
+                                headers: headers,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) =>
+                                    _DetailCoverFallback(title: title),
+                              ),
+                            ),
+                    ),
+                  ),
+                ),
               ),
             ),
             const SizedBox(height: 16),

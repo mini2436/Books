@@ -155,9 +155,10 @@ class BookService(
             // 查询全局角色可访问的全部书籍，每本书只取最新文件记录用于列表展示。
             return jdbcClient.sql(
                 """
-                select b.id, b.title, b.author, b.group_name, b.description, bf.plugin_id, bf.format, bf.source_type, bf.source_missing, b.updated_at
+                select b.id, b.title, b.author, ubg.group_name, b.description, bf.plugin_id, bf.format, bf.source_type, bf.source_missing, b.updated_at
                 from books b
                 join book_files bf on bf.book_id = b.id
+                left join user_book_groups ubg on ubg.book_id = b.id and ubg.user_id = :userId
                 where bf.id = (
                     select max(inner_bf.id) from book_files inner_bf
                     where inner_bf.book_id = b.id
@@ -165,6 +166,7 @@ class BookService(
                 order by b.updated_at desc, b.id desc
                 """.trimIndent(),
             )
+                .param("userId", userId)
                 .query { rs, _ -> rs.toBookView(granted = true) }
                 .list()
         }
@@ -172,10 +174,11 @@ class BookService(
         // 查询普通读者被显式授权的书籍列表，并带出最新文件信息。
         return jdbcClient.sql(
             """
-            select b.id, b.title, b.author, b.group_name, b.description, bf.plugin_id, bf.format, bf.source_type, bf.source_missing, b.updated_at
+            select b.id, b.title, b.author, ubg.group_name, b.description, bf.plugin_id, bf.format, bf.source_type, bf.source_missing, b.updated_at
             from books b
             join book_files bf on bf.book_id = b.id
             join user_book_access uba on uba.book_id = b.id and uba.user_id = :userId
+            left join user_book_groups ubg on ubg.book_id = b.id and ubg.user_id = :userId
             order by b.updated_at desc
             """.trimIndent(),
         )
@@ -267,8 +270,69 @@ class BookService(
 
     fun getAccessibleBook(userId: Long, bookId: Long): BookDetailView {
         require(hasAccess(userId, bookId)) { "Book access denied" }
-        return getBookDetail(bookId)
+        return getBookDetail(bookId).copy(groupName = findUserBookGroup(userId, bookId))
     }
+
+    @Transactional
+    fun updateAccessibleBookGroup(userId: Long, bookId: Long, request: UpdateBookGroupRequest): BookDetailView {
+        require(hasAccess(userId, bookId)) { "Book access denied" }
+        val normalizedGroupName = request.groupName?.trim()?.takeIf { it.isNotEmpty() }
+        if (normalizedGroupName == null) {
+            jdbcClient.sql(
+                "delete from user_book_groups where user_id = :userId and book_id = :bookId",
+            )
+                .param("userId", userId)
+                .param("bookId", bookId)
+                .update()
+        } else {
+            jdbcClient.sql(
+                """
+                insert into user_book_groups (user_id, book_id, group_name, updated_at)
+                values (:userId, :bookId, :groupName, :updatedAt)
+                on conflict (user_id, book_id) do update set
+                    group_name = excluded.group_name,
+                    updated_at = excluded.updated_at
+                """.trimIndent(),
+            )
+                .param("userId", userId)
+                .param("bookId", bookId)
+                .param("groupName", normalizedGroupName)
+                .param("updatedAt", Instant.now().toSqlTimestamp())
+                .update()
+        }
+        return getAccessibleBook(userId, bookId)
+    }
+
+    @Transactional
+    fun renameAccessibleBookGroup(userId: Long, request: RenameBookGroupRequest): RenameBookGroupResponse {
+        val oldName = request.oldName.trim()
+        val newName = request.newName.trim()
+        require(newName != UNGROUPED_LABEL) { "The reserved ungrouped name cannot be used" }
+        val updated = jdbcClient.sql(
+            """
+            update user_book_groups
+            set group_name = :newName, updated_at = :updatedAt
+            where user_id = :userId and group_name = :oldName
+            """.trimIndent(),
+        )
+            .param("newName", newName)
+            .param("updatedAt", Instant.now().toSqlTimestamp())
+            .param("userId", userId)
+            .param("oldName", oldName)
+            .update()
+        require(updated > 0) { "Book group was not found" }
+        return RenameBookGroupResponse(groupName = newName, updatedBooks = updated)
+    }
+
+    private fun findUserBookGroup(userId: Long, bookId: Long): String? =
+        jdbcClient.sql(
+            "select group_name from user_book_groups where user_id = :userId and book_id = :bookId",
+        )
+            .param("userId", userId)
+            .param("bookId", bookId)
+            .query(String::class.java)
+            .optional()
+            .orElse(null)
 
     fun getContentManifest(userId: Long, bookId: Long): Map<String, Any>? {
         require(hasAccess(userId, bookId)) { "Book access denied" }
@@ -429,7 +493,10 @@ class BookService(
     fun resolveMediaType(bookId: Long): MediaType {
         val format = resolveBookFileRef(bookId).format
         return when (format.lowercase()) {
+            "cbz" -> MediaType("application", "vnd.comicbook+zip")
             "epub" -> MediaType("application", "epub+zip")
+            "fb2" -> MediaType("application", "x-fictionbook+xml")
+            "mobi" -> MediaType("application", "x-mobipocket-ebook")
             "pdf" -> MediaType.APPLICATION_PDF
             "txt" -> MediaType.TEXT_PLAIN
             else -> MediaType.APPLICATION_OCTET_STREAM
@@ -714,7 +781,7 @@ class BookService(
         // 查询读者端书籍详情，包含最新文件、阅读清单和结构化正文状态。
         jdbcClient.sql(
             """
-            select b.id, b.title, b.author, b.description, bf.plugin_id, bf.format, f.source_type, f.source_missing,
+            select b.id, b.title, b.author, b.group_name, b.description, bf.plugin_id, bf.format, f.source_type, f.source_missing,
                    bf.manifest_json, bf.capabilities_json,
                    exists(
                        select 1 from book_content_versions bcv
@@ -755,6 +822,7 @@ class BookService(
             id = getLong("id"),
             title = getString("title"),
             author = getString("author"),
+            groupName = getString("group_name"),
             description = getString("description"),
             pluginId = getString("plugin_id"),
             format = getString("format"),
@@ -1270,6 +1338,7 @@ class BookService(
     )
 
     companion object {
+        private const val UNGROUPED_LABEL = "未分组"
         private const val STRUCTURED_CONTENT_MODEL = "UNIFIED_V1"
         private const val CONTENT_STATUS_READY = "READY"
         private const val CONTENT_STATUS_FAILED = "FAILED"

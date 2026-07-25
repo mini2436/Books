@@ -1,3 +1,5 @@
+name: reader
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -9,26 +11,46 @@ services:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U reader -d private_reader"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
 
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
 
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
     ports:
       - "5672:5672"
       - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 8s
+      timeout: 5s
+      retries: 12
 
   backend:
-    image: eclipse-temurin:21-jre
-    working_dir: /workspace/backend
-    command: sh -lc "java -jar /workspace/backend/app/build/libs/app-0.1.0.jar"
+    image: private-reader-backend:local
+    build:
+      context: ./backend
+      dockerfile: app/Dockerfile
+      args:
+        HTTP_PROXY: ${HTTP_PROXY:-http://host.docker.internal:10808}
+        HTTPS_PROXY: ${HTTPS_PROXY:-http://host.docker.internal:10808}
+        NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,::1,host.docker.internal,postgres,redis,rabbitmq}
     environment:
       SPRING_PROFILES_ACTIVE: docker
-      APP_STORAGE_ROOT: /workspace/storage
-      APP_SCAN_ROOT: /workspace/storage/nas
+      APP_STORAGE_ROOT: /app/storage
+      APP_SCAN_ROOT: /app/storage/nas
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/private_reader
       SPRING_DATASOURCE_USERNAME: reader
       SPRING_DATASOURCE_PASSWORD: reader
@@ -38,11 +60,14 @@ services:
       HTTPS_PROXY: ${HTTPS_PROXY:-http://host.docker.internal:10808}
       NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,::1,host.docker.internal,postgres,redis,rabbitmq}
     depends_on:
-      - postgres
-      - redis
-      - rabbitmq
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     volumes:
-      - ./:/workspace
+      - ./storage:/app/storage
     ports:
       - "8080:8080"
 

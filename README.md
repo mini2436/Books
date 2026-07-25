@@ -10,7 +10,7 @@
 
 ## 为什么做轻阅
 
-- **一个家庭书库**：集中管理 EPUB、TXT、PDF，不再依赖每台设备分别整理文件。
+- **一个家庭书库**：集中管理 EPUB、TXT、PDF、CBZ、FB2、MOBI，不再依赖每台设备分别整理文件。
 - **每个人有自己的阅读空间**：多人账号、逐书授权，阅读进度和笔记互不干扰。
 - **自己的数据自己保存**：后端、数据库和原始书籍均可部署在家庭服务器或 NAS 旁。
 - **一套界面覆盖多端**：Flutter 客户端目前可运行于 Web、Windows 和 Android，并针对平板/桌面宽屏布局适配。
@@ -21,7 +21,7 @@
 | 范围 | 已实现能力 |
 | --- | --- |
 | 家庭书库 | 上传书籍、NAS/目录扫描、封面与元数据、搜索、最近阅读、来源状态 |
-| 格式支持 | EPUB、TXT 统一正文；PDF 文件解析与内置 PDF 阅读能力 |
+| 格式支持 | EPUB、TXT、FB2、MOBI 统一正文；CBZ 漫画分页；PDF 固定版面阅读 |
 | 家庭账号 | 登录与会话恢复、管理员/普通成员、逐书授权、头像与个人设置 |
 | 阅读器 | 目录跳转、滚动/翻页、阅读进度、书签、自动滚动、响应式单栏/宽屏布局 |
 | 笔记 | 文本选择、划线、高亮、批注编辑、按书聚合的批注中心 |
@@ -67,13 +67,13 @@ flowchart LR
     API --> Redis[("Redis")]
     API --> MQ[("RabbitMQ")]
     API --> Storage["本地磁盘 / NAS"]
-    API --> Plugins["EPUB / TXT / PDF 插件"]
+    API --> Plugins["EPUB / TXT / PDF / CBZ / FB2 / MOBI 插件"]
 ```
 
 - 后端：Kotlin 2.1、Spring Boot 3.5、JDK 21
 - 客户端：Flutter / Dart、Riverpod、GoRouter、Dio
 - 数据与中间件：PostgreSQL 16、Redis 7、RabbitMQ 3
-- 书籍解析：编译期集成的 EPUB、TXT、PDF 格式插件
+- 书籍解析：编译期集成的 EPUB、TXT、PDF、CBZ、FB2、MOBI 格式插件
 - 构建路线：后端支持 JVM，并保留 GraalVM Native Image 配置
 
 ## 仓库结构

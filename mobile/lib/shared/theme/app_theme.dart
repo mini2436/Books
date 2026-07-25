@@ -6,6 +6,14 @@ import 'reader_theme_extension.dart';
 class AppTheme {
   AppTheme._();
 
+  static const _uiFontFamily = 'MiSans';
+  static const _uiFontFallback = <String>[
+    'Microsoft YaHei',
+    'PingFang SC',
+    'Noto Sans CJK SC',
+    'sans-serif',
+  ];
+
   static ThemeData build(ReaderPreferences preferences) {
     final palette = AppReaderPalette.resolve(preferences.themeMode);
     final brightness = preferences.themeMode == ReaderThemeMode.night
@@ -27,9 +35,13 @@ class AppTheme {
 
     return ThemeData(
       useMaterial3: true,
+      fontFamily: _uiFontFamily,
+      fontFamilyFallback: _uiFontFallback,
       colorScheme: colorScheme,
       scaffoldBackgroundColor: palette.background,
       textTheme: textTheme.apply(
+        fontFamily: _uiFontFamily,
+        fontFamilyFallback: _uiFontFallback,
         bodyColor: palette.ink,
         displayColor: palette.ink,
       ),
@@ -116,14 +128,21 @@ class AppTheme {
       ),
       segmentedButtonTheme: SegmentedButtonThemeData(
         style: ButtonStyle(
+          shape: const WidgetStatePropertyAll<OutlinedBorder>(StadiumBorder()),
+          visualDensity: VisualDensity.compact,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          padding: const WidgetStatePropertyAll(
+            EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          ),
+          minimumSize: const WidgetStatePropertyAll(Size(0, 42)),
           backgroundColor: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.selected)) {
               return palette.accent.withValues(alpha: 0.18);
             }
-            return palette.backgroundSoft;
+            return palette.ink.withValues(alpha: 0.055);
           }),
           foregroundColor: WidgetStatePropertyAll(palette.ink),
-          side: WidgetStatePropertyAll(BorderSide(color: palette.line)),
+          side: const WidgetStatePropertyAll(BorderSide.none),
         ),
       ),
     );

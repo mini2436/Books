@@ -313,7 +313,12 @@ class _AnnotationBookDetailScreenState
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _BookCover(book: group.book, width: 68, height: 96),
+                        _BookCover(
+                          book: group.book,
+                          width: 68,
+                          height: 96,
+                          heroTag: 'annotation-book-cover-${group.book.id}',
+                        ),
                         const SizedBox(width: 14),
                         Expanded(
                           child: Column(
@@ -516,7 +521,12 @@ class _AnnotationBookCard extends StatelessWidget {
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              _BookCover(book: group.book, width: 68, height: 96),
+              _BookCover(
+                book: group.book,
+                width: 68,
+                height: 96,
+                heroTag: 'annotation-book-cover-${group.book.id}',
+              ),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
@@ -626,11 +636,13 @@ class _BookCover extends ConsumerWidget {
     required this.book,
     required this.width,
     required this.height,
+    this.heroTag,
   });
 
   final BookSummary book;
   final double width;
   final double height;
+  final Object? heroTag;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -644,7 +656,7 @@ class _BookCover extends ConsumerWidget {
         ? null
         : ref.read(apiClientProvider).coverHeaders(auth.accessToken!);
 
-    return SizedBox(
+    final cover = SizedBox(
       width: width,
       height: height,
       child: DecoratedBox(
@@ -669,6 +681,14 @@ class _BookCover extends ConsumerWidget {
                 ),
               ),
       ),
+    );
+    if (heroTag == null || MediaQuery.of(context).disableAnimations) {
+      return cover;
+    }
+    return Hero(
+      tag: heroTag!,
+      transitionOnUserGestures: true,
+      child: Material(color: Colors.transparent, child: cover),
     );
   }
 }

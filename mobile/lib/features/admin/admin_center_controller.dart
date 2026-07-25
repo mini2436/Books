@@ -643,6 +643,24 @@ class AdminCenterController extends ChangeNotifier {
     }
   }
 
+  Future<void> resetUserPassword(AdminUserView user, String newPassword) async {
+    if (!canManageUsers ||
+        UserRole.fromValue(user.role) == UserRole.superAdmin) {
+      return;
+    }
+
+    await _runMutation(() async {
+      await _authController.runAuthorized(
+        (token) => _apiClient.resetUserPassword(
+          token,
+          user.id,
+          newPassword: newPassword,
+        ),
+      );
+      _notice = '已修改 ${user.username} 的密码';
+    });
+  }
+
   Future<void> updateAnnotationDeleted(
     AdminAnnotationView annotation,
     bool deleted,

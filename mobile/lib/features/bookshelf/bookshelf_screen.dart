@@ -5,42 +5,53 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/models/book_models.dart';
+import '../../data/models/sync_models.dart';
 import '../../shared/theme/reader_theme_extension.dart';
 import '../../shared/utils/responsive.dart';
+import '../../shared/widgets/centered_scale_dialog.dart';
 import '../auth/auth_controller.dart';
 import 'bookshelf_controller.dart';
 
-class BookshelfScreen extends ConsumerWidget {
+enum _ShelfView { all, groups }
+
+class BookshelfScreen extends ConsumerStatefulWidget {
   const BookshelfScreen({super.key});
 
-  static const double _phoneCoverAspectRatio = 0.64;
-  static const double _wideCoverAspectRatio = 0.68;
+  @override
+  ConsumerState<BookshelfScreen> createState() => _BookshelfScreenState();
+}
+
+class _BookshelfScreenState extends ConsumerState<BookshelfScreen> {
+  _ShelfView _view = _ShelfView.all;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final controller = ref.watch(bookshelfControllerProvider);
     final auth = ref.watch(authControllerProvider);
     final palette = AppReaderPalette.of(context);
-    final tablet = Responsive.isTablet(context);
-    final columns = tablet ? Responsive.bookshelfColumns(context) : 2;
-    const gridGap = 16.0;
-    final horizontalPadding = tablet ? 24.0 : 16.0;
-    final viewportWidth = MediaQuery.sizeOf(context).width;
-    final availableWidth =
-        viewportWidth - (horizontalPadding * 2) - (gridGap * (columns - 1));
-    final tileWidth = availableWidth / columns;
-    final coverAspectRatio = tablet
-        ? _wideCoverAspectRatio
-        : _phoneCoverAspectRatio;
-    final imageHeight = tileWidth / coverAspectRatio;
-    final tileHeight = imageHeight + (tablet ? 82 : 102);
-    final childAspectRatio = tileWidth / tileHeight;
-    final filteredBooks = controller.filteredBooks;
+    final accessToken = auth.accessToken;
+    final apiClient = ref.read(apiClientProvider);
+    final horizontalPadding = Responsive.usesWideLayout(context) ? 28.0 : 16.0;
+
+    String? coverUrl(BookSummary book) => accessToken == null
+        ? null
+        : apiClient.buildUrl('/api/me/books/${book.id}/cover');
+    final coverHeaders = accessToken == null
+        ? null
+        : apiClient.coverHeaders(accessToken);
+    final avatarVersion = auth.user?.avatarVersion;
+    final avatarUrl = auth.user?.hasAvatar == true && accessToken != null
+        ? apiClient.buildUrl(
+            avatarVersion == null
+                ? '/api/me/profile/avatar'
+                : '/api/me/profile/avatar?v=${Uri.encodeQueryComponent(avatarVersion)}',
+          )
+        : null;
 
     return Scaffold(
       body: SafeArea(
         child: RefreshIndicator(
-          onRefresh: () => ref.read(bookshelfControllerProvider).refresh(),
+          onRefresh: controller.refresh,
           child: CustomScrollView(
             physics: const BouncingScrollPhysics(
               parent: AlwaysScrollableScrollPhysics(),
@@ -49,142 +60,193 @@ class BookshelfScreen extends ConsumerWidget {
               SliverToBoxAdapter(
                 child: Padding(
                   padding: EdgeInsets.fromLTRB(
-                    Responsive.isTablet(context) ? 24 : 16,
-                    Responsive.isTablet(context) ? 24 : 18,
-                    Responsive.isTablet(context) ? 24 : 16,
+                    horizontalPadding,
+                    Responsive.usesWideLayout(context) ? 22 : 16,
+                    horizontalPadding,
                     12,
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  child: _ShelfHeader(
+                    initials: auth.user?.initials ?? 'PR',
+                    avatarUrl: avatarUrl,
+                    avatarHeaders: coverHeaders,
+                    bookCount: controller.books.length,
+                    pendingCount: controller.pendingCount,
+                    offlineBookCount: controller.offlineBookCount,
+                    isOfflineMode: controller.isOfflineMode,
+                    isLoading: controller.isLoading,
+                    onSearch: () => context.push('/search'),
+                    onRefresh: controller.refresh,
+                  ),
+                ),
+              ),
+              if (controller.error != null && controller.books.isNotEmpty)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      horizontalPadding,
+                      0,
+                      horizontalPadding,
+                      14,
+                    ),
+                    child: _BookshelfErrorBanner(
+                      message: controller.error!,
+                      onRetry: controller.isLoading ? null : controller.refresh,
+                    ),
+                  ),
+                ),
+              if (controller.recentBooks.isNotEmpty) ...[
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      horizontalPadding,
+                      8,
+                      horizontalPadding,
+                      10,
+                    ),
+                    child: _SectionHeading(
+                      title: '最近阅读',
+                      detail: '${controller.recentBooks.length} 本',
+                    ),
+                  ),
+                ),
+                SliverToBoxAdapter(
+                  child: SizedBox(
+                    height: 154,
+                    child: ListView.separated(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: horizontalPadding,
+                      ),
+                      scrollDirection: Axis.horizontal,
+                      itemCount: controller.recentBooks.length,
+                      separatorBuilder: (_, _) => const SizedBox(width: 14),
+                      itemBuilder: (context, index) {
+                        final book = controller.recentBooks[index];
+                        return _RecentBookItem(
+                          book: book,
+                          progress: controller.progressFor(book.id),
+                          imageUrl: coverUrl(book),
+                          imageBytes: controller.offlineCoverForBook(book.id),
+                          headers: coverHeaders,
+                          heroTag: 'book-cover-recent-${book.id}',
+                          frameHeroTag: 'book-frame-recent-${book.id}',
+                          onTap: () => _showBookDetails(
+                            context,
+                            book: book,
+                            controller: controller,
+                            imageUrl: coverUrl(book),
+                            imageBytes: controller.offlineCoverForBook(book.id),
+                            headers: coverHeaders,
+                            heroTag: 'book-cover-recent-${book.id}',
+                            frameHeroTag: 'book-frame-recent-${book.id}',
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ],
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    horizontalPadding,
+                    controller.recentBooks.isEmpty ? 10 : 24,
+                    horizontalPadding,
+                    14,
+                  ),
+                  child: Row(
                     children: [
-                      Row(
-                        children: [
-                          SizedBox(
-                            width: 44,
-                            height: 44,
-                            child: Material(
-                              color: palette.accent.withValues(alpha: 0.12),
-                              shape: const CircleBorder(),
-                              clipBehavior: Clip.antiAlias,
-                              child:
-                                  auth.user?.hasAvatar == true &&
-                                      auth.accessToken != null
-                                  ? Image.network(
-                                      ref
-                                          .read(apiClientProvider)
-                                          .buildUrl('/api/me/profile/avatar'),
-                                      key: ValueKey(auth.user?.avatarVersion),
-                                      headers: ref
-                                          .read(apiClientProvider)
-                                          .coverHeaders(auth.accessToken!),
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (_, _, _) => Center(
-                                        child: Text(
-                                          auth.user?.initials ?? 'PR',
-                                        ),
-                                      ),
-                                    )
-                                  : Center(
-                                      child: Text(auth.user?.initials ?? 'PR'),
-                                    ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '书架',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .headlineSmall
-                                      ?.copyWith(fontWeight: FontWeight.w700),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  controller.isOfflineMode
-                                      ? '离线模式 · 正在使用本地书库'
-                                      : '服务：${controller.serviceBaseUrl}',
-                                  style: Theme.of(context).textTheme.bodySmall
-                                      ?.copyWith(color: palette.inkTertiary),
-                                ),
-                              ],
-                            ),
-                          ),
-                          IconButton(
-                            onPressed: controller.isLoading
-                                ? null
-                                : () => ref
-                                      .read(bookshelfControllerProvider)
-                                      .refresh(),
-                            icon: const Icon(Icons.refresh),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          Expanded(
-                            child: SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              physics: const BouncingScrollPhysics(),
-                              child: Row(
-                                children: [
-                                  _SummaryChip(
-                                    label: '藏书',
-                                    value: controller.books.length.toString(),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  _SummaryChip(
-                                    label: '待同步',
-                                    value: controller.pendingCount.toString(),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  _SummaryChip(
-                                    label: '可离线',
-                                    value: controller.offlineBookCount
-                                        .toString(),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          SizedBox(
-                            width: tablet ? 260 : 156,
-                            child: _BookshelfSearchButton(
-                              onTap: () => context.push('/search'),
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (controller.error != null) ...[
-                        const SizedBox(height: 14),
-                        _BookshelfErrorBanner(
-                          message: controller.error!,
-                          onRetry: controller.isLoading
-                              ? null
-                              : () => ref
-                                    .read(bookshelfControllerProvider)
-                                    .refresh(),
+                      Expanded(
+                        child: _SectionHeading(
+                          title: _view == _ShelfView.all ? '全部书籍' : '书籍分组',
+                          detail: _view == _ShelfView.all
+                              ? controller.filteredBooks.length ==
+                                        controller.books.length
+                                    ? '${controller.books.length} 本'
+                                    : '${controller.filteredBooks.length}/${controller.books.length} 本'
+                              : '${controller.groupedBooks.length} 个分组',
                         ),
-                      ],
+                      ),
+                      SegmentedButton<_ShelfView>(
+                        showSelectedIcon: false,
+                        segments: const [
+                          ButtonSegment(
+                            value: _ShelfView.all,
+                            icon: Icon(Icons.grid_view_rounded, size: 18),
+                            label: Text('全部'),
+                          ),
+                          ButtonSegment(
+                            value: _ShelfView.groups,
+                            icon: Icon(Icons.folder_copy_outlined, size: 18),
+                            label: Text('分组'),
+                          ),
+                        ],
+                        selected: {_view},
+                        onSelectionChanged: (value) => setState(() {
+                          _view = value.first;
+                        }),
+                      ),
                     ],
                   ),
                 ),
               ),
-              if (controller.recentBooks.isNotEmpty)
+              if (_view == _ShelfView.all &&
+                  controller.filterOptions.length > 1)
                 SliverToBoxAdapter(
-                  child: _RecentReadingSection(
-                    books: controller.recentBooks,
-                    controller: controller,
-                    accessToken: auth.accessToken,
-                    onOpenBook: (bookId) => _openBook(
-                      context,
-                      ref.read(bookshelfControllerProvider),
-                      bookId,
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      horizontalPadding,
+                      0,
+                      horizontalPadding,
+                      18,
+                    ),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final isPrimaryFilterSet =
+                            controller.filterOptions.length == 3;
+                        final selector = SegmentedButton<String>(
+                          showSelectedIcon: false,
+                          expandedInsets: isPrimaryFilterSet
+                              ? EdgeInsets.zero
+                              : null,
+                          segments: controller.filterOptions
+                              .map(
+                                (option) => ButtonSegment<String>(
+                                  value: option.key,
+                                  icon: Icon(
+                                    option.key == bookshelfFilterAll
+                                        ? Icons.apps_rounded
+                                        : option.key == bookshelfFilterRead
+                                        ? Icons.check_circle_outline_rounded
+                                        : option.key == bookshelfFilterUnread
+                                        ? Icons.schedule_rounded
+                                        : Icons.folder_outlined,
+                                    size: 17,
+                                  ),
+                                  label: Text(option.label),
+                                ),
+                              )
+                              .toList(),
+                          selected: {controller.selectedFilterKey},
+                          onSelectionChanged: (selection) =>
+                              controller.setFilter(selection.first),
+                        );
+                        if (!isPrimaryFilterSet) {
+                          return SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: selector,
+                          );
+                        }
+                        final selectorWidth = constraints.maxWidth > 480
+                            ? 480.0
+                            : constraints.maxWidth;
+                        return Align(
+                          alignment: Alignment.centerLeft,
+                          child: SizedBox(
+                            width: selectorWidth,
+                            child: selector,
+                          ),
+                        );
+                      },
                     ),
                   ),
                 ),
@@ -198,9 +260,7 @@ class BookshelfScreen extends ConsumerWidget {
                   hasScrollBody: false,
                   child: _BookshelfEmptyState(
                     message: controller.error!,
-                    onRetry: controller.isLoading
-                        ? null
-                        : () => ref.read(bookshelfControllerProvider).refresh(),
+                    onRetry: controller.isLoading ? null : controller.refresh,
                   ),
                 )
               else if (controller.books.isEmpty)
@@ -215,81 +275,152 @@ class BookshelfScreen extends ConsumerWidget {
                     ),
                   ),
                 )
-              else ...[
-                SliverToBoxAdapter(
-                  child: _AllBooksHeader(
-                    horizontalPadding: horizontalPadding,
-                    selectedFilterKey: controller.selectedFilterKey,
-                    options: controller.filterOptions,
-                    onFilterChanged: controller.setFilter,
-                  ),
-                ),
-                if (filteredBooks.isEmpty)
-                  SliverToBoxAdapter(
-                    child: SizedBox(
-                      height: 180,
-                      child: Center(
-                        child: Text(
-                          '当前筛选下没有书籍',
-                          style: Theme.of(context).textTheme.bodyLarge
-                              ?.copyWith(color: palette.inkSecondary),
+              else if (_view == _ShelfView.all)
+                controller.filteredBooks.isEmpty
+                    ? SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: Center(
+                          child: Text(
+                            '当前筛选下没有书籍',
+                            style: Theme.of(context).textTheme.bodyLarge
+                                ?.copyWith(color: palette.inkSecondary),
+                          ),
                         ),
-                      ),
-                    ),
-                  )
-                else
-                  SliverPadding(
-                    padding: EdgeInsets.fromLTRB(
-                      horizontalPadding,
-                      8,
-                      horizontalPadding,
-                      24,
-                    ),
-                    sliver: SliverGrid(
-                      delegate: SliverChildBuilderDelegate((context, index) {
-                        final book = filteredBooks[index];
-                        return _BookTile(
-                          title: book.title,
-                          author: book.author,
-                          description: book.description,
-                          coverAspectRatio: coverAspectRatio,
-                          imageUrl: auth.accessToken == null
-                              ? null
-                              : ref
-                                    .read(apiClientProvider)
-                                    .buildUrl('/api/me/books/${book.id}/cover'),
-                          headers: auth.accessToken == null
-                              ? null
-                              : ref
-                                    .read(apiClientProvider)
-                                    .coverHeaders(auth.accessToken!),
-                          imageBytes: controller.offlineCoverForBook(book.id),
-                          isOfflineAvailable: controller.isBookCached(book.id),
-                          isDownloading: controller.isBookDownloading(book.id),
-                          onOfflinePressed: () => _toggleOfflineDownload(
-                            context,
-                            ref.read(bookshelfControllerProvider),
-                            book,
-                          ),
-                          badge: book.format.toUpperCase(),
-                          onTap: () => _openBook(
-                            context,
-                            ref.read(bookshelfControllerProvider),
-                            book.id,
-                          ),
-                        );
-                      }, childCount: filteredBooks.length),
-                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: columns,
-                        crossAxisSpacing: gridGap,
-                        mainAxisSpacing: gridGap,
-                        childAspectRatio: childAspectRatio,
-                      ),
-                    ),
-                  ),
-              ],
+                      )
+                    : _buildBookGrid(
+                        context,
+                        controller: controller,
+                        books: controller.filteredBooks,
+                        horizontalPadding: horizontalPadding,
+                        coverUrl: coverUrl,
+                        coverHeaders: coverHeaders,
+                      )
+              else
+                _buildGroupGrid(
+                  context,
+                  controller: controller,
+                  groups: controller.groupedBooks,
+                  horizontalPadding: horizontalPadding,
+                  coverUrl: coverUrl,
+                  coverHeaders: coverHeaders,
+                ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBookGrid(
+    BuildContext context, {
+    required BookshelfController controller,
+    required List<BookSummary> books,
+    required double horizontalPadding,
+    required String? Function(BookSummary) coverUrl,
+    required Map<String, String>? coverHeaders,
+  }) {
+    return SliverPadding(
+      padding: EdgeInsets.fromLTRB(horizontalPadding, 0, horizontalPadding, 28),
+      sliver: SliverGrid(
+        delegate: SliverChildBuilderDelegate((context, index) {
+          final book = books[index];
+          return _BookTile(
+            book: book,
+            imageUrl: coverUrl(book),
+            imageBytes: controller.offlineCoverForBook(book.id),
+            headers: coverHeaders,
+            isOfflineAvailable: controller.isBookCached(book.id),
+            isDownloading: controller.isBookDownloading(book.id),
+            onOfflinePressed: () =>
+                _toggleOfflineDownload(context, controller, book),
+            heroTag: 'book-cover-grid-${book.id}',
+            frameHeroTag: 'book-frame-grid-${book.id}',
+            onTap: () => _showBookDetails(
+              context,
+              book: book,
+              controller: controller,
+              imageUrl: coverUrl(book),
+              imageBytes: controller.offlineCoverForBook(book.id),
+              headers: coverHeaders,
+              heroTag: 'book-cover-grid-${book.id}',
+              frameHeroTag: 'book-frame-grid-${book.id}',
+            ),
+          );
+        }, childCount: books.length),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: Responsive.bookshelfColumns(context),
+          crossAxisSpacing: Responsive.usesWideLayout(context) ? 18 : 14,
+          mainAxisSpacing: Responsive.usesWideLayout(context) ? 20 : 16,
+          childAspectRatio: 0.58,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGroupGrid(
+    BuildContext context, {
+    required BookshelfController controller,
+    required Map<String, List<BookSummary>> groups,
+    required double horizontalPadding,
+    required String? Function(BookSummary) coverUrl,
+    required Map<String, String>? coverHeaders,
+  }) {
+    final entries = groups.entries.toList()
+      ..sort((left, right) {
+        if (left.key == '未分组') return 1;
+        if (right.key == '未分组') return -1;
+        return left.key.compareTo(right.key);
+      });
+    final width = MediaQuery.sizeOf(context).width;
+    final columns = width >= 1280
+        ? 6
+        : width >= 900
+        ? 4
+        : width >= 600
+        ? 3
+        : 2;
+
+    return SliverPadding(
+      padding: EdgeInsets.fromLTRB(horizontalPadding, 0, horizontalPadding, 28),
+      sliver: SliverGrid(
+        delegate: SliverChildBuilderDelegate((context, index) {
+          final entry = entries[index];
+          final frameHeroTag = 'book-group-frame-${entry.key}';
+          final titleHeroTag = 'book-group-title-${entry.key}';
+          return _GroupFolderTile(
+            name: entry.key,
+            books: entry.value,
+            imageUrlFor: coverUrl,
+            headers: coverHeaders,
+            frameHeroTag: frameHeroTag,
+            titleHeroTag: titleHeroTag,
+            onEdit: entry.key == '未分组'
+                ? null
+                : () async {
+                    await _showRenameGroupDialog(
+                      context,
+                      name: entry.key,
+                      controller: controller,
+                    );
+                  },
+            onTap: () async {
+              await _showGroupFolder(
+                context,
+                name: entry.key,
+                controller: controller,
+                imageUrlFor: coverUrl,
+                headers: coverHeaders,
+                frameHeroTag: frameHeroTag,
+                titleHeroTag: titleHeroTag,
+              );
+            },
+          );
+        }, childCount: entries.length),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: columns,
+          crossAxisSpacing: 20,
+          mainAxisSpacing: 22,
+          childAspectRatio: 1.02,
         ),
       ),
     );
@@ -305,26 +436,26 @@ class BookshelfSearchScreen extends ConsumerStatefulWidget {
 }
 
 class _BookshelfSearchScreenState extends ConsumerState<BookshelfSearchScreen> {
+  final TextEditingController _searchController = TextEditingController();
   String _query = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final controller = ref.watch(bookshelfControllerProvider);
     final auth = ref.watch(authControllerProvider);
-    final tablet = Responsive.isTablet(context);
+    final apiClient = ref.read(apiClientProvider);
     final results = controller.searchBooks(_query);
-    final columns = tablet ? Responsive.bookshelfColumns(context) : 2;
-    const gridGap = 16.0;
-    final horizontalPadding = tablet ? 24.0 : 16.0;
-    final viewportWidth = MediaQuery.sizeOf(context).width;
-    final tileWidth =
-        (viewportWidth - (horizontalPadding * 2) - (gridGap * (columns - 1))) /
-        columns;
-    final coverAspectRatio = tablet
-        ? BookshelfScreen._wideCoverAspectRatio
-        : BookshelfScreen._phoneCoverAspectRatio;
-    final imageHeight = tileWidth / coverAspectRatio;
-    final tileHeight = imageHeight + (tablet ? 82 : 102);
+    final horizontalPadding = Responsive.usesWideLayout(context) ? 28.0 : 16.0;
+    final accessToken = auth.accessToken;
+    final headers = accessToken == null
+        ? null
+        : apiClient.coverHeaders(accessToken);
 
     return Scaffold(
       appBar: AppBar(title: const Text('搜索藏书')),
@@ -339,11 +470,25 @@ class _BookshelfSearchScreenState extends ConsumerState<BookshelfSearchScreen> {
                 horizontalPadding,
                 12,
               ),
-              child: _BookshelfSearchBar(
-                query: _query,
+              child: TextField(
+                controller: _searchController,
                 autofocus: true,
+                textInputAction: TextInputAction.search,
                 onChanged: (value) => setState(() => _query = value),
-                onClear: () => setState(() => _query = ''),
+                decoration: InputDecoration(
+                  hintText: '输入书名、作者、简介或分组',
+                  prefixIcon: const Icon(Icons.search_rounded),
+                  suffixIcon: _query.isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip: '清空',
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() => _query = '');
+                          },
+                          icon: const Icon(Icons.close_rounded),
+                        ),
+                ),
               ),
             ),
             if (_query.trim().isNotEmpty)
@@ -354,20 +499,28 @@ class _BookshelfSearchScreenState extends ConsumerState<BookshelfSearchScreen> {
                   horizontalPadding,
                   10,
                 ),
-                child: _SearchResultHint(
-                  query: _query,
-                  totalCount: controller.books.length,
-                  visibleCount: results.length,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    '找到 ${results.length} 本书',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppReaderPalette.of(context).inkSecondary,
+                    ),
+                  ),
                 ),
               ),
             Expanded(
               child: _query.trim().isEmpty
-                  ? const _SearchPrompt()
+                  ? const _SearchEmptyState(
+                      icon: Icons.manage_search_rounded,
+                      title: '搜索你的藏书',
+                      message: '输入书名、作者或简介关键词。',
+                    )
                   : results.isEmpty
-                  ? const _SearchPrompt(
+                  ? const _SearchEmptyState(
                       icon: Icons.search_off_rounded,
                       title: '没有找到匹配的书',
-                      message: '试试书名、作者或简介中的其他关键词。',
+                      message: '试试其他关键词或分组名。',
                     )
                   : GridView.builder(
                       padding: EdgeInsets.fromLTRB(
@@ -379,41 +532,44 @@ class _BookshelfSearchScreenState extends ConsumerState<BookshelfSearchScreen> {
                       physics: const BouncingScrollPhysics(),
                       itemCount: results.length,
                       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: columns,
-                        crossAxisSpacing: gridGap,
-                        mainAxisSpacing: gridGap,
-                        childAspectRatio: tileWidth / tileHeight,
+                        crossAxisCount: Responsive.bookshelfColumns(context),
+                        crossAxisSpacing: Responsive.usesWideLayout(context)
+                            ? 18
+                            : 14,
+                        mainAxisSpacing: Responsive.usesWideLayout(context)
+                            ? 20
+                            : 16,
+                        childAspectRatio: 0.58,
                       ),
                       itemBuilder: (context, index) {
                         final book = results[index];
+                        final imageUrl = accessToken == null
+                            ? null
+                            : apiClient.buildUrl(
+                                '/api/me/books/${book.id}/cover',
+                              );
+                        final heroTag = 'book-cover-search-${book.id}';
+                        final frameHeroTag = 'book-frame-search-${book.id}';
                         return _BookTile(
-                          title: book.title,
-                          author: book.author,
-                          description: book.description,
-                          coverAspectRatio: coverAspectRatio,
-                          imageUrl: auth.accessToken == null
-                              ? null
-                              : ref
-                                    .read(apiClientProvider)
-                                    .buildUrl('/api/me/books/${book.id}/cover'),
-                          headers: auth.accessToken == null
-                              ? null
-                              : ref
-                                    .read(apiClientProvider)
-                                    .coverHeaders(auth.accessToken!),
+                          book: book,
+                          imageUrl: imageUrl,
                           imageBytes: controller.offlineCoverForBook(book.id),
+                          headers: headers,
                           isOfflineAvailable: controller.isBookCached(book.id),
                           isDownloading: controller.isBookDownloading(book.id),
-                          onOfflinePressed: () => _toggleOfflineDownload(
+                          onOfflinePressed: () =>
+                              _toggleOfflineDownload(context, controller, book),
+                          heroTag: heroTag,
+                          frameHeroTag: frameHeroTag,
+                          onTap: () => _showBookDetails(
                             context,
-                            ref.read(bookshelfControllerProvider),
-                            book,
-                          ),
-                          badge: book.format.toUpperCase(),
-                          onTap: () => _openBook(
-                            context,
-                            ref.read(bookshelfControllerProvider),
-                            book.id,
+                            book: book,
+                            controller: controller,
+                            imageUrl: imageUrl,
+                            imageBytes: controller.offlineCoverForBook(book.id),
+                            headers: headers,
+                            heroTag: heroTag,
+                            frameHeroTag: frameHeroTag,
                           ),
                         );
                       },
@@ -426,11 +582,11 @@ class _BookshelfSearchScreenState extends ConsumerState<BookshelfSearchScreen> {
   }
 }
 
-class _SearchPrompt extends StatelessWidget {
-  const _SearchPrompt({
-    this.icon = Icons.manage_search_rounded,
-    this.title = '搜索你的藏书',
-    this.message = '输入书名、作者或简介关键词。',
+class _SearchEmptyState extends StatelessWidget {
+  const _SearchEmptyState({
+    required this.icon,
+    required this.title,
+    required this.message,
   });
 
   final IconData icon;
@@ -469,61 +625,251 @@ class _SearchPrompt extends StatelessWidget {
   }
 }
 
-class _AllBooksHeader extends StatelessWidget {
-  const _AllBooksHeader({
-    required this.horizontalPadding,
-    required this.selectedFilterKey,
-    required this.options,
-    required this.onFilterChanged,
+class _ShelfHeader extends StatelessWidget {
+  const _ShelfHeader({
+    required this.initials,
+    required this.avatarUrl,
+    required this.avatarHeaders,
+    required this.bookCount,
+    required this.pendingCount,
+    required this.offlineBookCount,
+    required this.isOfflineMode,
+    required this.isLoading,
+    required this.onSearch,
+    required this.onRefresh,
   });
 
-  final double horizontalPadding;
-  final String selectedFilterKey;
-  final List<BookshelfFilterOption> options;
-  final ValueChanged<String> onFilterChanged;
+  final String initials;
+  final String? avatarUrl;
+  final Map<String, String>? avatarHeaders;
+  final int bookCount;
+  final int pendingCount;
+  final int offlineBookCount;
+  final bool isOfflineMode;
+  final bool isLoading;
+  final VoidCallback onSearch;
+  final VoidCallback onRefresh;
 
   @override
   Widget build(BuildContext context) {
     final palette = AppReaderPalette.of(context);
-    return Padding(
-      padding: EdgeInsets.fromLTRB(horizontalPadding, 4, horizontalPadding, 6),
-      child: Row(
+    return Row(
+      children: [
+        SizedBox.square(
+          dimension: 42,
+          child: Material(
+            color: palette.accent.withValues(alpha: 0.12),
+            shape: const CircleBorder(),
+            clipBehavior: Clip.antiAlias,
+            child: avatarUrl == null
+                ? Center(
+                    child: Text(
+                      initials,
+                      style: TextStyle(color: palette.accent),
+                    ),
+                  )
+                : Image.network(
+                    avatarUrl!,
+                    key: ValueKey(avatarUrl),
+                    headers: avatarHeaders,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => Center(
+                      child: Text(
+                        initials,
+                        style: TextStyle(color: palette.accent),
+                      ),
+                    ),
+                  ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '书架',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                isOfflineMode
+                    ? '$bookCount 本藏书 · 离线模式 · $offlineBookCount 本可离线'
+                    : pendingCount == 0
+                    ? '$bookCount 本藏书 · $offlineBookCount 本可离线 · 已同步'
+                    : '$bookCount 本藏书 · $offlineBookCount 本可离线 · $pendingCount 项待同步',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: palette.inkSecondary),
+              ),
+            ],
+          ),
+        ),
+        IconButton(
+          tooltip: '搜索藏书',
+          onPressed: onSearch,
+          icon: const Icon(Icons.search_rounded),
+        ),
+        const SizedBox(width: 4),
+        IconButton.filledTonal(
+          tooltip: '刷新书架',
+          onPressed: isLoading ? null : onRefresh,
+          icon: isLoading
+              ? const SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.refresh_rounded),
+        ),
+      ],
+    );
+  }
+}
+
+class _SectionHeading extends StatelessWidget {
+  const _SectionHeading({required this.title, required this.detail});
+
+  final String title;
+  final String detail;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppReaderPalette.of(context);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          title,
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(width: 9),
+        Text(
+          detail,
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: palette.inkTertiary),
+        ),
+      ],
+    );
+  }
+}
+
+class _RecentBookItem extends StatelessWidget {
+  const _RecentBookItem({
+    required this.book,
+    required this.progress,
+    required this.onTap,
+    required this.heroTag,
+    required this.frameHeroTag,
+    this.imageUrl,
+    this.imageBytes,
+    this.headers,
+  });
+
+  final BookSummary book;
+  final ReadingProgressView? progress;
+  final VoidCallback onTap;
+  final Object heroTag;
+  final Object frameHeroTag;
+  final String? imageUrl;
+  final Uint8List? imageBytes;
+  final Map<String, String>? headers;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppReaderPalette.of(context);
+    final percent = (progress?.progressPercent ?? 0).clamp(0, 100).toDouble();
+    return SizedBox(
+      width: 244,
+      child: Stack(
+        fit: StackFit.expand,
         children: [
-          Expanded(
-            child: Text(
-              '全部书籍',
-              style: Theme.of(
-                context,
-              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-            ),
+          IgnorePointer(
+            child: _BookHeroFrame(heroTag: frameHeroTag, borderRadius: 14),
           ),
           Material(
-            color: palette.backgroundSoft,
-            borderRadius: BorderRadius.circular(14),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  value: selectedFilterKey,
-                  borderRadius: BorderRadius.circular(16),
-                  icon: const Icon(Icons.keyboard_arrow_down_rounded),
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: palette.ink,
-                    fontWeight: FontWeight.w700,
-                  ),
-                  items: options
-                      .map(
-                        (option) => DropdownMenuItem<String>(
-                          value: option.key,
-                          child: Text(option.label),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (value) {
-                    if (value != null) {
-                      onFilterChanged(value);
-                    }
-                  },
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(14),
+              child: Padding(
+                padding: const EdgeInsets.all(6),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 88,
+                      child: _BookCover(
+                        title: book.title,
+                        imageUrl: imageUrl,
+                        imageBytes: imageBytes,
+                        headers: headers,
+                        badge: book.format.toUpperCase(),
+                        heroTag: heroTag,
+                      ),
+                    ),
+                    const SizedBox(width: 13),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                book.title,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.bodyMedium
+                                    ?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                      height: 1.35,
+                                    ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                book.author ?? '未知作者',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(color: palette.inkSecondary),
+                              ),
+                            ],
+                          ),
+                          Text(
+                            '最后阅读 · ${_formatLastReadTime(progress?.updatedAt)}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.labelSmall
+                                ?.copyWith(color: palette.inkTertiary),
+                          ),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(99),
+                                child: LinearProgressIndicator(
+                                  value: percent / 100,
+                                  minHeight: 4,
+                                  backgroundColor: palette.line,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                '已读 ${percent.round()}%',
+                                style: Theme.of(context).textTheme.labelSmall
+                                    ?.copyWith(color: palette.inkTertiary),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -534,106 +880,314 @@ class _AllBooksHeader extends StatelessWidget {
   }
 }
 
-class _RecentReadingSection extends ConsumerWidget {
-  const _RecentReadingSection({
-    required this.books,
-    required this.controller,
-    required this.accessToken,
-    required this.onOpenBook,
+class _BookTile extends StatefulWidget {
+  const _BookTile({
+    required this.book,
+    required this.onTap,
+    this.heroTag,
+    this.frameHeroTag,
+    this.imageUrl,
+    this.imageBytes,
+    this.headers,
+    this.isOfflineAvailable = false,
+    this.isDownloading = false,
+    this.onOfflinePressed,
   });
 
-  final List<BookSummary> books;
-  final BookshelfController controller;
-  final String? accessToken;
-  final ValueChanged<int> onOpenBook;
+  final BookSummary book;
+  final VoidCallback onTap;
+  final Object? heroTag;
+  final Object? frameHeroTag;
+  final String? imageUrl;
+  final Uint8List? imageBytes;
+  final Map<String, String>? headers;
+  final bool isOfflineAvailable;
+  final bool isDownloading;
+  final VoidCallback? onOfflinePressed;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  State<_BookTile> createState() => _BookTileState();
+}
+
+class _BookTileState extends State<_BookTile> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
     final palette = AppReaderPalette.of(context);
-    final horizontalPadding = Responsive.isTablet(context) ? 24.0 : 16.0;
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: AnimatedScale(
+        scale: _hovered ? 1.025 : 1,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            IgnorePointer(
+              child: _BookHeroFrame(
+                heroTag: widget.frameHeroTag,
+                borderRadius: 12,
+              ),
+            ),
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: widget.onTap,
+                child: Padding(
+                  padding: const EdgeInsets.all(2),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(
+                        child: _BookCover(
+                          title: widget.book.title,
+                          imageUrl: widget.imageUrl,
+                          imageBytes: widget.imageBytes,
+                          headers: widget.headers,
+                          badge: widget.book.format.toUpperCase(),
+                          elevated: _hovered,
+                          heroTag: widget.heroTag,
+                          isOfflineAvailable: widget.isOfflineAvailable,
+                          isDownloading: widget.isDownloading,
+                          onOfflinePressed: widget.onOfflinePressed,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        widget.book.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          height: 1.3,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        widget.book.author ?? widget.book.format.toUpperCase(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: palette.inkTertiary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BookCover extends StatelessWidget {
+  const _BookCover({
+    required this.title,
+    this.imageUrl,
+    this.imageBytes,
+    this.headers,
+    this.badge,
+    this.elevated = false,
+    this.heroTag,
+    this.isOfflineAvailable = false,
+    this.isDownloading = false,
+    this.onOfflinePressed,
+  });
+
+  final String title;
+  final String? imageUrl;
+  final Uint8List? imageBytes;
+  final Map<String, String>? headers;
+  final String? badge;
+  final bool elevated;
+  final Object? heroTag;
+  final bool isOfflineAvailable;
+  final bool isDownloading;
+  final VoidCallback? onOfflinePressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final cover = AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(9),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: elevated ? 0.2 : 0.1),
+            blurRadius: elevated ? 18 : 9,
+            offset: Offset(0, elevated ? 8 : 4),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(9),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            DecoratedBox(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFF70472D), Color(0xFF9A6844)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              child: imageBytes != null
+                  ? Image.memory(imageBytes!, fit: BoxFit.cover)
+                  : imageUrl == null
+                  ? _BookFallback(title: title)
+                  : Image.network(
+                      imageUrl!,
+                      headers: headers,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => _BookFallback(title: title),
+                    ),
+            ),
+            if (badge != null)
+              Positioned(
+                top: 7,
+                right: 7,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.52),
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 3,
+                    ),
+                    child: Text(
+                      badge!,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            if (onOfflinePressed != null)
+              Positioned(
+                right: 7,
+                bottom: 7,
+                child: Material(
+                  color: Colors.black.withValues(alpha: 0.58),
+                  shape: const CircleBorder(),
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: isDownloading ? null : onOfflinePressed,
+                    child: SizedBox.square(
+                      dimension: 32,
+                      child: Center(
+                        child: isDownloading
+                            ? const SizedBox.square(
+                                dimension: 15,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : Icon(
+                                isOfflineAvailable
+                                    ? Icons.offline_pin_rounded
+                                    : Icons.download_for_offline_outlined,
+                                size: 18,
+                                color: Colors.white,
+                              ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (heroTag == null || MediaQuery.of(context).disableAnimations) {
+      return cover;
+    }
+    return Hero(
+      tag: heroTag!,
+      transitionOnUserGestures: true,
+      child: Material(color: Colors.transparent, child: cover),
+    );
+  }
+}
+
+class _BookHeroFrame extends StatelessWidget {
+  const _BookHeroFrame({
+    required this.heroTag,
+    required this.borderRadius,
+    this.dialog = false,
+  });
+
+  final Object? heroTag;
+  final double borderRadius;
+  final bool dialog;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppReaderPalette.of(context);
+    final frame = DecoratedBox(
+      decoration: BoxDecoration(
+        color: dialog ? palette.panel : Colors.transparent,
+        borderRadius: BorderRadius.circular(borderRadius),
+        border: dialog
+            ? Border.all(color: palette.line.withValues(alpha: 0.72))
+            : null,
+        boxShadow: dialog
+            ? [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.16),
+                  blurRadius: 36,
+                  offset: const Offset(0, 18),
+                ),
+              ]
+            : null,
+      ),
+    );
+    if (heroTag == null || MediaQuery.of(context).disableAnimations) {
+      return frame;
+    }
+    return Hero(
+      tag: heroTag!,
+      transitionOnUserGestures: true,
+      child: Material(color: Colors.transparent, child: frame),
+    );
+  }
+}
+
+class _BookFallback extends StatelessWidget {
+  const _BookFallback({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.fromLTRB(horizontalPadding, 4, 0, 18),
+      padding: const EdgeInsets.all(12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Container(width: 22, height: 2, color: Colors.white54),
+          const Spacer(),
           Text(
-            '最近阅读',
-            style: Theme.of(
-              context,
-            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            height: 210,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
-              padding: EdgeInsets.only(right: horizontalPadding),
-              itemCount: books.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 14),
-              itemBuilder: (context, index) {
-                final book = books[index];
-                final progress = controller.progressForBook(book.id);
-                return SizedBox(
-                  width: 112,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(14),
-                    onTap: () => onOpenBook(book.id),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        AspectRatio(
-                          aspectRatio: 0.68,
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child:
-                                controller.offlineCoverForBook(book.id) != null
-                                ? Image.memory(
-                                    controller.offlineCoverForBook(book.id)!,
-                                    fit: BoxFit.cover,
-                                  )
-                                : accessToken == null
-                                ? _BookFallback(title: book.title)
-                                : Image.network(
-                                    ref
-                                        .read(apiClientProvider)
-                                        .buildUrl(
-                                          '/api/me/books/${book.id}/cover',
-                                        ),
-                                    headers: ref
-                                        .read(apiClientProvider)
-                                        .coverHeaders(accessToken!),
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (_, _, _) =>
-                                        _BookFallback(title: book.title),
-                                  ),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          book.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(fontWeight: FontWeight.w700),
-                        ),
-                        const SizedBox(height: 5),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(999),
-                          child: LinearProgressIndicator(
-                            value:
-                                (progress?.progressPercent ?? 0).clamp(0, 100) /
-                                100,
-                            minHeight: 4,
-                            color: palette.accent,
-                            backgroundColor: palette.backgroundSoft,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
+            title,
+            maxLines: 4,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              height: 1.35,
             ),
           ),
         ],
@@ -641,6 +1195,524 @@ class _RecentReadingSection extends ConsumerWidget {
     );
   }
 }
+
+class _GroupFolderTile extends StatelessWidget {
+  const _GroupFolderTile({
+    required this.name,
+    required this.books,
+    required this.imageUrlFor,
+    required this.headers,
+    required this.frameHeroTag,
+    required this.titleHeroTag,
+    required this.onTap,
+    this.onEdit,
+  });
+
+  final String name;
+  final List<BookSummary> books;
+  final String? Function(BookSummary) imageUrlFor;
+  final Map<String, String>? headers;
+  final Object frameHeroTag;
+  final Object titleHeroTag;
+  final VoidCallback onTap;
+  final VoidCallback? onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppReaderPalette.of(context);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                _GroupFolderHeroFrame(heroTag: frameHeroTag, dialog: false),
+                Positioned.fill(
+                  top: 24,
+                  left: 12,
+                  right: 12,
+                  bottom: 12,
+                  child: _GroupCoverArtwork(
+                    books: books,
+                    imageUrlFor: imageUrlFor,
+                    headers: headers,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 9),
+          Row(
+            children: [
+              Expanded(
+                child: _GroupNameHero(
+                  name: name,
+                  heroTag: titleHeroTag,
+                  expanded: false,
+                ),
+              ),
+              if (onEdit != null)
+                IconButton(
+                  tooltip: '修改分组名称',
+                  onPressed: onEdit,
+                  visualDensity: VisualDensity.compact,
+                  constraints: const BoxConstraints.tightFor(
+                    width: 32,
+                    height: 32,
+                  ),
+                  padding: EdgeInsets.zero,
+                  icon: const Icon(Icons.edit_outlined, size: 18),
+                ),
+            ],
+          ),
+          Text(
+            '${books.length} 本书',
+            style: Theme.of(
+              context,
+            ).textTheme.labelSmall?.copyWith(color: palette.inkTertiary),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _formatLastReadTime(String? value) {
+  final parsed = value == null ? null : DateTime.tryParse(value)?.toLocal();
+  if (parsed == null) {
+    return '时间未知';
+  }
+  final now = DateTime.now();
+  final date = DateUtils.dateOnly(parsed);
+  final today = DateUtils.dateOnly(now);
+  final time =
+      '${parsed.hour.toString().padLeft(2, '0')}:${parsed.minute.toString().padLeft(2, '0')}';
+  if (date == today) {
+    return '今天 $time';
+  }
+  if (date == today.subtract(const Duration(days: 1))) {
+    return '昨天 $time';
+  }
+  if (parsed.year == now.year) {
+    return '${parsed.month}月${parsed.day}日 $time';
+  }
+  return '${parsed.year}年${parsed.month}月${parsed.day}日';
+}
+
+class _GroupNameHero extends StatelessWidget {
+  const _GroupNameHero({
+    required this.name,
+    required this.heroTag,
+    required this.expanded,
+  });
+
+  final String name;
+  final Object? heroTag;
+  final bool expanded;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final compactStyle = theme.textTheme.bodyMedium?.copyWith(
+      fontWeight: FontWeight.w700,
+    );
+    final expandedStyle = theme.textTheme.titleLarge?.copyWith(
+      fontWeight: FontWeight.w700,
+    );
+    final text = Text(
+      name,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: expanded ? expandedStyle : compactStyle,
+    );
+    if (heroTag == null || MediaQuery.of(context).disableAnimations) {
+      return text;
+    }
+    return Hero(
+      tag: heroTag!,
+      transitionOnUserGestures: true,
+      createRectTween: (begin, end) => RectTween(begin: begin, end: end),
+      flightShuttleBuilder:
+          (flightContext, animation, direction, fromContext, toContext) {
+            final beginStyle = direction == HeroFlightDirection.push
+                ? compactStyle
+                : expandedStyle;
+            final endStyle = direction == HeroFlightDirection.push
+                ? expandedStyle
+                : compactStyle;
+            return AnimatedBuilder(
+              animation: animation,
+              builder: (context, _) {
+                final progress = Curves.easeOutCubic.transform(animation.value);
+                return Material(
+                  color: Colors.transparent,
+                  child: Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle.lerp(beginStyle, endStyle, progress),
+                  ),
+                );
+              },
+            );
+          },
+      child: Material(color: Colors.transparent, child: text),
+    );
+  }
+}
+
+class _GroupFolderHeroFrame extends StatelessWidget {
+  const _GroupFolderHeroFrame({required this.heroTag, required this.dialog});
+
+  final Object? heroTag;
+  final bool dialog;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppReaderPalette.of(context);
+    final frame = Stack(
+      fit: StackFit.expand,
+      children: [
+        Positioned(
+          top: 0,
+          left: dialog ? 28 : 12,
+          child: Container(
+            width: dialog ? 96 : 72,
+            height: dialog ? 24 : 22,
+            decoration: BoxDecoration(
+              color: palette.accent.withValues(alpha: 0.22),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(10),
+              ),
+            ),
+          ),
+        ),
+        Positioned.fill(
+          top: dialog ? 14 : 12,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: dialog ? palette.panel : palette.backgroundSoft,
+              borderRadius: BorderRadius.circular(dialog ? 24 : 17),
+              border: dialog
+                  ? Border.all(color: palette.line.withValues(alpha: 0.72))
+                  : null,
+              boxShadow: dialog
+                  ? [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.16),
+                        blurRadius: 36,
+                        offset: const Offset(0, 18),
+                      ),
+                    ]
+                  : null,
+            ),
+          ),
+        ),
+      ],
+    );
+    if (heroTag == null || MediaQuery.of(context).disableAnimations) {
+      return frame;
+    }
+    return Hero(
+      tag: heroTag!,
+      transitionOnUserGestures: true,
+      createRectTween: (begin, end) => RectTween(begin: begin, end: end),
+      child: Material(color: Colors.transparent, child: frame),
+    );
+  }
+}
+
+class _GroupCoverArtwork extends StatelessWidget {
+  const _GroupCoverArtwork({
+    required this.books,
+    required this.imageUrlFor,
+    required this.headers,
+  });
+
+  final List<BookSummary> books;
+  final String? Function(BookSummary) imageUrlFor;
+  final Map<String, String>? headers;
+
+  @override
+  Widget build(BuildContext context) {
+    final visibleBooks = books.take(4).toList(growable: false);
+    return GridView.builder(
+      physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.zero,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 7,
+        mainAxisSpacing: 7,
+        childAspectRatio: 0.72,
+      ),
+      itemCount: visibleBooks.length,
+      itemBuilder: (_, index) => _cover(visibleBooks[index]),
+    );
+  }
+
+  Widget _cover(BookSummary book) => _BookCover(
+    title: book.title,
+    imageUrl: imageUrlFor(book),
+    headers: headers,
+  );
+}
+
+Future<void> _showRenameGroupDialog(
+  BuildContext context, {
+  required String name,
+  required BookshelfController controller,
+}) async {
+  final formKey = GlobalKey<FormState>();
+  final textController = TextEditingController(text: name)
+    ..selection = TextSelection(baseOffset: 0, extentOffset: name.length);
+
+  String? renamedGroup;
+  try {
+    renamedGroup = await showCenteredScaleDialog<String>(
+      context,
+      builder: (dialogContext) {
+        void submit() {
+          if (formKey.currentState?.validate() != true) {
+            return;
+          }
+          Navigator.of(dialogContext).pop(textController.text.trim());
+        }
+
+        return AlertDialog(
+          title: const Text('修改分组名称'),
+          content: SizedBox(
+            width: 360,
+            child: Form(
+              key: formKey,
+              child: TextFormField(
+                controller: textController,
+                autofocus: true,
+                maxLength: 120,
+                textInputAction: TextInputAction.done,
+                decoration: const InputDecoration(
+                  labelText: '分组名称',
+                  helperText: '使用已有名称会将两个分组合并',
+                ),
+                validator: (value) {
+                  final normalized = value?.trim() ?? '';
+                  if (normalized.isEmpty) {
+                    return '请输入分组名称';
+                  }
+                  if (normalized == '未分组') {
+                    return '“未分组”是系统保留名称';
+                  }
+                  return null;
+                },
+                onFieldSubmitted: (_) => submit(),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('取消'),
+            ),
+            FilledButton(onPressed: submit, child: const Text('保存')),
+          ],
+        );
+      },
+    );
+  } finally {
+    textController.dispose();
+  }
+
+  if (renamedGroup == null || renamedGroup == name || !context.mounted) {
+    return;
+  }
+  try {
+    final updatedBooks = await controller.renameGroup(name, renamedGroup);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('分组已改为“$renamedGroup”，更新 $updatedBooks 本书')),
+      );
+    }
+  } catch (error) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('分组重命名失败：$error')));
+    }
+  }
+}
+
+Future<void> _showGroupFolder(
+  BuildContext context, {
+  required String name,
+  required BookshelfController controller,
+  required String? Function(BookSummary) imageUrlFor,
+  required Map<String, String>? headers,
+  required Object frameHeroTag,
+  required Object titleHeroTag,
+}) {
+  final reduceMotion = MediaQuery.of(context).disableAnimations;
+  return Navigator.of(context).push<void>(
+    PageRouteBuilder<void>(
+      opaque: false,
+      barrierDismissible: true,
+      barrierLabel: '关闭分组',
+      barrierColor: Colors.black.withValues(alpha: 0.42),
+      transitionDuration: reduceMotion
+          ? Duration.zero
+          : const Duration(milliseconds: 280),
+      reverseTransitionDuration: reduceMotion
+          ? Duration.zero
+          : const Duration(milliseconds: 220),
+      pageBuilder: (dialogContext, _, _) {
+        final dialogHeight = (MediaQuery.sizeOf(dialogContext).height - 48)
+            .clamp(280.0, 680.0)
+            .toDouble();
+        return ListenableBuilder(
+          listenable: controller,
+          builder: (_, _) {
+            final visibleBooks =
+                controller.groupedBooks[name] ?? const <BookSummary>[];
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              insetPadding: const EdgeInsets.all(24),
+              child: SizedBox(
+                width: 880,
+                height: dialogHeight,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    _GroupFolderHeroFrame(
+                      heroTag: reduceMotion ? null : frameHeroTag,
+                      dialog: true,
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 30, 24, 24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _GroupNameHero(
+                                  name: name,
+                                  heroTag: reduceMotion ? null : titleHeroTag,
+                                  expanded: true,
+                                ),
+                              ),
+                              Text('${visibleBooks.length} 本'),
+                              const SizedBox(width: 8),
+                              IconButton(
+                                tooltip: '关闭',
+                                onPressed: () =>
+                                    Navigator.of(dialogContext).pop(),
+                                icon: const Icon(Icons.close_rounded),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 18),
+                          Expanded(
+                            child: LayoutBuilder(
+                              builder: (gridContext, constraints) {
+                                final columns = constraints.maxWidth >= 720
+                                    ? 6
+                                    : constraints.maxWidth >= 500
+                                    ? 4
+                                    : 3;
+                                return GridView.builder(
+                                  gridDelegate:
+                                      SliverGridDelegateWithFixedCrossAxisCount(
+                                        crossAxisCount: columns,
+                                        crossAxisSpacing: 16,
+                                        mainAxisSpacing: 18,
+                                        childAspectRatio: 0.58,
+                                      ),
+                                  itemCount: visibleBooks.length,
+                                  itemBuilder: (tileContext, index) {
+                                    final book = visibleBooks[index];
+                                    final coverHeroTag =
+                                        'book-cover-group-$name-${book.id}';
+                                    final frameHeroTag =
+                                        'book-frame-group-$name-${book.id}';
+                                    return _BookTile(
+                                      book: book,
+                                      imageUrl: imageUrlFor(book),
+                                      imageBytes: controller
+                                          .offlineCoverForBook(book.id),
+                                      headers: headers,
+                                      isOfflineAvailable: controller
+                                          .isBookCached(book.id),
+                                      isDownloading: controller
+                                          .isBookDownloading(book.id),
+                                      onOfflinePressed: () =>
+                                          _toggleOfflineDownload(
+                                            tileContext,
+                                            controller,
+                                            book,
+                                          ),
+                                      heroTag: coverHeroTag,
+                                      frameHeroTag: frameHeroTag,
+                                      onTap: () => _showBookDetails(
+                                        tileContext,
+                                        book: book,
+                                        controller: controller,
+                                        imageUrl: imageUrlFor(book),
+                                        imageBytes: controller
+                                            .offlineCoverForBook(book.id),
+                                        headers: headers,
+                                        heroTag: coverHeroTag,
+                                        frameHeroTag: frameHeroTag,
+                                        onReadRequested: (anchor) async {
+                                          if (dialogContext.mounted) {
+                                            Navigator.of(dialogContext).pop();
+                                          }
+                                          if (context.mounted) {
+                                            context.push(
+                                              _readerLocation(book, anchor),
+                                            );
+                                          }
+                                        },
+                                      ),
+                                    );
+                                  },
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+      transitionsBuilder: (_, animation, _, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: const Interval(0.12, 1, curve: Curves.easeOutCubic),
+          reverseCurve: Curves.easeInCubic,
+        );
+        return FadeTransition(opacity: curved, child: child);
+      },
+    ),
+  );
+}
+
+class _BookDialogResult {
+  const _BookDialogResult({this.anchor});
+  final String? anchor;
+}
+
+String _readerLocation(BookSummary book, String? anchor) =>
+    anchor == null || anchor.isEmpty
+    ? '/reader/${book.id}'
+    : '/reader/${book.id}?anchor=${Uri.encodeQueryComponent(anchor)}';
 
 Future<void> _toggleOfflineDownload(
   BuildContext context,
@@ -692,13 +1764,678 @@ Future<void> _toggleOfflineDownload(
   }
 }
 
-Future<void> _openBook(
-  BuildContext context,
-  BookshelfController controller,
-  int bookId,
-) async {
-  await context.push('/reader/$bookId');
-  await controller.refresh();
+Future<void> _showBookDetails(
+  BuildContext context, {
+  required BookSummary book,
+  required BookshelfController controller,
+  required String? imageUrl,
+  required Uint8List? imageBytes,
+  required Map<String, String>? headers,
+  Object? heroTag,
+  Object? frameHeroTag,
+  Future<void> Function(String? anchor)? onReadRequested,
+}) async {
+  final reduceMotion = MediaQuery.of(context).disableAnimations;
+  final result = await Navigator.of(context).push<_BookDialogResult>(
+    PageRouteBuilder<_BookDialogResult>(
+      opaque: false,
+      barrierDismissible: true,
+      barrierLabel: '关闭书籍详情',
+      barrierColor: Colors.black.withValues(alpha: 0.46),
+      transitionDuration: reduceMotion
+          ? Duration.zero
+          : const Duration(milliseconds: 360),
+      reverseTransitionDuration: reduceMotion
+          ? Duration.zero
+          : const Duration(milliseconds: 260),
+      pageBuilder: (dialogContext, _, _) => _BookDetailsDialog(
+        book: book,
+        controller: controller,
+        imageUrl: imageUrl,
+        imageBytes: imageBytes,
+        headers: headers,
+        heroTag: reduceMotion ? null : heroTag,
+        frameHeroTag: reduceMotion ? null : frameHeroTag,
+      ),
+      transitionsBuilder: (_, animation, _, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: const Interval(0.08, 1, curve: Curves.easeOutCubic),
+          reverseCurve: Curves.easeInCubic,
+        );
+        return FadeTransition(
+          opacity: curved,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0, 0.018),
+              end: Offset.zero,
+            ).animate(curved),
+            child: child,
+          ),
+        );
+      },
+    ),
+  );
+  if (result == null || !context.mounted) return;
+  final anchor = result.anchor;
+  if (onReadRequested != null) {
+    await onReadRequested(anchor);
+    return;
+  }
+  context.push(_readerLocation(book, anchor));
+}
+
+class _BookDetailsDialog extends StatefulWidget {
+  const _BookDetailsDialog({
+    required this.book,
+    required this.controller,
+    required this.imageUrl,
+    required this.imageBytes,
+    required this.headers,
+    required this.heroTag,
+    required this.frameHeroTag,
+  });
+
+  final BookSummary book;
+  final BookshelfController controller;
+  final String? imageUrl;
+  final Uint8List? imageBytes;
+  final Map<String, String>? headers;
+  final Object? heroTag;
+  final Object? frameHeroTag;
+
+  @override
+  State<_BookDetailsDialog> createState() => _BookDetailsDialogStateV2();
+}
+
+class _BookDetailsDialogStateV2 extends State<_BookDetailsDialog> {
+  static const _ungroupedSelection = '__ungrouped__';
+  static const _createGroupSelection = '__create_group__';
+
+  late final Future<List<AnnotationView>> _annotations;
+  late final TextEditingController _newGroupController;
+  late String _groupSelection;
+  String? _currentGroup;
+  bool _savingGroup = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _annotations = widget.controller.loadAnnotations(widget.book.id);
+    _currentGroup = widget.book.groupName?.trim();
+    if (_currentGroup?.isEmpty == true) _currentGroup = null;
+    _groupSelection = _currentGroup ?? _ungroupedSelection;
+    _newGroupController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _newGroupController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final screen = MediaQuery.sizeOf(context);
+    final wide = screen.width >= 780;
+    final compactHeight = screen.height < 720;
+    final dialogHeight = compactHeight ? screen.height * 0.95 : 650.0;
+    final contentPadding = wide ? 28.0 : 18.0;
+
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      insetPadding: EdgeInsets.symmetric(
+        horizontal: wide ? 32 : 12,
+        vertical: compactHeight ? 10 : 24,
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1040),
+        child: SizedBox(
+          height: dialogHeight,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Positioned.fill(
+                child: _BookHeroFrame(
+                  heroTag: widget.frameHeroTag,
+                  borderRadius: 26,
+                  dialog: true,
+                ),
+              ),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(26),
+                child: Padding(
+                  padding: EdgeInsets.all(contentPadding),
+                  child: wide
+                      ? Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            SizedBox(
+                              width: 282,
+                              child: _buildOverview(context),
+                            ),
+                            const SizedBox(width: 28),
+                            VerticalDivider(
+                              width: 1,
+                              color: AppReaderPalette.of(context).line,
+                            ),
+                            const SizedBox(width: 28),
+                            Expanded(child: _buildWorkspace(context)),
+                          ],
+                        )
+                      : Column(
+                          children: [
+                            SizedBox(
+                              height: compactHeight ? 158 : 182,
+                              child: _buildCompactOverview(context),
+                            ),
+                            Divider(
+                              height: 25,
+                              color: AppReaderPalette.of(context).line,
+                            ),
+                            Expanded(child: _buildWorkspace(context)),
+                          ],
+                        ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOverview(BuildContext context) {
+    final palette = AppReaderPalette.of(context);
+    final description = widget.book.description?.trim();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Align(
+          alignment: Alignment.center,
+          child: SizedBox(
+            width: 156,
+            height: 234,
+            child: _BookCover(
+              title: widget.book.title,
+              imageUrl: widget.imageUrl,
+              imageBytes: widget.imageBytes,
+              headers: widget.headers,
+              badge: widget.book.format.toUpperCase(),
+              elevated: true,
+              heroTag: widget.heroTag,
+            ),
+          ),
+        ),
+        const SizedBox(height: 22),
+        Text(
+          widget.book.title,
+          maxLines: 3,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w800,
+            height: 1.25,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          widget.book.author ?? '未知作者',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: palette.inkSecondary),
+        ),
+        const SizedBox(height: 14),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _MetaLabel(
+              icon: Icons.description_outlined,
+              text: widget.book.format.toUpperCase(),
+            ),
+            _MetaLabel(
+              icon: Icons.folder_outlined,
+              text: _currentGroup ?? '无分组',
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
+        Text(
+          '简介',
+          style: Theme.of(
+            context,
+          ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 8),
+        Expanded(
+          child: SingleChildScrollView(
+            child: Text(
+              description == null || description.isEmpty
+                  ? '暂无书籍简介'
+                  : description,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: palette.inkSecondary,
+                height: 1.65,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCompactOverview(BuildContext context) {
+    final palette = AppReaderPalette.of(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 104,
+          height: 156,
+          child: _BookCover(
+            title: widget.book.title,
+            imageUrl: widget.imageUrl,
+            imageBytes: widget.imageBytes,
+            headers: widget.headers,
+            badge: widget.book.format.toUpperCase(),
+            elevated: true,
+            heroTag: widget.heroTag,
+          ),
+        ),
+        const SizedBox(width: 18),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Text(
+                      widget.book.title,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        height: 1.2,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: '关闭',
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+              Text(
+                widget.book.author ?? '未知作者',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: palette.inkSecondary),
+              ),
+              const Spacer(),
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  _MetaLabel(
+                    icon: Icons.description_outlined,
+                    text: widget.book.format.toUpperCase(),
+                  ),
+                  _MetaLabel(
+                    icon: Icons.folder_outlined,
+                    text: _currentGroup ?? '无分组',
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildWorkspace(BuildContext context) {
+    final palette = AppReaderPalette.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              '批注',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(width: 9),
+            Text(
+              '点击即可定位到原文',
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: palette.inkTertiary),
+            ),
+            const Spacer(),
+            if (MediaQuery.sizeOf(context).width >= 780)
+              IconButton(
+                tooltip: '关闭',
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(Icons.close_rounded),
+              ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Expanded(child: _buildAnnotationList(context)),
+        Divider(height: 28, color: palette.line),
+        _buildGroupSelector(context),
+        const SizedBox(height: 18),
+        Row(
+          children: [
+            TextButton.icon(
+              onPressed: () => Navigator.of(context).pop(),
+              icon: const Icon(Icons.close_rounded),
+              label: const Text('关闭'),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(50),
+                ),
+                onPressed: () =>
+                    Navigator.of(context).pop(const _BookDialogResult()),
+                icon: const Icon(Icons.menu_book_rounded),
+                label: const Text('开始阅读'),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAnnotationList(BuildContext context) {
+    final palette = AppReaderPalette.of(context);
+    return FutureBuilder<List<AnnotationView>>(
+      future: _annotations,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Center(
+            child: Text(
+              '批注加载失败：${snapshot.error}',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: palette.inkSecondary),
+            ),
+          );
+        }
+        final annotations = snapshot.data ?? const [];
+        if (annotations.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.format_quote_rounded,
+                  size: 34,
+                  color: palette.inkTertiary,
+                ),
+                const SizedBox(height: 10),
+                Text('这本书还没有批注', style: TextStyle(color: palette.inkSecondary)),
+              ],
+            ),
+          );
+        }
+        return ListView.separated(
+          itemCount: annotations.length,
+          separatorBuilder: (_, _) => Divider(color: palette.line),
+          itemBuilder: (context, index) {
+            final annotation = annotations[index];
+            return ListTile(
+              dense: true,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+              leading: Icon(
+                Icons.format_quote_rounded,
+                color: _annotationColor(annotation, palette.accent),
+              ),
+              title: Text(
+                annotation.quoteText?.trim().isNotEmpty == true
+                    ? annotation.quoteText!
+                    : (annotation.noteText ?? '未命名批注'),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+              ),
+              subtitle: annotation.noteText?.trim().isNotEmpty == true
+                  ? Text(
+                      annotation.noteText!,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    )
+                  : null,
+              trailing: const Icon(Icons.arrow_forward_rounded, size: 18),
+              onTap: () => Navigator.of(
+                context,
+              ).pop(_BookDialogResult(anchor: annotation.anchor)),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildGroupSelector(BuildContext context) {
+    final palette = AppReaderPalette.of(context);
+    final existingGroups =
+        widget.controller.groupNames
+            .map((group) => group.trim())
+            .where((group) => group.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
+    final availableValues = <String>{
+      _ungroupedSelection,
+      _createGroupSelection,
+      ...existingGroups,
+    };
+    if (!availableValues.contains(_groupSelection)) {
+      _groupSelection = _currentGroup ?? _ungroupedSelection;
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '书籍分组',
+          style: Theme.of(
+            context,
+          ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 9),
+        DropdownButtonFormField<String>(
+          key: ValueKey('$_groupSelection-${existingGroups.join('|')}'),
+          initialValue: _groupSelection,
+          isExpanded: true,
+          borderRadius: BorderRadius.circular(14),
+          decoration: const InputDecoration(
+            prefixIcon: Icon(Icons.drive_file_move_outline),
+            isDense: true,
+          ),
+          items: [
+            const DropdownMenuItem(
+              value: _ungroupedSelection,
+              child: Text('无分组'),
+            ),
+            const DropdownMenuItem(
+              value: _createGroupSelection,
+              child: Text('新增分组…'),
+            ),
+            ...existingGroups.map(
+              (group) => DropdownMenuItem(value: group, child: Text(group)),
+            ),
+          ],
+          onChanged: _savingGroup
+              ? null
+              : (value) async {
+                  if (value == null) return;
+                  if (value == _createGroupSelection) {
+                    setState(() => _groupSelection = value);
+                    return;
+                  }
+                  await _applyGroup(
+                    value == _ungroupedSelection ? null : value,
+                  );
+                },
+        ),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 180),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          child: _groupSelection == _createGroupSelection
+              ? Padding(
+                  key: const ValueKey('new-group-input'),
+                  padding: const EdgeInsets.only(top: 10),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _newGroupController,
+                          autofocus: true,
+                          textInputAction: TextInputAction.done,
+                          decoration: const InputDecoration(
+                            hintText: '输入新分组名称',
+                            isDense: true,
+                          ),
+                          onSubmitted: (_) => _createGroup(),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      FilledButton(
+                        onPressed: _savingGroup ? null : _createGroup,
+                        child: _savingGroup
+                            ? const SizedBox.square(
+                                dimension: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text('创建并加入'),
+                      ),
+                    ],
+                  ),
+                )
+              : Padding(
+                  key: const ValueKey('group-hint'),
+                  padding: const EdgeInsets.only(top: 7),
+                  child: Text(
+                    '仅显示当前仍包含书籍的分组',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: palette.inkTertiary,
+                    ),
+                  ),
+                ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _createGroup() async {
+    final name = _newGroupController.text.trim();
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请输入分组名称')));
+      return;
+    }
+    await _applyGroup(name);
+    if (mounted) _newGroupController.clear();
+  }
+
+  Future<void> _applyGroup(String? groupName) async {
+    final normalized = groupName?.trim();
+    final nextGroup = normalized == null || normalized.isEmpty
+        ? null
+        : normalized;
+    if (nextGroup == _currentGroup) {
+      setState(() {
+        _groupSelection = nextGroup ?? _ungroupedSelection;
+      });
+      return;
+    }
+
+    setState(() => _savingGroup = true);
+    try {
+      await widget.controller.updateBookGroup(widget.book.id, nextGroup);
+      if (!mounted) return;
+      setState(() {
+        _currentGroup = nextGroup;
+        _groupSelection = nextGroup ?? _ungroupedSelection;
+      });
+      FocusScope.of(context).unfocus();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(nextGroup == null ? '已设为无分组' : '已加入“$nextGroup”'),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('分组更新失败：$error')));
+    } finally {
+      if (mounted) setState(() => _savingGroup = false);
+    }
+  }
+}
+
+class _MetaLabel extends StatelessWidget {
+  const _MetaLabel({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppReaderPalette.of(context);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: palette.backgroundSoft,
+        borderRadius: BorderRadius.circular(99),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: palette.inkSecondary),
+            const SizedBox(width: 5),
+            Text(
+              text,
+              style: Theme.of(
+                context,
+              ).textTheme.labelSmall?.copyWith(color: palette.inkSecondary),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+Color _annotationColor(AnnotationView annotation, Color fallback) {
+  final value = annotation.color;
+  if (value == null || !RegExp(r'^#[0-9a-fA-F]{6}$').hasMatch(value)) {
+    return fallback;
+  }
+  return Color(int.parse('FF${value.substring(1)}', radix: 16));
 }
 
 class _BookshelfErrorBanner extends StatelessWidget {
@@ -709,30 +2446,26 @@ class _BookshelfErrorBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
+    final colors = Theme.of(context).colorScheme;
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: colorScheme.errorContainer.withValues(alpha: 0.72),
-        borderRadius: BorderRadius.circular(16),
+        color: colors.errorContainer.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(Icons.wifi_off_rounded, color: colorScheme.onErrorContainer),
+            Icon(Icons.wifi_off_rounded, color: colors.onErrorContainer),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
                 message,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onErrorContainer,
-                  height: 1.45,
-                ),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: colors.onErrorContainer),
               ),
             ),
-            const SizedBox(width: 10),
             TextButton(onPressed: onRetry, child: const Text('重试')),
           ],
         ),
@@ -750,12 +2483,11 @@ class _BookshelfEmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = AppReaderPalette.of(context);
-
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 360),
+          constraints: const BoxConstraints(maxWidth: 380),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -767,510 +2499,25 @@ class _BookshelfEmptyState extends StatelessWidget {
               const SizedBox(height: 16),
               Text(
                 '书架暂时没加载出来',
-                textAlign: TextAlign.center,
                 style: Theme.of(
                   context,
                 ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 9),
               Text(
                 message,
                 textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: palette.inkSecondary,
-                  height: 1.5,
-                ),
+                style: TextStyle(color: palette.inkSecondary, height: 1.5),
               ),
               const SizedBox(height: 16),
-              if (onRetry != null)
-                FilledButton.icon(
-                  onPressed: onRetry,
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('重新加载'),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SummaryChip extends StatelessWidget {
-  const _SummaryChip({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = AppReaderPalette.of(context);
-
-    return SizedBox(
-      height: 56,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: palette.backgroundSoft,
-          borderRadius: BorderRadius.circular(18),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                label,
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(color: palette.inkSecondary),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                value,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              FilledButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('重新加载'),
               ),
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _BookshelfSearchButton extends StatelessWidget {
-  const _BookshelfSearchButton({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = AppReaderPalette.of(context);
-    return SizedBox(
-      height: 56,
-      child: Material(
-        color: palette.backgroundSoft,
-        borderRadius: BorderRadius.circular(18),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(18),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 15),
-            child: Row(
-              children: [
-                const Icon(Icons.search_rounded),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    '搜索藏书',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: palette.inkSecondary,
-                    ),
-                  ),
-                ),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  size: 18,
-                  color: palette.inkTertiary,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SearchResultHint extends StatelessWidget {
-  const _SearchResultHint({
-    required this.query,
-    required this.totalCount,
-    required this.visibleCount,
-  });
-
-  final String query;
-  final int totalCount;
-  final int visibleCount;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = AppReaderPalette.of(context);
-
-    return Row(
-      children: [
-        Icon(Icons.manage_search_rounded, size: 16, color: palette.inkTertiary),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Text(
-            '“$query” 共找到 $visibleCount / $totalCount 本',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: palette.inkTertiary),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _BookshelfSearchBar extends StatefulWidget {
-  const _BookshelfSearchBar({
-    required this.query,
-    required this.onChanged,
-    required this.onClear,
-    this.autofocus = false,
-  });
-
-  final String query;
-  final ValueChanged<String> onChanged;
-  final VoidCallback onClear;
-  final bool autofocus;
-
-  @override
-  State<_BookshelfSearchBar> createState() => _BookshelfSearchBarState();
-}
-
-class _BookshelfSearchBarState extends State<_BookshelfSearchBar> {
-  late final TextEditingController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(text: widget.query);
-  }
-
-  @override
-  void didUpdateWidget(covariant _BookshelfSearchBar oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.query == _controller.text) {
-      return;
-    }
-    _controller.value = TextEditingValue(
-      text: widget.query,
-      selection: TextSelection.collapsed(offset: widget.query.length),
-    );
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = AppReaderPalette.of(context);
-
-    return TextField(
-      controller: _controller,
-      autofocus: widget.autofocus,
-      onChanged: widget.onChanged,
-      textInputAction: TextInputAction.search,
-      decoration: InputDecoration(
-        hintText: '搜索书名、作者、简介',
-        prefixIcon: const Icon(Icons.search_rounded),
-        suffixIcon: widget.query.isEmpty
-            ? null
-            : IconButton(
-                onPressed: widget.onClear,
-                icon: const Icon(Icons.close_rounded),
-                tooltip: '清空搜索',
-              ),
-        filled: true,
-        fillColor: palette.backgroundSoft,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 18,
-          vertical: 14,
-        ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(18),
-          borderSide: BorderSide.none,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(18),
-          borderSide: BorderSide.none,
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(18),
-          borderSide: BorderSide(color: palette.accent.withValues(alpha: 0.28)),
-        ),
-      ),
-    );
-  }
-}
-
-class _BookTile extends StatelessWidget {
-  const _BookTile({
-    required this.title,
-    required this.badge,
-    required this.onTap,
-    required this.coverAspectRatio,
-    this.author,
-    this.description,
-    this.imageUrl,
-    this.headers,
-    this.imageBytes,
-    required this.isOfflineAvailable,
-    required this.isDownloading,
-    required this.onOfflinePressed,
-  });
-
-  final String title;
-  final String badge;
-  final VoidCallback onTap;
-  final double coverAspectRatio;
-  final String? author;
-  final String? description;
-  final String? imageUrl;
-  final Map<String, String>? headers;
-  final Uint8List? imageBytes;
-  final bool isOfflineAvailable;
-  final bool isDownloading;
-  final VoidCallback onOfflinePressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = AppReaderPalette.of(context);
-    final secondaryLine = (author ?? '').trim().isNotEmpty
-        ? author!.trim()
-        : badge;
-    final tertiaryLine = (description ?? '').trim();
-
-    return InkWell(
-      borderRadius: BorderRadius.circular(16),
-      onTap: onTap,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          AspectRatio(
-            aspectRatio: coverAspectRatio,
-            child: Stack(
-              children: [
-                Positioned.fill(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: Colors.black.withValues(alpha: 0.08),
-                      ),
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF6A4426), Color(0xFF2E221B)],
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.14),
-                          blurRadius: 18,
-                          offset: const Offset(0, 10),
-                        ),
-                      ],
-                    ),
-                    child: imageBytes != null
-                        ? ClipRRect(
-                            borderRadius: BorderRadius.circular(14),
-                            child: Image.memory(imageBytes!, fit: BoxFit.cover),
-                          )
-                        : imageUrl == null
-                        ? _BookFallback(title: title)
-                        : ClipRRect(
-                            borderRadius: BorderRadius.circular(14),
-                            child: Image.network(
-                              imageUrl!,
-                              headers: headers,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) =>
-                                  _BookFallback(title: title),
-                            ),
-                          ),
-                  ),
-                ),
-                Positioned(
-                  left: 0,
-                  top: 0,
-                  bottom: 0,
-                  child: IgnorePointer(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        borderRadius: const BorderRadius.horizontal(
-                          left: Radius.circular(14),
-                        ),
-                        gradient: LinearGradient(
-                          begin: Alignment.centerLeft,
-                          end: Alignment.centerRight,
-                          colors: [
-                            Colors.white.withValues(alpha: 0.28),
-                            Colors.white.withValues(alpha: 0.08),
-                            Colors.transparent,
-                          ],
-                          stops: const [0, 0.18, 1],
-                        ),
-                      ),
-                      child: const SizedBox(width: 10),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  left: 10,
-                  right: 10,
-                  bottom: 10,
-                  child: IgnorePointer(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.transparent,
-                            Colors.black.withValues(alpha: 0.08),
-                            Colors.black.withValues(alpha: 0.22),
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const SizedBox(height: 42),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  top: 10,
-                  right: 10,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.54),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      child: Text(
-                        badge,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  right: 10,
-                  bottom: 10,
-                  child: Material(
-                    color: Colors.black.withValues(alpha: 0.58),
-                    shape: const CircleBorder(),
-                    child: InkWell(
-                      customBorder: const CircleBorder(),
-                      onTap: isDownloading ? null : onOfflinePressed,
-                      child: SizedBox(
-                        width: 34,
-                        height: 34,
-                        child: Center(
-                          child: isDownloading
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : Icon(
-                                  isOfflineAvailable
-                                      ? Icons.offline_pin_rounded
-                                      : Icons.download_for_offline_outlined,
-                                  size: 19,
-                                  color: Colors.white,
-                                ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            title,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-              height: 1.25,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            secondaryLine,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: palette.inkSecondary,
-              fontWeight: (author ?? '').trim().isNotEmpty
-                  ? FontWeight.w500
-                  : FontWeight.w600,
-            ),
-          ),
-          if (tertiaryLine.isNotEmpty) ...[
-            const SizedBox(height: 2),
-            Text(
-              tertiaryLine,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: palette.inkSecondary),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _BookFallback extends StatelessWidget {
-  const _BookFallback({required this.title});
-
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 22,
-            height: 5,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.38),
-              borderRadius: BorderRadius.circular(999),
-            ),
-          ),
-          const Spacer(),
-          Text(
-            title,
-            maxLines: 3,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w700,
-              height: 1.35,
-              fontSize: 16,
-            ),
-          ),
-        ],
       ),
     );
   }

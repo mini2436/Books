@@ -8,7 +8,10 @@ plugins {
 
 dependencies {
     implementation(project(":plugin-api"))
+    implementation(project(":plugin-cbz"))
     implementation(project(":plugin-epub"))
+    implementation(project(":plugin-fb2"))
+    implementation(project(":plugin-mobi"))
     implementation(project(":plugin-pdf"))
     implementation(project(":plugin-txt"))
 

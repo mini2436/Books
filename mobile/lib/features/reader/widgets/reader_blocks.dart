@@ -268,6 +268,9 @@ class _ImageBlockView extends StatelessWidget {
     final palette = AppReaderPalette.of(context);
     final caption = (block.imageCaption ?? block.imageAlt ?? '').trim();
     final aspectRatio = _aspectRatio(block);
+    final heroTag = MediaQuery.of(context).disableAnimations
+        ? null
+        : 'reader-image-${block.anchor}-${block.resourceId ?? 'inline'}';
     Widget image = imageBytes == null
         ? _ImagePlaceholder(
             failed: failed,
@@ -275,17 +278,20 @@ class _ImageBlockView extends StatelessWidget {
             aspectRatio: aspectRatio,
           )
         : GestureDetector(
-            onTap: () => _openPreview(context, imageBytes!, caption),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.memory(
-                imageBytes!,
-                width: double.infinity,
-                fit: BoxFit.contain,
-                errorBuilder: (_, _, _) => _ImagePlaceholder(
-                  failed: true,
-                  palette: palette,
-                  aspectRatio: aspectRatio,
+            onTap: () => _openPreview(context, imageBytes!, caption, heroTag),
+            child: _ReaderImageHero(
+              heroTag: heroTag,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.memory(
+                  imageBytes!,
+                  width: double.infinity,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, _, _) => _ImagePlaceholder(
+                    failed: true,
+                    palette: palette,
+                    aspectRatio: aspectRatio,
+                  ),
                 ),
               ),
             ),
@@ -335,62 +341,107 @@ class _ImageBlockView extends StatelessWidget {
     return (width / height).clamp(0.35, 3.2);
   }
 
-  void _openPreview(BuildContext context, Uint8List bytes, String caption) {
-    showDialog<void>(
-      context: context,
-      builder: (context) {
-        final palette = AppReaderPalette.of(context);
-        return Dialog.fullscreen(
-          backgroundColor: Colors.black.withValues(alpha: 0.92),
-          child: SafeArea(
-            child: Stack(
-              children: [
-                Positioned.fill(
-                  child: InteractiveViewer(
-                    minScale: 0.6,
-                    maxScale: 4,
-                    child: Center(
-                      child: Image.memory(bytes, fit: BoxFit.contain),
+  void _openPreview(
+    BuildContext context,
+    Uint8List bytes,
+    String caption,
+    Object? heroTag,
+  ) {
+    final reduceMotion = MediaQuery.of(context).disableAnimations;
+    Navigator.of(context).push<void>(
+      PageRouteBuilder<void>(
+        opaque: false,
+        barrierDismissible: true,
+        barrierLabel: '关闭图片预览',
+        barrierColor: Colors.black.withValues(alpha: 0.72),
+        transitionDuration: reduceMotion
+            ? Duration.zero
+            : const Duration(milliseconds: 300),
+        reverseTransitionDuration: reduceMotion
+            ? Duration.zero
+            : const Duration(milliseconds: 240),
+        pageBuilder: (previewContext, _, _) {
+          final palette = AppReaderPalette.of(previewContext);
+          return Material(
+            color: Colors.black.withValues(alpha: 0.92),
+            child: SafeArea(
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: InteractiveViewer(
+                      minScale: 0.6,
+                      maxScale: 4,
+                      child: Center(
+                        child: _ReaderImageHero(
+                          heroTag: heroTag,
+                          child: Image.memory(bytes, fit: BoxFit.contain),
+                        ),
+                      ),
                     ),
                   ),
-                ),
-                Positioned(
-                  top: 8,
-                  right: 8,
-                  child: IconButton.filledTonal(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close),
-                  ),
-                ),
-                if (caption.isNotEmpty)
                   Positioned(
-                    left: 20,
-                    right: 20,
-                    bottom: 20,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.52),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 10,
+                    top: 8,
+                    right: 8,
+                    child: IconButton.filledTonal(
+                      onPressed: () => Navigator.of(previewContext).pop(),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ),
+                  if (caption.isNotEmpty)
+                    Positioned(
+                      left: 20,
+                      right: 20,
+                      bottom: 20,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.52),
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                        child: Text(
-                          caption,
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(color: palette.background),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          child: Text(
+                            caption,
+                            textAlign: TextAlign.center,
+                            style: Theme.of(previewContext).textTheme.bodyMedium
+                                ?.copyWith(color: palette.background),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
+          );
+        },
+        transitionsBuilder: (_, animation, _, child) => FadeTransition(
+          opacity: CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+            reverseCurve: Curves.easeInCubic,
           ),
-        );
-      },
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+class _ReaderImageHero extends StatelessWidget {
+  const _ReaderImageHero({required this.heroTag, required this.child});
+
+  final Object? heroTag;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (heroTag == null) return child;
+    return Hero(
+      tag: heroTag!,
+      transitionOnUserGestures: true,
+      child: Material(color: Colors.transparent, child: child),
     );
   }
 }

@@ -18,6 +18,7 @@ import org.springframework.web.multipart.MultipartFile
 @RequestMapping("/api/me/profile")
 class ProfileController(
     private val authRepository: AuthRepository,
+    private val profileService: ProfileService,
 ) {
     @GetMapping
     fun getProfile(@AuthenticationPrincipal principal: UserPrincipal): AuthUserView =
@@ -30,6 +31,15 @@ class ProfileController(
     ): AuthUserView {
         val displayName = request.displayName?.trim()?.takeIf { it.isNotEmpty() }
         return authRepository.updateDisplayName(principal.id, displayName).toAuthUserView()
+    }
+
+    @PatchMapping("/password")
+    fun changePassword(
+        @AuthenticationPrincipal principal: UserPrincipal,
+        @Valid @RequestBody request: ChangePasswordRequest,
+    ): Map<String, Boolean> {
+        profileService.changePassword(principal.id, request)
+        return mapOf("success" to true)
     }
 
     @PostMapping("/avatar", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])

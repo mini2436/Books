@@ -87,7 +87,7 @@ class BookResourceStorageService(
                 val resource = plugin.extractResource(filePath, resourceId)
                 if (resource == null || resource.bytes.isEmpty()) {
                     withoutResource += 1
-                    logger.warn("No EPUB resource found for book {} and resource {}", bookId, resourceId)
+                    logger.warn("No book resource found for book {} and resource {}", bookId, resourceId)
                 } else {
                     store(bookId, resourceId, sourceFileHash, resource)
                     stored += 1

@@ -46,6 +46,20 @@ class BookSummary {
     'sourceMissing': sourceMissing,
     'updatedAt': updatedAt,
   };
+
+  BookSummary copyWith({String? groupName, bool clearGroup = false}) {
+    return BookSummary(
+      id: id,
+      title: title,
+      author: author,
+      groupName: clearGroup ? null : groupName ?? this.groupName,
+      description: description,
+      pluginId: pluginId,
+      format: format,
+      sourceMissing: sourceMissing,
+      updatedAt: updatedAt,
+    );
+  }
 }
 
 class BookDetail extends BookSummary {
@@ -82,7 +96,8 @@ class BookDetail extends BookSummary {
   }
 
   bool get supportsStructuredReader =>
-      hasStructuredContent && (format == 'txt' || format == 'epub');
+      hasStructuredContent &&
+      const {'txt', 'epub', 'cbz', 'fb2', 'mobi'}.contains(format);
 
   factory BookDetail.fromJson(Map<String, dynamic> json) {
     return BookDetail(

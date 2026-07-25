@@ -39,5 +39,12 @@ class UserAdminController(
         @PathVariable userId: Long,
         @RequestBody request: UpdateUserRequest,
     ): UserView = userAdminService.updateUser(principal.id, userId, request)
+
+    @PatchMapping("/{userId}/password")
+    @PreAuthorize(RoleExpressions.SUPER_ADMIN_ONLY)
+    fun resetUserPassword(
+        @PathVariable userId: Long,
+        @Valid @RequestBody request: ResetUserPasswordRequest,
+    ): UserView = userAdminService.resetUserPassword(userId, request)
 }
 

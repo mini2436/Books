@@ -51,6 +51,20 @@ class UserAdminService(
         return UserView(id = existing.id, username = existing.username, role = newRole, enabled = newEnabled)
     }
 
+    fun resetUserPassword(userId: Long, request: ResetUserPasswordRequest): UserView {
+        val existing = authRepository.findUserById(userId) ?: throw IllegalArgumentException("User not found")
+        require(existing.role != UserRole.SUPER_ADMIN.value) {
+            "Super administrator passwords cannot be reset from user management"
+        }
+        authRepository.updatePassword(userId, passwordEncoder.encode(request.newPassword))
+        return UserView(
+            id = existing.id,
+            username = existing.username,
+            role = existing.role,
+            enabled = existing.enabled,
+        )
+    }
+
     fun listUsers(): List<UserView> =
         // 查询全部用户的基础管理信息，并按创建顺序展示在后台用户列表。
         jdbcClient.sql("select id, username, role, enabled from users order by id asc")

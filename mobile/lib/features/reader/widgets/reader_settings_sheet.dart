@@ -43,10 +43,8 @@ class ReaderSettingsPanelContent extends ConsumerWidget {
     final preferences = controller.value;
     final palette = AppReaderPalette.of(context);
     final tablet = Responsive.isTablet(context);
-    final contentMaxWidth = compact ? 292.0 : 420.0;
     final sectionGap = compact ? 14.0 : 18.0;
     final titleGap = compact ? 12.0 : 16.0;
-    final optionSpacing = compact ? 8.0 : 10.0;
     final themeSpacing = compact ? 10.0 : 12.0;
     final themeSwatchSize = compact ? 44.0 : 52.0;
     final segmentedStyle = ButtonStyle(
@@ -81,21 +79,23 @@ class ReaderSettingsPanelContent extends ConsumerWidget {
         ),
         SizedBox(height: sectionGap),
         _SectionTitle(title: '字体', bottomSpacing: compact ? 8 : 12),
-        Wrap(
-          spacing: optionSpacing,
-          runSpacing: optionSpacing,
-          children: ReaderFontFamilyPreference.values.map((family) {
-            final selected = preferences.fontFamily == family;
-            return ChoiceChip(
-              label: Text(family.label),
-              selected: selected,
-              visualDensity: VisualDensity.compact,
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              labelPadding: const EdgeInsets.symmetric(horizontal: 2),
-              onSelected: (_) => controller.setFontFamily(family),
-            );
-          }).toList(),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SegmentedButton<ReaderFontFamilyPreference>(
+            style: segmentedStyle,
+            showSelectedIcon: false,
+            segments: ReaderFontFamilyPreference.values
+                .map(
+                  (family) => ButtonSegment<ReaderFontFamilyPreference>(
+                    value: family,
+                    label: Text(family.label),
+                  ),
+                )
+                .toList(),
+            selected: {preferences.fontFamily},
+            onSelectionChanged: (selection) =>
+                controller.setFontFamily(selection.first),
+          ),
         ),
         if (preferences.fontFamily.licenseNotice != null) ...[
           SizedBox(height: compact ? 6 : 8),
@@ -207,10 +207,12 @@ class ReaderSettingsPanelContent extends ConsumerWidget {
       ],
     );
 
-    settingsBody = ConstrainedBox(
-      constraints: BoxConstraints(maxWidth: contentMaxWidth),
-      child: settingsBody,
-    );
+    if (compact) {
+      settingsBody = ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 292),
+        child: settingsBody,
+      );
+    }
 
     return ListView(
       padding: EdgeInsets.zero,

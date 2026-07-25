@@ -10,7 +10,12 @@ ENV HTTP_PROXY=$HTTP_PROXY \
     no_proxy=$NO_PROXY
 WORKDIR /workspace
 COPY . .
-RUN sed -i 's/\r$//' ./gradle-dist/gradle-8.14/bin/gradle && chmod +x ./gradle-dist/gradle-8.14/bin/gradle && ./gradle-dist/gradle-8.14/bin/gradle :app:bootJar --no-daemon && cp app/build/libs/*.jar /tmp/app.jar
+RUN sed -i 's/\r$//' ./gradlew \
+    && chmod +x ./gradlew \
+    && ./gradlew :app:bootJar --no-daemon \
+    && boot_jar="$(find app/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-plain.jar' -print -quit)" \
+    && test -n "$boot_jar" \
+    && cp "$boot_jar" /tmp/app.jar
 
 FROM eclipse-temurin:21-jre
 WORKDIR /app

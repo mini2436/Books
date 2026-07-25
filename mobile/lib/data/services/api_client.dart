@@ -89,6 +89,20 @@ class ApiClient {
     return AuthUser.fromJson(data);
   }
 
+  Future<void> changeMyPassword(
+    String accessToken, {
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    await _request<Map<String, dynamic>>(
+      () => _dio.patch<Map<String, dynamic>>(
+        '/api/me/profile/password',
+        data: {'currentPassword': currentPassword, 'newPassword': newPassword},
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+  }
+
   Future<AuthUser> uploadMyAvatar(
     String accessToken, {
     String? filePath,
@@ -129,6 +143,36 @@ class ApiClient {
     return data
         .map((item) => BookSummary.fromJson(item as Map<String, dynamic>))
         .toList();
+  }
+
+  Future<BookDetail> updateMyBookGroup(
+    String accessToken,
+    int bookId, {
+    String? groupName,
+  }) async {
+    final data = await _request<Map<String, dynamic>>(
+      () => _dio.patch<Map<String, dynamic>>(
+        '/api/me/books/$bookId/group',
+        data: {'groupName': groupName},
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+    return BookDetail.fromJson(data);
+  }
+
+  Future<int> renameMyBookGroup(
+    String accessToken, {
+    required String oldName,
+    required String newName,
+  }) async {
+    final data = await _request<Map<String, dynamic>>(
+      () => _dio.patch<Map<String, dynamic>>(
+        '/api/me/books/groups',
+        data: {'oldName': oldName, 'newName': newName},
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+    return (data['updatedBooks'] as num?)?.toInt() ?? 0;
   }
 
   Future<List<AdminBookSummary>> listAdminBooks(String accessToken) async {
@@ -334,6 +378,22 @@ class ApiClient {
       () => _dio.patch<Map<String, dynamic>>(
         '/api/admin/users/$userId',
         data: payload,
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+
+    return AdminUserView.fromJson(data);
+  }
+
+  Future<AdminUserView> resetUserPassword(
+    String accessToken,
+    int userId, {
+    required String newPassword,
+  }) async {
+    final data = await _request<Map<String, dynamic>>(
+      () => _dio.patch<Map<String, dynamic>>(
+        '/api/admin/users/$userId/password',
+        data: {'newPassword': newPassword},
         options: Options(headers: _headers(accessToken)),
       ),
     );

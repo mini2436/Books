@@ -5,8 +5,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/models/admin_models.dart';
+import '../../data/models/user_role.dart';
 import '../../shared/theme/reader_theme_extension.dart';
 import '../../shared/utils/responsive.dart';
+import '../../shared/widgets/centered_scale_dialog.dart';
+import '../../shared/widgets/change_password_dialog.dart';
 import '../auth/auth_controller.dart';
 import 'admin_library_sources_section.dart';
 import 'admin_center_controller.dart';
@@ -118,22 +121,21 @@ class AdminCenterScreen extends ConsumerWidget {
                       const SizedBox(height: 18),
                       SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: controller.availableSections
+                        child: SegmentedButton<AdminSection>(
+                          showSelectedIcon: false,
+                          segments: controller.availableSections
                               .map(
-                                (section) => Padding(
-                                  padding: const EdgeInsets.only(right: 10),
-                                  child: ChoiceChip(
-                                    label: Text(_sectionLabel(section)),
-                                    selected:
-                                        controller.selectedSection == section,
-                                    onSelected: (_) => ref
-                                        .read(adminCenterControllerProvider)
-                                        .setSection(section),
-                                  ),
+                                (section) => ButtonSegment<AdminSection>(
+                                  value: section,
+                                  icon: Icon(_sectionIcon(section), size: 17),
+                                  label: Text(_sectionLabel(section)),
                                 ),
                               )
                               .toList(),
+                          selected: {controller.selectedSection},
+                          onSelectionChanged: (selection) => ref
+                              .read(adminCenterControllerProvider)
+                              .setSection(selection.first),
                         ),
                       ),
                       if (controller.notice != null) ...[
@@ -198,8 +200,8 @@ class AdminCenterScreen extends ConsumerWidget {
           ? FloatingActionButton.extended(
               onPressed: controller.isWorking
                   ? null
-                  : () => showDialog<void>(
-                      context: context,
+                  : () => showCenteredScaleDialog<void>(
+                      context,
                       builder: (context) => CreateUserDialog(
                         onSubmit: (username, password, role) => ref
                             .read(adminCenterControllerProvider)
@@ -249,6 +251,23 @@ class _UserManagementSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final palette = AppReaderPalette.of(context);
+    final compactActions = MediaQuery.sizeOf(context).width < 620;
+
+    Future<void> promptPasswordReset(AdminUserView user) async {
+      final values = await showCenteredScaleDialog<PasswordChangeValues>(
+        context,
+        builder: (context) => ChangePasswordDialog(
+          title: '修改 ${user.username} 的密码',
+          description: '设置新的登录密码。超级管理员账号不能在这里修改。',
+        ),
+      );
+      if (values == null) {
+        return;
+      }
+      await ref
+          .read(adminCenterControllerProvider)
+          .resetUserPassword(user, values.newPassword);
+    }
 
     if (!controller.canManageUsers) {
       return _EmptyPanel(
@@ -338,6 +357,29 @@ class _UserManagementSection extends ConsumerWidget {
                                     .read(adminCenterControllerProvider)
                                     .updateUserEnabled(user, value),
                         ),
+                        if (UserRole.fromValue(user.role) !=
+                            UserRole.superAdmin) ...[
+                          const SizedBox(width: 8),
+                          if (compactActions)
+                            IconButton(
+                              tooltip: '修改密码',
+                              onPressed: controller.isWorking
+                                  ? null
+                                  : () => promptPasswordReset(user),
+                              icon: const Icon(Icons.lock_reset_rounded),
+                            )
+                          else
+                            OutlinedButton.icon(
+                              onPressed: controller.isWorking
+                                  ? null
+                                  : () => promptPasswordReset(user),
+                              icon: const Icon(
+                                Icons.lock_reset_rounded,
+                                size: 18,
+                              ),
+                              label: const Text('修改密码'),
+                            ),
+                        ],
                       ],
                     ),
                   ],
@@ -517,8 +559,8 @@ class _BookManagementSection extends ConsumerWidget {
     final filteredBooks = controller.filteredBooks;
     final isTablet = Responsive.isTablet(context);
     final isDesktop = Responsive.isDesktop(context);
-    final bookTileMaxWidth = isDesktop ? 228.0 : (isTablet ? 212.0 : 180.0);
-    final bookTileHeight = isDesktop ? 322.0 : (isTablet ? 304.0 : 282.0);
+    final bookTileMaxWidth = isDesktop ? 176.0 : (isTablet ? 168.0 : 156.0);
+    final bookTileHeight = isDesktop ? 266.0 : (isTablet ? 256.0 : 248.0);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -599,20 +641,25 @@ class _BookManagementSection extends ConsumerWidget {
               const SizedBox(height: 14),
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: controller.availableBookGroups
+                child: SegmentedButton<String>(
+                  showSelectedIcon: false,
+                  segments: controller.availableBookGroups
                       .map(
-                        (group) => Padding(
-                          padding: const EdgeInsets.only(right: 10),
-                          child: ChoiceChip(
-                            label: Text(group),
-                            selected: controller.selectedBookGroup == group,
-                            onSelected: (_) =>
-                                controller.setBookGroupFilter(group),
+                        (group) => ButtonSegment<String>(
+                          value: group,
+                          icon: Icon(
+                            group == AdminCenterController.allBookGroupsLabel
+                                ? Icons.apps_rounded
+                                : Icons.folder_outlined,
+                            size: 17,
                           ),
+                          label: Text(group),
                         ),
                       )
                       .toList(),
+                  selected: {controller.selectedBookGroup},
+                  onSelectionChanged: (selection) =>
+                      controller.setBookGroupFilter(selection.first),
                 ),
               ),
               const SizedBox(height: 14),
@@ -695,8 +742,8 @@ class _BookManagementSection extends ConsumerWidget {
             gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
               maxCrossAxisExtent: bookTileMaxWidth,
               mainAxisExtent: bookTileHeight,
-              mainAxisSpacing: isTablet ? 18 : 14,
-              crossAxisSpacing: isTablet ? 18 : 14,
+              mainAxisSpacing: isTablet ? 16 : 12,
+              crossAxisSpacing: isTablet ? 16 : 12,
             ),
             itemBuilder: (context, index) {
               final book = filteredBooks[index];
@@ -746,12 +793,12 @@ class _AdminBookTile extends StatelessWidget {
     final palette = AppReaderPalette.of(context);
 
     return InkWell(
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(14),
       onTap: onTap,
       child: Ink(
         decoration: BoxDecoration(
           color: palette.panel,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: selected ? palette.accent : palette.line,
             width: selected ? 1.6 : 1,
@@ -759,13 +806,13 @@ class _AdminBookTile extends StatelessWidget {
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 18,
-              offset: const Offset(0, 8),
+              blurRadius: 12,
+              offset: const Offset(0, 5),
             ),
           ],
         ),
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(9),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -773,27 +820,43 @@ class _AdminBookTile extends StatelessWidget {
                 child: Stack(
                   children: [
                     Positioned.fill(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(14),
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFF5D3A22), Color(0xFF93633A)],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                        ),
-                        child: imageUrl == null
-                            ? _AdminBookFallback(title: book.title)
-                            : ClipRRect(
-                                borderRadius: BorderRadius.circular(14),
-                                child: Image.network(
-                                  imageUrl!,
-                                  headers: headers,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) =>
-                                      _AdminBookFallback(title: book.title),
+                      child: HeroMode(
+                        enabled: !MediaQuery.of(context).disableAnimations,
+                        child: Hero(
+                          tag: 'admin-book-cover-${book.id}',
+                          transitionOnUserGestures: true,
+                          child: Material(
+                            color: Colors.transparent,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(9),
+                                gradient: const LinearGradient(
+                                  colors: [
+                                    Color(0xFF5D3A22),
+                                    Color(0xFF93633A),
+                                  ],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
                                 ),
                               ),
+                              child: imageUrl == null
+                                  ? _AdminBookFallback(title: book.title)
+                                  : ClipRRect(
+                                      borderRadius: BorderRadius.circular(9),
+                                      child: Image.network(
+                                        imageUrl!,
+                                        headers: headers,
+                                        fit: BoxFit.cover,
+                                        errorBuilder:
+                                            (context, error, stackTrace) =>
+                                                _AdminBookFallback(
+                                                  title: book.title,
+                                                ),
+                                      ),
+                                    ),
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                     Positioned(
@@ -846,14 +909,14 @@ class _AdminBookTile extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 9),
               Text(
                 book.title,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(
                   context,
-                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
               ),
             ],
           ),
@@ -912,7 +975,7 @@ class _UploadBookButton extends ConsumerWidget {
     final result = await FilePicker.platform.pickFiles(
       allowMultiple: false,
       type: FileType.custom,
-      allowedExtensions: const ['txt', 'epub', 'pdf'],
+      allowedExtensions: const ['txt', 'epub', 'pdf', 'cbz', 'fb2', 'mobi'],
       withData: kIsWeb,
     );
     if (result == null || result.files.isEmpty) {
@@ -1926,6 +1989,21 @@ String _sectionLabel(AdminSection section) {
       return '批注管理';
     case AdminSection.librarySources:
       return '资源扫描';
+  }
+}
+
+IconData _sectionIcon(AdminSection section) {
+  switch (section) {
+    case AdminSection.users:
+      return Icons.people_outline_rounded;
+    case AdminSection.roles:
+      return Icons.admin_panel_settings_outlined;
+    case AdminSection.books:
+      return Icons.menu_book_outlined;
+    case AdminSection.annotations:
+      return Icons.format_quote_rounded;
+    case AdminSection.librarySources:
+      return Icons.cloud_sync_outlined;
   }
 }
 

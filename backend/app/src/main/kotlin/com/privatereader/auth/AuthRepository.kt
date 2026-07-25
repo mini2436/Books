@@ -182,6 +182,20 @@ class AuthRepository(
         return requireNotNull(findUserById(userId)) { "User not found" }
     }
 
+    fun updatePassword(userId: Long, passwordHash: String) {
+        jdbcClient.sql(
+            """
+            update users
+            set password_hash = :passwordHash, updated_at = :updatedAt
+            where id = :userId
+            """.trimIndent(),
+        )
+            .param("passwordHash", passwordHash)
+            .param("updatedAt", Instant.now().toSqlTimestamp())
+            .param("userId", userId)
+            .update()
+    }
+
     fun updateAvatar(userId: Long, bytes: ByteArray, contentType: String): UserRecord {
         val now = Instant.now()
         jdbcClient.sql(

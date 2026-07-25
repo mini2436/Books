@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/user_role.dart';
 import '../../shared/theme/reader_theme_extension.dart';
+import '../../shared/widgets/centered_scale_dialog.dart';
+import '../../shared/widgets/change_password_dialog.dart';
 import '../auth/auth_controller.dart';
 import '../bookshelf/bookshelf_controller.dart';
 import '../reader/widgets/reader_settings_sheet.dart';
@@ -170,6 +172,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               ),
             ),
             _ActionTile(
+              icon: Icons.password_rounded,
+              title: '修改密码',
+              subtitle: '验证当前密码后更新登录密码',
+              onTap: auth.isWorking || user == null ? null : _changePassword,
+            ),
+            _ActionTile(
               icon: Icons.dark_mode_outlined,
               title: '夜间模式',
               subtitle: 'APP 与阅读界面同步切换深色主题',
@@ -297,6 +305,40 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       }
     } catch (error) {
       _showError(error);
+    }
+  }
+
+  Future<void> _changePassword() async {
+    final values = await showCenteredScaleDialog<PasswordChangeValues>(
+      context,
+      builder: (context) => const ChangePasswordDialog(
+        title: '修改密码',
+        description: '请输入当前密码，并设置新的登录密码。',
+        requireCurrentPassword: true,
+      ),
+    );
+    if (values == null || !mounted) {
+      return;
+    }
+
+    try {
+      await ref
+          .read(authControllerProvider)
+          .changePassword(
+            currentPassword: values.currentPassword!,
+            newPassword: values.newPassword,
+          );
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('密码已修改')));
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('密码修改失败：$error')));
+      }
     }
   }
 

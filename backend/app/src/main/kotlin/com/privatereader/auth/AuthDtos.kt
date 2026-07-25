@@ -35,3 +35,10 @@ data class UpdateProfileRequest(
     val displayName: String?,
 )
 
+data class ChangePasswordRequest(
+    @field:NotBlank
+    val currentPassword: String,
+    @field:Size(min = 6, max = 128)
+    val newPassword: String,
+)
+

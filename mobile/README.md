@@ -3,7 +3,7 @@
 Flutter 重建后的移动端工程，首期目标：
 
 - Android 手机与平板优先
-- 统一正文阅读器支持 `TXT / EPUB`，PDF 使用内置 PDF 阅读器
+- 统一正文阅读器支持 `TXT / EPUB / FB2 / MOBI`，CBZ 使用统一图片分页，PDF 使用内置 PDF 阅读器
 - 登录、书架、阅读器、目录、批注、书签、阅读设置、账号页
 - 未生成统一正文且非 PDF 的书在 APP 内提示回到桌面 Web 阅读
 
@@ -65,7 +65,7 @@ flutter build apk --debug --dart-define=API_BASE_URL=http://10.0.2.2:8080
 
 ## Web 端
 
-Web 端复用 Pad 的响应式布局。书架、批注、后台、个人设置、PDF 阅读均使用同一套界面；TXT / EPUB 在浏览器中使用纯 Flutter 正文视图，保留点击翻页、目录、书签、批注和阅读设置，双栏排版暂时降级为居中的单栏阅读。
+Web 端复用 Pad 的响应式布局。书架、批注、后台、个人设置、PDF 阅读均使用同一套界面；TXT / EPUB / FB2 / MOBI / CBZ 在浏览器中使用纯 Flutter 统一阅读视图，保留点击翻页、目录、书签、批注和阅读设置，双栏排版暂时降级为居中的单栏阅读。
 
 本地运行：
 

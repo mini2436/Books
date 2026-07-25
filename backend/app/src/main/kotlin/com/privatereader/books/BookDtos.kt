@@ -22,6 +22,7 @@ data class BookDetailView(
     val id: Long,
     val title: String,
     val author: String?,
+    val groupName: String?,
     val description: String?,
     val pluginId: String,
     val format: String,
@@ -112,6 +113,24 @@ data class UpdateAdminBookMetadataRequest(
     val title: String,
     @field:Size(max = 255)
     val author: String? = null,
+)
+
+data class UpdateBookGroupRequest(
+    val groupName: String? = null,
+)
+
+data class RenameBookGroupRequest(
+    @field:NotBlank
+    @field:Size(max = 120)
+    val oldName: String,
+    @field:NotBlank
+    @field:Size(max = 120)
+    val newName: String,
+)
+
+data class RenameBookGroupResponse(
+    val groupName: String,
+    val updatedBooks: Int,
 )
 
 data class BulkDeleteBooksRequest(

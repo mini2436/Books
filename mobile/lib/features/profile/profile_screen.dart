@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/user_role.dart';
 import '../../shared/theme/reader_theme_extension.dart';
+import '../../shared/utils/responsive.dart';
 import '../../shared/widgets/glass_dialog.dart';
 import '../../shared/widgets/glass_surface.dart';
 import '../../shared/widgets/centered_scale_dialog.dart';
@@ -34,7 +35,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return Scaffold(
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
+          padding: EdgeInsets.fromLTRB(
+            16,
+            20,
+            16,
+            24 + Responsive.shellBottomClearance(context),
+          ),
           children: [
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,

@@ -42,6 +42,15 @@ class Responsive {
     return AppPlatformLayout.phone;
   }
 
+  /// Bottom space required for scrollable content behind the floating phone
+  /// navigation. Wide layouts use side navigation and need no extra space.
+  static double shellBottomClearance(BuildContext context) {
+    if (isTablet(context) || isDesktopPlatform()) {
+      return 0;
+    }
+    return MediaQuery.viewPaddingOf(context).bottom + 92;
+  }
+
   static int bookshelfColumns(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
     if (width >= 1600) {

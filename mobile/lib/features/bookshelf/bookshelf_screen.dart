@@ -444,7 +444,12 @@ class _BookshelfScreenState extends ConsumerState<BookshelfScreen>
     required Map<String, String>? coverHeaders,
   }) {
     return SliverPadding(
-      padding: EdgeInsets.fromLTRB(horizontalPadding, 0, horizontalPadding, 28),
+      padding: EdgeInsets.fromLTRB(
+        horizontalPadding,
+        0,
+        horizontalPadding,
+        28 + Responsive.shellBottomClearance(context),
+      ),
       sliver: SliverGrid(
         delegate: SliverChildBuilderDelegate((context, index) {
           final book = books[index];
@@ -508,7 +513,12 @@ class _BookshelfScreenState extends ConsumerState<BookshelfScreen>
         : 2;
 
     return SliverPadding(
-      padding: EdgeInsets.fromLTRB(horizontalPadding, 0, horizontalPadding, 28),
+      padding: EdgeInsets.fromLTRB(
+        horizontalPadding,
+        0,
+        horizontalPadding,
+        28 + Responsive.shellBottomClearance(context),
+      ),
       sliver: SliverGrid(
         delegate: SliverChildBuilderDelegate((context, index) {
           final entry = entries[index];

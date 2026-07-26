@@ -180,7 +180,7 @@ class _AnnotationCenterScreenState
                     tablet ? 24 : 16,
                     8,
                     tablet ? 24 : 16,
-                    24,
+                    24 + Responsive.shellBottomClearance(context),
                   ),
                   sliver: SliverList.separated(
                     itemBuilder: (context, index) {

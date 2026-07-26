@@ -202,7 +202,7 @@ class AdminCenterScreen extends ConsumerWidget {
                     tablet ? 24 : 16,
                     8,
                     tablet ? 24 : 16,
-                    24,
+                    24 + Responsive.shellBottomClearance(context),
                   ),
                   sliver: SliverToBoxAdapter(
                     child: _ContentSwapTransition(
@@ -441,6 +441,7 @@ class _UserManagementSection extends ConsumerWidget {
               message: '新建用户',
               child: FloatingActionButton(
                 heroTag: 'admin-create-user',
+                shape: const CircleBorder(),
                 onPressed: controller.isWorking ? null : promptCreateUser,
                 child: const Icon(Icons.person_add_alt_1_rounded),
               ),

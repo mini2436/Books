@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/admin_models.dart';
 import '../../shared/theme/reader_theme_extension.dart';
+import '../../shared/widgets/glass_surface.dart';
+import '../../shared/widgets/glass_dialog.dart';
 import 'admin_center_controller.dart';
 
 class AdminLibrarySourcesSection extends ConsumerWidget {
@@ -255,50 +257,45 @@ class _ImportJobTile extends StatelessWidget {
         ? job.sourceName!
         : '未知扫描源';
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: palette.backgroundSoft,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    title,
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
+    return GlassCard(
+      borderRadius: BorderRadius.circular(16),
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
                 ),
-                _StatusPill(
-                  label: job.status,
-                  highlighted: job.status == 'COMPLETED',
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '$sourceName · ${_formatDateTime(job.updatedAt)}',
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: palette.inkSecondary),
-            ),
-            if ((job.message ?? '').trim().isNotEmpty) ...[
-              const SizedBox(height: 10),
-              Text(
-                job.message!,
-                style: Theme.of(
-                  context,
-                ).textTheme.bodyMedium?.copyWith(color: palette.inkSecondary),
+              ),
+              _StatusPill(
+                label: job.status,
+                highlighted: job.status == 'COMPLETED',
               ),
             ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '$sourceName · ${_formatDateTime(job.updatedAt)}',
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: palette.inkSecondary),
+          ),
+          if ((job.message ?? '').trim().isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              job.message!,
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: palette.inkSecondary),
+            ),
           ],
-        ),
+        ],
       ),
     );
   }
@@ -362,7 +359,7 @@ class _LibrarySourceDialogState extends ConsumerState<_LibrarySourceDialog> {
   Widget build(BuildContext context) {
     final isWebDav = _sourceType == 'WEBDAV';
 
-    return AlertDialog(
+    return GlassAlertDialog(
       scrollable: true,
       title: Text(widget.source == null ? '新增扫描源' : '编辑扫描源'),
       content: Form(
@@ -524,23 +521,7 @@ class _SectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = AppReaderPalette.of(context);
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: palette.panel,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: palette.line),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Padding(padding: const EdgeInsets.all(16), child: child),
-    );
+    return GlassCard(child: child);
   }
 }
 

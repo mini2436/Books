@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 
 Future<T?> showCenteredScaleDialog<T>(
@@ -20,12 +22,28 @@ Future<T?> showCenteredScaleDialog<T>(
         curve: Curves.easeOutCubic,
         reverseCurve: Curves.easeInCubic,
       );
-      return FadeTransition(
-        opacity: curved,
-        child: ScaleTransition(
-          scale: Tween<double>(begin: 0.92, end: 1).animate(curved),
-          alignment: Alignment.center,
-          child: child,
+      return AnimatedBuilder(
+        animation: curved,
+        child: child,
+        builder: (context, dialog) => Stack(
+          fit: StackFit.expand,
+          children: [
+            BackdropFilter(
+              filter: ImageFilter.blur(
+                sigmaX: 6 * curved.value,
+                sigmaY: 6 * curved.value,
+              ),
+              child: const SizedBox.expand(),
+            ),
+            FadeTransition(
+              opacity: curved,
+              child: ScaleTransition(
+                scale: Tween<double>(begin: 0.92, end: 1).animate(curved),
+                alignment: Alignment.center,
+                child: dialog,
+              ),
+            ),
+          ],
         ),
       );
     },

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/models/admin_models.dart';
 import '../../shared/theme/reader_theme_extension.dart';
+import '../../shared/widgets/glass_surface.dart';
 import '../../shared/utils/responsive.dart';
 import '../auth/auth_controller.dart';
 import 'admin_center_controller.dart';
@@ -188,70 +189,64 @@ class _BookProfileCard extends ConsumerWidget {
         ? null
         : ref.read(apiClientProvider).coverHeaders(accessToken!);
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: palette.panel,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: palette.line),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            HeroMode(
-              enabled: !MediaQuery.of(context).disableAnimations,
-              child: Hero(
-                tag: 'admin-book-cover-$bookId',
-                transitionOnUserGestures: true,
-                child: Material(
-                  color: Colors.transparent,
-                  child: AspectRatio(
-                    aspectRatio: 0.72,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(18),
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFF5D3A22), Color(0xFF93633A)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
+    return GlassCard(
+      borderRadius: BorderRadius.circular(24),
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          HeroMode(
+            enabled: !MediaQuery.of(context).disableAnimations,
+            child: Hero(
+              tag: 'admin-book-cover-$bookId',
+              transitionOnUserGestures: true,
+              child: Material(
+                color: Colors.transparent,
+                child: AspectRatio(
+                  aspectRatio: 0.72,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(18),
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF5D3A22), Color(0xFF93633A)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
                       ),
-                      child: imageUrl == null
-                          ? _DetailCoverFallback(title: title)
-                          : ClipRRect(
-                              borderRadius: BorderRadius.circular(18),
-                              child: Image.network(
-                                imageUrl,
-                                headers: headers,
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) =>
-                                    _DetailCoverFallback(title: title),
-                              ),
-                            ),
                     ),
+                    child: imageUrl == null
+                        ? _DetailCoverFallback(title: title)
+                        : ClipRRect(
+                            borderRadius: BorderRadius.circular(18),
+                            child: Image.network(
+                              imageUrl,
+                              headers: headers,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) =>
+                                  _DetailCoverFallback(title: title),
+                            ),
+                          ),
                   ),
                 ),
               ),
             ),
-            const SizedBox(height: 16),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            title,
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          if ((author ?? '').trim().isNotEmpty) ...[
+            const SizedBox(height: 8),
             Text(
-              title,
+              author!,
               style: Theme.of(
                 context,
-              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+              ).textTheme.bodyMedium?.copyWith(color: palette.inkSecondary),
             ),
-            if ((author ?? '').trim().isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text(
-                author!,
-                style: Theme.of(
-                  context,
-                ).textTheme.bodyMedium?.copyWith(color: palette.inkSecondary),
-              ),
-            ],
           ],
-        ),
+        ],
       ),
     );
   }
@@ -535,65 +530,56 @@ class _BookDetailOperations extends StatelessWidget {
                 ...viewers.map(
                   (viewer) => Padding(
                     padding: const EdgeInsets.only(bottom: 10),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: palette.backgroundSoft,
-                        borderRadius: BorderRadius.circular(18),
+                    child: GlassCard(
+                      borderRadius: BorderRadius.circular(18),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
                       ),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 12,
-                        ),
-                        child: Row(
-                          children: [
-                            CircleAvatar(
-                              child: Text(_initials(viewer.username)),
+                      child: Row(
+                        children: [
+                          CircleAvatar(child: Text(_initials(viewer.username))),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  viewer.username,
+                                  style: Theme.of(context).textTheme.titleSmall
+                                      ?.copyWith(fontWeight: FontWeight.w700),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  adminRoleLabel(viewer.role),
+                                  style: Theme.of(context).textTheme.bodySmall
+                                      ?.copyWith(color: palette.inkSecondary),
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    viewer.username,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .titleSmall
-                                        ?.copyWith(fontWeight: FontWeight.w700),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    adminRoleLabel(viewer.role),
-                                    style: Theme.of(context).textTheme.bodySmall
-                                        ?.copyWith(color: palette.inkSecondary),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            if (viewer.isGlobalAccess)
-                              _InfoPill(label: '权限', value: '角色可见')
-                            else
-                              TextButton.icon(
-                                onPressed: controller.isWorking
-                                    ? null
-                                    : () async {
-                                        await controller.revokeBookFromUser(
-                                          detail?.id ?? summary!.id,
-                                          viewer,
+                          ),
+                          if (viewer.isGlobalAccess)
+                            _InfoPill(label: '权限', value: '角色可见')
+                          else
+                            TextButton.icon(
+                              onPressed: controller.isWorking
+                                  ? null
+                                  : () async {
+                                      await controller.revokeBookFromUser(
+                                        detail?.id ?? summary!.id,
+                                        viewer,
+                                      );
+                                      if (context.mounted) {
+                                        _showOperationMessage(
+                                          context,
+                                          controller,
                                         );
-                                        if (context.mounted) {
-                                          _showOperationMessage(
-                                            context,
-                                            controller,
-                                          );
-                                        }
-                                      },
-                                icon: const Icon(Icons.link_off),
-                                label: const Text('解绑'),
-                              ),
-                          ],
-                        ),
+                                      }
+                                    },
+                              icon: const Icon(Icons.link_off),
+                              label: const Text('解绑'),
+                            ),
+                        ],
                       ),
                     ),
                   ),
@@ -632,14 +618,10 @@ class _DetailPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = AppReaderPalette.of(context);
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: palette.panel,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: palette.line),
-      ),
-      child: Padding(padding: const EdgeInsets.all(18), child: child),
+    return GlassCard(
+      borderRadius: BorderRadius.circular(24),
+      padding: const EdgeInsets.all(18),
+      child: child,
     );
   }
 }

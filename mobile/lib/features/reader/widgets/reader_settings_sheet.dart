@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../settings/reader_preferences_controller.dart';
 import '../../../shared/theme/reader_theme_extension.dart';
+import '../../../shared/widgets/glass_segmented_control.dart';
+import '../../../shared/widgets/glass_bottom_sheet.dart';
+import '../../../shared/widgets/glass_surface.dart';
 import '../../../shared/utils/responsive.dart';
 
 class ReaderSettingsSheet extends ConsumerWidget {
@@ -12,7 +15,7 @@ class ReaderSettingsSheet extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return FractionallySizedBox(
       heightFactor: 0.8,
-      child: Padding(
+      child: GlassBottomSheet(
         padding: EdgeInsets.only(
           left: 20,
           right: 20,
@@ -81,7 +84,7 @@ class ReaderSettingsPanelContent extends ConsumerWidget {
         _SectionTitle(title: '字体', bottomSpacing: compact ? 8 : 12),
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
-          child: SegmentedButton<ReaderFontFamilyPreference>(
+          child: GlassSegmentedControl<ReaderFontFamilyPreference>(
             style: segmentedStyle,
             showSelectedIcon: false,
             segments: ReaderFontFamilyPreference.values
@@ -109,7 +112,7 @@ class ReaderSettingsPanelContent extends ConsumerWidget {
         ],
         SizedBox(height: sectionGap),
         _SectionTitle(title: '行高', bottomSpacing: compact ? 8 : 12),
-        SegmentedButton<double>(
+        GlassSegmentedControl<double>(
           style: segmentedStyle,
           segments: const [
             ButtonSegment(value: 1.6, label: Text('紧凑')),
@@ -166,41 +169,33 @@ class ReaderSettingsPanelContent extends ConsumerWidget {
         if (tablet) ...[
           SizedBox(height: compact ? 18 : 24),
           _SectionTitle(title: '平板阅读', bottomSpacing: compact ? 8 : 12),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: palette.backgroundSoft,
-              borderRadius: BorderRadius.circular(compact ? 16 : 18),
-              border: Border.all(color: palette.line),
-            ),
-            child: Padding(
-              padding: EdgeInsets.all(compact ? 14 : 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '翻页方向',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: palette.inkTertiary,
-                      fontWeight: FontWeight.w600,
-                    ),
+          GlassCard(
+            borderRadius: BorderRadius.circular(compact ? 16 : 18),
+            padding: EdgeInsets.all(compact ? 14 : 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '翻页方向',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: palette.inkTertiary,
+                    fontWeight: FontWeight.w600,
                   ),
-                  SizedBox(height: compact ? 8 : 10),
-                  SegmentedButton<TabletPageTurnAxis>(
-                    style: segmentedStyle,
-                    segments: TabletPageTurnAxis.values
-                        .map(
-                          (axis) => ButtonSegment(
-                            value: axis,
-                            label: Text(axis.label),
-                          ),
-                        )
-                        .toList(),
-                    selected: {preferences.tabletPageTurnAxis},
-                    onSelectionChanged: (selection) =>
-                        controller.setTabletPageTurnAxis(selection.first),
-                  ),
-                ],
-              ),
+                ),
+                SizedBox(height: compact ? 8 : 10),
+                GlassSegmentedControl<TabletPageTurnAxis>(
+                  style: segmentedStyle,
+                  segments: TabletPageTurnAxis.values
+                      .map(
+                        (axis) =>
+                            ButtonSegment(value: axis, label: Text(axis.label)),
+                      )
+                      .toList(),
+                  selected: {preferences.tabletPageTurnAxis},
+                  onSelectionChanged: (selection) =>
+                      controller.setTabletPageTurnAxis(selection.first),
+                ),
+              ],
             ),
           ),
         ],

@@ -1,12 +1,12 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../features/auth/auth_controller.dart';
+import '../shared/theme/glass_theme.dart';
 import '../shared/theme/reader_theme_extension.dart';
 import '../shared/utils/responsive.dart';
+import '../shared/widgets/glass_surface.dart';
 
 class AppShell extends ConsumerWidget {
   const AppShell({super.key, required this.navigationShell});
@@ -18,12 +18,28 @@ class AppShell extends ConsumerWidget {
     StatefulNavigationShell navigationShell,
     List<Widget> children,
   ) {
-    return _AnimatedBranchContainer(
-      currentIndex: navigationShell.currentIndex,
-      axis: Responsive.isTablet(context) || Responsive.isDesktopPlatform()
-          ? Axis.vertical
-          : Axis.horizontal,
-      children: children,
+    return Consumer(
+      builder: (context, ref, _) {
+        final canAccessAdmin = ref.watch(
+          authControllerProvider.select(
+            (auth) => auth.user?.canAccessAdmin ?? false,
+          ),
+        );
+        final visibleBranchIndexes = canAccessAdmin
+            ? const [0, 1, 2, 3]
+            : const [0, 1, 3];
+        return _AnimatedBranchContainer(
+          currentIndex: navigationShell.currentIndex,
+          visibleIndexes: visibleBranchIndexes,
+          axis: Responsive.isTablet(context) || Responsive.isDesktopPlatform()
+              ? Axis.vertical
+              : Axis.horizontal,
+          interactive:
+              Responsive.platformLayout(context) == AppPlatformLayout.phone,
+          onIndexSelected: (index) => navigationShell.goBranch(index),
+          children: children,
+        );
+      },
     );
   }
 
@@ -101,16 +117,10 @@ class AppShell extends ConsumerWidget {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          _SwipeNavigationBody(
-            currentIndex: activeIndex,
-            destinationCount: visibleBranchIndexes.length,
-            onDestinationSelected: (index) =>
-                _onDestinationSelected(index, visibleBranchIndexes),
-            child: MediaQuery.removePadding(
-              context: context,
-              removeBottom: true,
-              child: navigationShell,
-            ),
+          MediaQuery.removePadding(
+            context: context,
+            removeBottom: true,
+            child: navigationShell,
           ),
           Positioned(
             left: 16,
@@ -165,13 +175,7 @@ class _FloatingNavigation extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = AppReaderPalette.of(context);
-    final dark = Theme.of(context).brightness == Brightness.dark;
     final radius = BorderRadius.circular(axis == Axis.horizontal ? 32 : 30);
-    final surfaceOpacity = axis == Axis.horizontal
-        ? (dark ? 0.38 : 0.18)
-        : (dark ? 0.9 : 0.86);
-    final blurSigma = axis == Axis.horizontal ? 10.0 : 18.0;
     final items = List<Widget>.generate(destinations.length, (index) {
       final destination = destinations[index];
       final item = _FloatingNavigationItem(
@@ -191,48 +195,13 @@ class _FloatingNavigation extends StatelessWidget {
             ],
           ];
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: radius,
-        boxShadow: [
-          BoxShadow(
-            color: palette.ink.withValues(alpha: dark ? 0.26 : 0.12),
-            blurRadius: 28,
-            offset: const Offset(0, 10),
-          ),
-          BoxShadow(
-            color: palette.ink.withValues(alpha: dark ? 0.1 : 0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: radius,
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: palette.panel.withValues(alpha: surfaceOpacity),
-              borderRadius: radius,
-              border: Border.all(
-                color: dark
-                    ? Colors.white.withValues(alpha: 0.07)
-                    : palette.ink.withValues(alpha: 0.07),
-              ),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(6),
-              child: axis == Axis.horizontal
-                  ? Row(mainAxisSize: MainAxisSize.max, children: arrangedItems)
-                  : Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: arrangedItems,
-                    ),
-            ),
-          ),
-        ),
-      ),
+    return GlassSurface(
+      level: GlassSurfaceLevel.floating,
+      borderRadius: radius,
+      padding: const EdgeInsets.all(6),
+      child: axis == Axis.horizontal
+          ? Row(mainAxisSize: MainAxisSize.max, children: arrangedItems)
+          : Column(mainAxisSize: MainAxisSize.min, children: arrangedItems),
     );
   }
 }
@@ -321,74 +290,21 @@ class _FloatingNavigationItem extends StatelessWidget {
   }
 }
 
-class _SwipeNavigationBody extends StatefulWidget {
-  const _SwipeNavigationBody({
-    required this.currentIndex,
-    required this.destinationCount,
-    required this.onDestinationSelected,
-    required this.child,
-  });
-
-  final int currentIndex;
-  final int destinationCount;
-  final ValueChanged<int> onDestinationSelected;
-  final Widget child;
-
-  @override
-  State<_SwipeNavigationBody> createState() => _SwipeNavigationBodyState();
-}
-
-class _SwipeNavigationBodyState extends State<_SwipeNavigationBody> {
-  static const _distanceThreshold = 56.0;
-  static const _velocityThreshold = 520.0;
-
-  double _dragDistance = 0;
-
-  @override
-  Widget build(BuildContext context) {
-    final enabled = !Responsive.isDesktopPlatform();
-    if (!enabled) {
-      return widget.child;
-    }
-
-    return GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onHorizontalDragStart: (_) => _dragDistance = 0,
-      onHorizontalDragUpdate: (details) {
-        _dragDistance += details.primaryDelta ?? 0;
-      },
-      onHorizontalDragCancel: () => _dragDistance = 0,
-      onHorizontalDragEnd: (details) {
-        final velocity = details.primaryVelocity ?? 0;
-        final enoughDistance = _dragDistance.abs() >= _distanceThreshold;
-        final enoughVelocity = velocity.abs() >= _velocityThreshold;
-        if (!enoughDistance && !enoughVelocity) {
-          _dragDistance = 0;
-          return;
-        }
-
-        final swipeLeft = enoughDistance ? _dragDistance < 0 : velocity < 0;
-        final targetIndex = widget.currentIndex + (swipeLeft ? 1 : -1);
-        _dragDistance = 0;
-        if (targetIndex < 0 || targetIndex >= widget.destinationCount) {
-          return;
-        }
-        widget.onDestinationSelected(targetIndex);
-      },
-      child: widget.child,
-    );
-  }
-}
-
 class _AnimatedBranchContainer extends StatefulWidget {
   const _AnimatedBranchContainer({
     required this.currentIndex,
+    required this.visibleIndexes,
     required this.axis,
+    required this.interactive,
+    required this.onIndexSelected,
     required this.children,
   });
 
   final int currentIndex;
+  final List<int> visibleIndexes;
   final Axis axis;
+  final bool interactive;
+  final ValueChanged<int> onIndexSelected;
   final List<Widget> children;
 
   @override
@@ -397,11 +313,21 @@ class _AnimatedBranchContainer extends StatefulWidget {
 }
 
 class _AnimatedBranchContainerState extends State<_AnimatedBranchContainer>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
+  static const _commitProgress = 0.22;
+  static const _commitVelocity = 650.0;
+
   late final AnimationController _controller;
   late final CurvedAnimation _animation;
+  late final AnimationController _dragController;
+  Animation<double>? _dragAnimation;
   late int _previousIndex;
   bool _forward = true;
+  bool _skipNextTransition = false;
+  double _dragExtent = 1;
+  double _rawDragDistance = 0;
+  double _dragOffset = 0;
+  int? _dragTargetIndex;
 
   @override
   void initState() {
@@ -415,6 +341,17 @@ class _AnimatedBranchContainerState extends State<_AnimatedBranchContainer>
       parent: _controller,
       curve: Curves.easeOutCubic,
     );
+    _dragController =
+        AnimationController(
+          vsync: this,
+          duration: const Duration(milliseconds: 220),
+        )..addListener(() {
+          final dragAnimation = _dragAnimation;
+          if (dragAnimation == null || !mounted) {
+            return;
+          }
+          setState(() => _dragOffset = dragAnimation.value);
+        });
   }
 
   @override
@@ -423,6 +360,22 @@ class _AnimatedBranchContainerState extends State<_AnimatedBranchContainer>
     if (oldWidget.currentIndex == widget.currentIndex) {
       return;
     }
+    if (_skipNextTransition && widget.currentIndex == _dragTargetIndex) {
+      _skipNextTransition = false;
+      _previousIndex = widget.currentIndex;
+      _controller.stop();
+      _dragController.stop();
+      _dragAnimation = null;
+      _rawDragDistance = 0;
+      _dragOffset = 0;
+      _dragTargetIndex = null;
+      return;
+    }
+    _dragController.stop();
+    _dragAnimation = null;
+    _rawDragDistance = 0;
+    _dragOffset = 0;
+    _dragTargetIndex = null;
     _forward = widget.currentIndex > oldWidget.currentIndex;
     _previousIndex = oldWidget.currentIndex;
     _controller
@@ -434,6 +387,7 @@ class _AnimatedBranchContainerState extends State<_AnimatedBranchContainer>
   @override
   void dispose() {
     _controller.dispose();
+    _dragController.dispose();
     super.dispose();
   }
 
@@ -446,54 +400,191 @@ class _AnimatedBranchContainerState extends State<_AnimatedBranchContainer>
               ? constraints.maxWidth
               : constraints.maxHeight;
           final distance = extent.isFinite && extent > 0 ? extent * 0.12 : 48.0;
+          if (extent.isFinite && extent > 0) {
+            _dragExtent = extent;
+          }
+          final dragging =
+              widget.interactive &&
+              (_dragOffset != 0 || _dragTargetIndex != null);
 
-          final paintOrder = <int>[
-            if (_controller.isAnimating &&
+          final foregroundIndexes = <int>[
+            if (dragging && _dragTargetIndex != null) _dragTargetIndex!,
+            if (!dragging &&
+                _controller.isAnimating &&
                 _previousIndex != widget.currentIndex)
               _previousIndex,
             widget.currentIndex,
+          ];
+          final paintOrder = <int>[
+            ...foregroundIndexes,
             ...List<int>.generate(
               widget.children.length,
               (index) => index,
-            ).where(
-              (index) =>
-                  index != widget.currentIndex && index != _previousIndex,
-            ),
+            ).where((index) => !foregroundIndexes.contains(index)),
           ];
 
           final stackItems = paintOrder.map((index) {
-            final isVisible =
-                index == widget.currentIndex ||
-                (_controller.isAnimating && index == _previousIndex);
+            final isVisible = dragging
+                ? index == widget.currentIndex || index == _dragTargetIndex
+                : index == widget.currentIndex ||
+                      (_controller.isAnimating && index == _previousIndex);
             return _BranchContainer(
               isActive: isVisible,
-              child: AnimatedBuilder(
-                animation: _animation,
-                child: widget.children[index],
-                builder: (context, child) {
-                  final transition = _transitionFor(
-                    index: index,
-                    distance: distance,
-                  );
-                  if (transition == null) {
-                    return child!;
-                  }
-                  return Opacity(
-                    opacity: transition.opacity,
-                    child: Transform.translate(
-                      offset: transition.offset,
-                      child: child,
-                    ),
-                  );
-                },
+              child: IgnorePointer(
+                ignoring: index != widget.currentIndex,
+                child: AnimatedBuilder(
+                  animation: _animation,
+                  child: widget.children[index],
+                  builder: (context, child) {
+                    final transition = dragging
+                        ? _dragTransitionFor(index: index, extent: extent)
+                        : _transitionFor(index: index, distance: distance);
+                    if (transition == null) {
+                      return child!;
+                    }
+                    return Opacity(
+                      opacity: transition.opacity,
+                      child: Transform.translate(
+                        offset: transition.offset,
+                        child: child,
+                      ),
+                    );
+                  },
+                ),
               ),
             );
           }).toList();
 
-          return Stack(fit: StackFit.expand, children: stackItems);
+          final content = Stack(fit: StackFit.expand, children: stackItems);
+          if (!widget.interactive) {
+            return content;
+          }
+          return GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onHorizontalDragStart: _handleDragStart,
+            onHorizontalDragUpdate: _handleDragUpdate,
+            onHorizontalDragCancel: _handleDragCancel,
+            onHorizontalDragEnd: _handleDragEnd,
+            child: content,
+          );
         },
       ),
     );
+  }
+
+  void _handleDragStart(DragStartDetails details) {
+    _controller.stop();
+    _dragController.stop();
+    _dragAnimation = null;
+    setState(() {
+      _rawDragDistance = 0;
+      _dragOffset = 0;
+      _dragTargetIndex = null;
+    });
+  }
+
+  void _handleDragUpdate(DragUpdateDetails details) {
+    final delta = details.primaryDelta ?? 0;
+    if (delta == 0 || _dragExtent <= 0) {
+      return;
+    }
+    setState(() {
+      _rawDragDistance += delta;
+      _dragTargetIndex = _targetForDirection(_rawDragDistance.sign);
+      final clamped = _rawDragDistance.clamp(-_dragExtent, _dragExtent);
+      _dragOffset = _dragTargetIndex == null ? clamped * 0.18 : clamped;
+    });
+  }
+
+  void _handleDragCancel() => _settleDrag(0);
+
+  void _handleDragEnd(DragEndDetails details) {
+    final velocity = details.primaryVelocity ?? 0;
+    final direction = _rawDragDistance == 0
+        ? velocity.sign
+        : _rawDragDistance.sign;
+    final targetIndex = _targetForDirection(direction);
+    final enoughDistance = _dragOffset.abs() / _dragExtent >= _commitProgress;
+    final enoughVelocity =
+        velocity.abs() >= _commitVelocity &&
+        (velocity.sign == direction || _rawDragDistance.abs() < 12);
+    if (targetIndex != null && (enoughDistance || enoughVelocity)) {
+      _dragTargetIndex = targetIndex;
+      _settleDrag(direction * _dragExtent, commitIndex: targetIndex);
+      return;
+    }
+    _settleDrag(0);
+  }
+
+  void _settleDrag(double target, {int? commitIndex}) {
+    _dragController.stop();
+    final reduceMotion = MediaQuery.of(context).disableAnimations;
+    final distance = (target - _dragOffset).abs();
+    _dragController.duration = reduceMotion
+        ? Duration.zero
+        : Duration(
+            milliseconds: (140 + 100 * (distance / _dragExtent)).round().clamp(
+              140,
+              240,
+            ),
+          );
+    _dragAnimation = Tween<double>(begin: _dragOffset, end: target).animate(
+      CurvedAnimation(parent: _dragController, curve: Curves.easeOutCubic),
+    );
+    _dragController.forward(from: 0).whenComplete(() {
+      if (!mounted) {
+        return;
+      }
+      if (commitIndex != null) {
+        _skipNextTransition = true;
+        widget.onIndexSelected(commitIndex);
+        return;
+      }
+      setState(() {
+        _dragAnimation = null;
+        _rawDragDistance = 0;
+        _dragOffset = 0;
+        _dragTargetIndex = null;
+      });
+    });
+  }
+
+  int? _targetForDirection(double direction) {
+    if (direction == 0) {
+      return null;
+    }
+    final currentPosition = widget.visibleIndexes.indexOf(widget.currentIndex);
+    if (currentPosition < 0) {
+      return null;
+    }
+    final targetPosition = currentPosition + (direction < 0 ? 1 : -1);
+    if (targetPosition < 0 || targetPosition >= widget.visibleIndexes.length) {
+      return null;
+    }
+    return widget.visibleIndexes[targetPosition];
+  }
+
+  _BranchTransition? _dragTransitionFor({
+    required int index,
+    required double extent,
+  }) {
+    if (index == widget.currentIndex) {
+      final progress = (_dragOffset.abs() / extent).clamp(0.0, 1.0);
+      return _BranchTransition(
+        offset: Offset(_dragOffset, 0),
+        opacity: 1 - progress * 0.08,
+      );
+    }
+    if (index == _dragTargetIndex) {
+      final startsOnRight = _dragOffset < 0;
+      final targetOffset = _dragOffset + (startsOnRight ? extent : -extent);
+      final progress = (_dragOffset.abs() / extent).clamp(0.0, 1.0);
+      return _BranchTransition(
+        offset: Offset(targetOffset, 0),
+        opacity: 0.9 + progress * 0.1,
+      );
+    }
+    return null;
   }
 
   _BranchTransition? _transitionFor({

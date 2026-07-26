@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/user_role.dart';
 import '../../shared/theme/reader_theme_extension.dart';
+import '../../shared/widgets/glass_dialog.dart';
+import '../../shared/widgets/glass_surface.dart';
 import '../../shared/widgets/centered_scale_dialog.dart';
 import '../../shared/widgets/change_password_dialog.dart';
 import '../auth/auth_controller.dart';
@@ -267,7 +269,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
     final value = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => GlassAlertDialog(
         title: const Text('编辑个人名称'),
         content: TextField(
           controller: textController,
@@ -383,31 +385,25 @@ class _ProfileStat extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = AppReaderPalette.of(context);
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: palette.backgroundSoft,
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              value,
-              style: Theme.of(
-                context,
-              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              label,
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: palette.inkSecondary),
-            ),
-          ],
-        ),
+    return GlassCard(
+      borderRadius: BorderRadius.circular(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            value,
+            style: Theme.of(
+              context,
+            ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            label,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: palette.inkSecondary),
+          ),
+        ],
       ),
     );
   }

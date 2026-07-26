@@ -8,6 +8,8 @@ import '../../../data/models/book_models.dart';
 import '../../../data/models/sync_models.dart';
 import '../../../features/settings/reader_preferences_controller.dart';
 import '../../../shared/theme/reader_theme_extension.dart';
+import '../../../shared/theme/glass_theme.dart';
+import '../../../shared/widgets/glass_surface.dart';
 import '../models/annotation_anchor.dart';
 
 class ReaderBlocksView extends StatelessWidget {
@@ -705,33 +707,9 @@ class _SelectableTextWithActionsState
         textAlign: TextAlign.justify,
         style: widget.style,
         onSelectionChanged: _handleSelectionChanged,
-        contextMenuBuilder: (context, editableTextState) {
-          final selection = editableTextState.textEditingValue.selection;
-          final copyItems = editableTextState.contextMenuButtonItems
-              .where((item) => item.type == ContextMenuButtonType.copy)
-              .toList();
-
-          return AdaptiveTextSelectionToolbar.buttonItems(
-            anchors: editableTextState.contextMenuAnchors,
-            buttonItems: [
-              ...copyItems,
-              ContextMenuButtonItem(
-                label: '高亮',
-                onPressed: () {
-                  ContextMenuController.removeAny();
-                  _runAction(() => widget.onHighlight(selection));
-                },
-              ),
-              ContextMenuButtonItem(
-                label: '批注',
-                onPressed: () {
-                  ContextMenuController.removeAny();
-                  _runAction(() => widget.onAnnotate(selection));
-                },
-              ),
-            ],
-          );
-        },
+        // Selection actions are rendered by the linked GlassSurface overlay
+        // below so Android, desktop and fallback readers share one toolbar.
+        contextMenuBuilder: (_, _) => const SizedBox.shrink(),
       ),
     );
   }
@@ -761,7 +739,6 @@ class _SelectableTextWithActionsState
   }
 
   Widget _buildFloatingToolbar(BuildContext context) {
-    final palette = AppReaderPalette.of(this.context);
     return UnconstrainedBox(
       alignment: Alignment.topLeft,
       child: CompositedTransformFollower(
@@ -773,52 +750,43 @@ class _SelectableTextWithActionsState
         child: SizedBox(
           width: 252,
           height: 44,
-          child: Material(
-            color: palette.panel,
-            elevation: 10,
-            shadowColor: Colors.black.withValues(alpha: 0.22),
+          child: GlassSurface(
+            level: GlassSurfaceLevel.floating,
             borderRadius: BorderRadius.circular(14),
-            clipBehavior: Clip.antiAlias,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                border: Border.all(color: palette.line),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _SelectionActionButton(
-                      icon: Icons.copy_rounded,
-                      label: '复制',
-                      onPressed: _copySelection,
-                    ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _SelectionActionButton(
+                    icon: Icons.copy_rounded,
+                    label: '复制',
+                    onPressed: _copySelection,
                   ),
-                  Expanded(
-                    child: _SelectionActionButton(
-                      icon: Icons.border_color_rounded,
-                      label: '高亮',
-                      onPressed: () {
-                        final selection = _selection;
-                        if (selection != null) {
-                          _runAction(() => widget.onHighlight(selection));
-                        }
-                      },
-                    ),
+                ),
+                Expanded(
+                  child: _SelectionActionButton(
+                    icon: Icons.border_color_rounded,
+                    label: '高亮',
+                    onPressed: () {
+                      final selection = _selection;
+                      if (selection != null) {
+                        _runAction(() => widget.onHighlight(selection));
+                      }
+                    },
                   ),
-                  Expanded(
-                    child: _SelectionActionButton(
-                      icon: Icons.mode_comment_outlined,
-                      label: '批注',
-                      onPressed: () {
-                        final selection = _selection;
-                        if (selection != null) {
-                          _runAction(() => widget.onAnnotate(selection));
-                        }
-                      },
-                    ),
+                ),
+                Expanded(
+                  child: _SelectionActionButton(
+                    icon: Icons.mode_comment_outlined,
+                    label: '批注',
+                    onPressed: () {
+                      final selection = _selection;
+                      if (selection != null) {
+                        _runAction(() => widget.onAnnotate(selection));
+                      }
+                    },
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),

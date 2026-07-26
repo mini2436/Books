@@ -32,7 +32,7 @@
 
 ## 真实界面
 
-以下截图来自项目实际运行界面，原图统一存放在 [`docs/screenshots`](docs/screenshots/) 目录。
+以下截图均重新截取自当前透明玻璃界面的实际运行版本，原图统一存放在 [`docs/screenshots`](docs/screenshots/) 目录。
 
 ### 一套书架，适配手机、平板与桌面
 
@@ -54,23 +54,11 @@
   <img src="docs/screenshots/app-windows.png" alt="轻阅 Windows 桌面端" width="760">
 </p>
 
-### 沉浸式正文阅读
+### Web 桌面书架
 
-正文区域保持克制，点击页面中部显示工具栏，可随时打开目录、批注、书签和阅读设置。
+Web 端沿用相同的透明悬浮导航、玻璃按钮组与响应式书架布局，在浏览器中也能获得一致的视觉体验。
 
-![轻阅 Web 正文阅读器](docs/screenshots/reader-web.png)
-
-### 适合中文阅读的排版设置
-
-内置 MiSans、思源宋体和霞鹜文楷 Regular 字重，并提供字号、行高、主题和翻页方向设置。
-
-![轻阅 Web 阅读设置](docs/screenshots/reader-settings-web.png)
-
-### 集中管理家庭成员的阅读笔记
-
-批注按书聚合，可搜索书名、作者或格式，快速回到对应内容。
-
-![轻阅 Web 批注中心](docs/screenshots/annotations-web.png)
+![轻阅 Web 家庭书架](docs/screenshots/bookshelf-web.png)
 
 ## 技术架构
 

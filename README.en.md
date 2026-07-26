@@ -22,19 +22,30 @@ Private Reader turns ebooks scattered across computers, NAS storage, and family 
 
 ## Screenshots
 
-These screenshots come from the running application. Their original files are tracked under [`docs/screenshots`](docs/screenshots/).
+All screenshots below were freshly captured from the current translucent glass interface. Their original files are tracked under [`docs/screenshots`](docs/screenshots/).
 
-### Reader
+### One bookshelf across phone and tablet
 
-![Private Reader web reader](docs/screenshots/reader-web.png)
+<table>
+  <tr>
+    <th align="center">Android phone</th>
+    <th align="center">Android tablet</th>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/app-phone.png" alt="Private Reader on an Android phone" width="280"></td>
+    <td align="center"><img src="docs/screenshots/app-tablet.png" alt="Private Reader on an Android tablet" width="560"></td>
+  </tr>
+</table>
 
-### Typography and themes
+### Windows desktop
 
-![Private Reader reading settings](docs/screenshots/reader-settings-web.png)
+<p align="center">
+  <img src="docs/screenshots/app-windows.png" alt="Private Reader on Windows" width="760">
+</p>
 
-### Annotation center
+### Web bookshelf
 
-![Private Reader annotation center](docs/screenshots/annotations-web.png)
+![Private Reader web bookshelf](docs/screenshots/bookshelf-web.png)
 
 ## Architecture
 

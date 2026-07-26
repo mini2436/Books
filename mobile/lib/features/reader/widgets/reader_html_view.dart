@@ -1318,10 +1318,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     final headingSize = 30 * widget.preferences.fontScale;
     final htmlBlocks = rootHtml ?? _buildRootHtml();
     final toolbarBackground = _cssColor(
-      Color.alphaBlend(
-        widget.palette.ink.withValues(alpha: 0.08),
-        widget.palette.background,
-      ),
+      widget.palette.background.withValues(alpha: 0.76),
     );
     final toolbarBorder = _cssColor(
       widget.palette.line.withValues(alpha: 0.86),
@@ -1534,6 +1531,8 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       border-radius: 16px;
       background: var(--reader-bg-soft);
       background-color: var(--reader-toolbar-bg);
+      -webkit-backdrop-filter: blur(18px) saturate(1.12);
+      backdrop-filter: blur(18px) saturate(1.12);
       border: 1px solid var(--reader-toolbar-border);
       box-shadow: 0 14px 34px rgba(0, 0, 0, 0.22);
       overflow: hidden;

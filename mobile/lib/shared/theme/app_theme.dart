@@ -31,7 +31,15 @@ class AppTheme {
           secondary: palette.accent,
           surface: palette.background,
           onSurface: palette.ink,
+          surfaceContainer: palette.panel.withValues(alpha: 0.62),
+          surfaceContainerHigh: palette.panel.withValues(alpha: 0.72),
+          surfaceContainerHighest: palette.panel.withValues(alpha: 0.82),
         );
+    final glassBorder = BorderSide(
+      color: brightness == Brightness.dark
+          ? Colors.white.withValues(alpha: 0.1)
+          : palette.ink.withValues(alpha: 0.08),
+    );
 
     return ThemeData(
       useMaterial3: true,
@@ -73,16 +81,18 @@ class AppTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: palette.backgroundSoft,
+        fillColor: palette.panel.withValues(
+          alpha: brightness == Brightness.dark ? 0.5 : 0.42,
+        ),
         labelStyle: TextStyle(color: palette.inkSecondary),
         hintStyle: TextStyle(color: palette.inkTertiary),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: palette.line),
+          borderSide: glassBorder,
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: palette.line),
+          borderSide: glassBorder,
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
@@ -110,14 +120,68 @@ class AppTheme {
         ),
       ),
       dialogTheme: DialogThemeData(
-        backgroundColor: palette.panel,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        backgroundColor: palette.panel.withValues(alpha: 0.68),
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        shadowColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(28),
+          side: glassBorder,
+        ),
       ),
       bottomSheetTheme: BottomSheetThemeData(
-        backgroundColor: palette.panel,
+        backgroundColor: Colors.transparent,
+        modalBackgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        modalElevation: 0,
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+      ),
+      cardTheme: CardThemeData(
+        color: palette.panel.withValues(alpha: 0.48),
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        shadowColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(22),
+          side: glassBorder,
+        ),
+      ),
+      popupMenuTheme: PopupMenuThemeData(
+        color: palette.panel.withValues(alpha: 0.76),
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: glassBorder,
+        ),
+      ),
+      menuTheme: MenuThemeData(
+        style: MenuStyle(
+          backgroundColor: WidgetStatePropertyAll(
+            palette.panel.withValues(alpha: 0.76),
+          ),
+          surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
+          elevation: const WidgetStatePropertyAll(0),
+          side: WidgetStatePropertyAll(glassBorder),
+          shape: WidgetStatePropertyAll(
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          ),
+        ),
+      ),
+      dropdownMenuTheme: DropdownMenuThemeData(
+        menuStyle: MenuStyle(
+          backgroundColor: WidgetStatePropertyAll(
+            palette.panel.withValues(alpha: 0.78),
+          ),
+          surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
+          elevation: const WidgetStatePropertyAll(0),
+          side: WidgetStatePropertyAll(glassBorder),
+          shape: WidgetStatePropertyAll(
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          ),
         ),
       ),
       chipTheme: ChipThemeData(
@@ -139,7 +203,7 @@ class AppTheme {
             if (states.contains(WidgetState.selected)) {
               return palette.accent.withValues(alpha: 0.18);
             }
-            return palette.ink.withValues(alpha: 0.055);
+            return Colors.transparent;
           }),
           foregroundColor: WidgetStatePropertyAll(palette.ink),
           side: const WidgetStatePropertyAll(BorderSide.none),

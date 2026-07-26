@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../shared/theme/reader_theme_extension.dart';
+import '../../shared/theme/glass_theme.dart';
 import '../../shared/utils/responsive.dart';
+import '../../shared/widgets/glass_surface.dart';
 import 'auth_controller.dart';
 import '../settings/server_config_controller.dart';
 
@@ -158,19 +160,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
     final panel = ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 420),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: palette.panel.withValues(alpha: 0.96),
-          borderRadius: BorderRadius.circular(26),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.09),
-              blurRadius: 38,
-              offset: const Offset(0, 20),
-            ),
-          ],
-        ),
-        child: Padding(padding: EdgeInsets.all(tablet ? 30 : 24), child: form),
+      child: GlassSurface(
+        level: GlassSurfaceLevel.floating,
+        borderRadius: BorderRadius.circular(26),
+        padding: EdgeInsets.all(tablet ? 30 : 24),
+        child: form,
       ),
     );
 

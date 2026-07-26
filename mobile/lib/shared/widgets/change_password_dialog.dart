@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'glass_dialog.dart';
+
 class PasswordChangeValues {
   const PasswordChangeValues({this.currentPassword, required this.newPassword});
 
@@ -40,7 +42,7 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return GlassAlertDialog(
       scrollable: true,
       title: Text(widget.title),
       content: SizedBox(

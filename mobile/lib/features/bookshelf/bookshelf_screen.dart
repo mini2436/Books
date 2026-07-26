@@ -9,6 +9,10 @@ import '../../data/models/sync_models.dart';
 import '../../shared/theme/reader_theme_extension.dart';
 import '../../shared/utils/responsive.dart';
 import '../../shared/widgets/centered_scale_dialog.dart';
+import '../../shared/widgets/glass_segmented_control.dart';
+import '../../shared/widgets/glass_dialog.dart';
+import '../../shared/widgets/glass_surface.dart';
+import '../../shared/theme/glass_theme.dart';
 import '../auth/auth_controller.dart';
 import 'bookshelf_controller.dart';
 
@@ -321,7 +325,7 @@ class _BookshelfScreenState extends ConsumerState<BookshelfScreen>
                           ),
                         ),
                       ),
-                      SegmentedButton<_ShelfView>(
+                      GlassSegmentedControl<_ShelfView>(
                         style: mobileSegmentStyle,
                         showSelectedIcon: false,
                         segments: const [
@@ -361,7 +365,7 @@ class _BookshelfScreenState extends ConsumerState<BookshelfScreen>
                             builder: (context, constraints) {
                               final isPrimaryFilterSet =
                                   controller.filterOptions.length == 3;
-                              final selector = SegmentedButton<String>(
+                              final selector = GlassSegmentedControl<String>(
                                 style: mobileSegmentStyle,
                                 showSelectedIcon: false,
                                 expandedInsets: isPrimaryFilterSet
@@ -1284,24 +1288,11 @@ class _BookHeroFrame extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = AppReaderPalette.of(context);
-    final frame = DecoratedBox(
-      decoration: BoxDecoration(
-        color: dialog ? palette.panel : Colors.transparent,
-        borderRadius: BorderRadius.circular(borderRadius),
-        border: dialog
-            ? Border.all(color: palette.line.withValues(alpha: 0.72))
-            : null,
-        boxShadow: dialog
-            ? [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.16),
-                  blurRadius: 36,
-                  offset: const Offset(0, 18),
-                ),
-              ]
-            : null,
-      ),
+    final frame = GlassSurface(
+      level: dialog ? GlassSurfaceLevel.elevated : GlassSurfaceLevel.subtle,
+      borderRadius: BorderRadius.circular(borderRadius),
+      blur: dialog,
+      child: const SizedBox.expand(),
     );
     if (heroTag == null || MediaQuery.of(context).disableAnimations) {
       return frame;
@@ -1547,23 +1538,13 @@ class _GroupFolderHeroFrame extends StatelessWidget {
         ),
         Positioned.fill(
           top: dialog ? 14 : 12,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: dialog ? palette.panel : palette.backgroundSoft,
-              borderRadius: BorderRadius.circular(dialog ? 24 : 17),
-              border: dialog
-                  ? Border.all(color: palette.line.withValues(alpha: 0.72))
-                  : null,
-              boxShadow: dialog
-                  ? [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.16),
-                        blurRadius: 36,
-                        offset: const Offset(0, 18),
-                      ),
-                    ]
-                  : null,
-            ),
+          child: GlassSurface(
+            level: dialog
+                ? GlassSurfaceLevel.elevated
+                : GlassSurfaceLevel.standard,
+            borderRadius: BorderRadius.circular(dialog ? 24 : 17),
+            blur: dialog,
+            child: const SizedBox.expand(),
           ),
         ),
       ],
@@ -1636,7 +1617,7 @@ Future<void> _showRenameGroupDialog(
           Navigator.of(dialogContext).pop(textController.text.trim());
         }
 
-        return AlertDialog(
+        return GlassAlertDialog(
           title: const Text('修改分组名称'),
           content: SizedBox(
             width: 360,
@@ -1708,7 +1689,7 @@ Future<void> _showGroupFolder(
   required Object titleHeroTag,
 }) {
   final reduceMotion = MediaQuery.of(context).disableAnimations;
-  return Navigator.of(context).push<void>(
+  return Navigator.of(context, rootNavigator: true).push<void>(
     PageRouteBuilder<void>(
       opaque: false,
       barrierDismissible: true,
@@ -1903,7 +1884,7 @@ Future<void> _toggleOfflineDownload(
   if (controller.isBookCached(book.id)) {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => GlassAlertDialog(
         title: const Text('删除离线下载？'),
         content: Text('删除“${book.title}”的本地文件。在线书架中的书籍不会被删除。'),
         actions: [
@@ -1957,46 +1938,47 @@ Future<void> _showBookDetails(
   Future<void> Function(String? anchor)? onReadRequested,
 }) async {
   final reduceMotion = MediaQuery.of(context).disableAnimations;
-  final result = await Navigator.of(context).push<_BookDialogResult>(
-    PageRouteBuilder<_BookDialogResult>(
-      opaque: false,
-      barrierDismissible: true,
-      barrierLabel: '关闭书籍详情',
-      barrierColor: Colors.black.withValues(alpha: 0.46),
-      transitionDuration: reduceMotion
-          ? Duration.zero
-          : const Duration(milliseconds: 360),
-      reverseTransitionDuration: reduceMotion
-          ? Duration.zero
-          : const Duration(milliseconds: 260),
-      pageBuilder: (dialogContext, _, _) => _BookDetailsDialog(
-        book: book,
-        controller: controller,
-        imageUrl: imageUrl,
-        imageBytes: imageBytes,
-        headers: headers,
-        heroTag: reduceMotion ? null : heroTag,
-        frameHeroTag: reduceMotion ? null : frameHeroTag,
-      ),
-      transitionsBuilder: (_, animation, _, child) {
-        final curved = CurvedAnimation(
-          parent: animation,
-          curve: const Interval(0.08, 1, curve: Curves.easeOutCubic),
-          reverseCurve: Curves.easeInCubic,
-        );
-        return FadeTransition(
-          opacity: curved,
-          child: SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(0, 0.018),
-              end: Offset.zero,
-            ).animate(curved),
-            child: child,
+  final result = await Navigator.of(context, rootNavigator: true)
+      .push<_BookDialogResult>(
+        PageRouteBuilder<_BookDialogResult>(
+          opaque: false,
+          barrierDismissible: true,
+          barrierLabel: '关闭书籍详情',
+          barrierColor: Colors.black.withValues(alpha: 0.46),
+          transitionDuration: reduceMotion
+              ? Duration.zero
+              : const Duration(milliseconds: 360),
+          reverseTransitionDuration: reduceMotion
+              ? Duration.zero
+              : const Duration(milliseconds: 260),
+          pageBuilder: (dialogContext, _, _) => _BookDetailsDialog(
+            book: book,
+            controller: controller,
+            imageUrl: imageUrl,
+            imageBytes: imageBytes,
+            headers: headers,
+            heroTag: reduceMotion ? null : heroTag,
+            frameHeroTag: reduceMotion ? null : frameHeroTag,
           ),
-        );
-      },
-    ),
-  );
+          transitionsBuilder: (_, animation, _, child) {
+            final curved = CurvedAnimation(
+              parent: animation,
+              curve: const Interval(0.08, 1, curve: Curves.easeOutCubic),
+              reverseCurve: Curves.easeInCubic,
+            );
+            return FadeTransition(
+              opacity: curved,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0, 0.018),
+                  end: Offset.zero,
+                ).animate(curved),
+                child: child,
+              ),
+            );
+          },
+        ),
+      );
   if (result == null || !context.mounted) return;
   final anchor = result.anchor;
   if (onReadRequested != null) {

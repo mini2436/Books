@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import '../../data/models/book_models.dart';
 import '../auth/auth_controller.dart';
 import '../../shared/theme/reader_theme_extension.dart';
+import '../../shared/widgets/glass_dialog.dart';
+import '../../shared/widgets/glass_surface.dart';
 import '../../shared/utils/responsive.dart';
 import 'annotation_center_controller.dart';
 
@@ -120,12 +122,6 @@ class _AnnotationCenterScreenState
                                   onPressed: _searchController.clear,
                                   icon: const Icon(Icons.close),
                                 ),
-                          filled: true,
-                          fillColor: palette.backgroundSoft,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(18),
-                            borderSide: BorderSide.none,
-                          ),
                         ),
                       ),
                       if (controller.error != null) ...[
@@ -373,12 +369,6 @@ class _AnnotationBookDetailScreenState
                                 onPressed: _searchController.clear,
                                 icon: const Icon(Icons.close),
                               ),
-                        filled: true,
-                        fillColor: palette.backgroundSoft,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(18),
-                          borderSide: BorderSide.none,
-                        ),
                       ),
                     ),
                   ],
@@ -501,95 +491,79 @@ class _AnnotationBookCard extends StatelessWidget {
     final palette = AppReaderPalette.of(context);
     final latestAnnotation = group.entries.first.annotation;
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: palette.panel,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: palette.line),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
+    return GlassCard(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(22),
+      child: Row(
+        children: [
+          _BookCover(
+            book: group.book,
+            width: 68,
+            height: 96,
+            heroTag: 'annotation-book-cover-${group.book.id}',
           ),
-        ],
-      ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(22),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              _BookCover(
-                book: group.book,
-                width: 68,
-                height: 96,
-                heroTag: 'annotation-book-cover-${group.book.id}',
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      group.book.title,
-                      maxLines: 2,
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  group.book.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                if ((group.book.author ?? '').trim().isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      group.book.author!,
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    if ((group.book.author ?? '').trim().isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text(
-                          group.book.author!,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(color: palette.inkSecondary),
-                        ),
-                      ),
-                    const SizedBox(height: 10),
-                    Text(
-                      latestAnnotation.quoteText?.trim().isNotEmpty == true
-                          ? latestAnnotation.quoteText!
-                          : '最近一条批注',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: palette.inkSecondary,
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        _MiniMetaChip(
-                          icon: Icons.sticky_note_2_outlined,
-                          label: '${group.annotationCount} 条批注',
-                        ),
-                        _MiniMetaChip(
-                          icon: Icons.schedule_outlined,
-                          label: latestAnnotation.updatedAt.split('T').first,
-                        ),
-                        _MiniMetaChip(
-                          icon: Icons.library_books_outlined,
-                          label: group.book.format.toUpperCase(),
-                        ),
-                      ],
+                  ),
+                const SizedBox(height: 10),
+                Text(
+                  latestAnnotation.quoteText?.trim().isNotEmpty == true
+                      ? latestAnnotation.quoteText!
+                      : '最近一条批注',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: palette.inkSecondary),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    _MiniMetaChip(
+                      icon: Icons.sticky_note_2_outlined,
+                      label: '${group.annotationCount} 条批注',
+                    ),
+                    _MiniMetaChip(
+                      icon: Icons.schedule_outlined,
+                      label: latestAnnotation.updatedAt.split('T').first,
+                    ),
+                    _MiniMetaChip(
+                      icon: Icons.library_books_outlined,
+                      label: group.book.format.toUpperCase(),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(width: 10),
-              Icon(Icons.chevron_right_rounded, color: palette.inkSecondary),
-            ],
+              ],
+            ),
           ),
-        ),
+          const SizedBox(width: 10),
+          Icon(Icons.chevron_right_rounded, color: palette.inkSecondary),
+        ],
       ),
     );
   }
@@ -732,119 +706,105 @@ class _AnnotationCard extends ConsumerWidget {
         ? palette.accent
         : Color(int.parse('0xFF${annotation.color!.substring(1)}'));
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: palette.panel,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: palette.line),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 4,
-              height: 92,
-              decoration: BoxDecoration(
-                color: stripeColor,
-                borderRadius: BorderRadius.circular(999),
-              ),
+    return GlassCard(
+      borderRadius: BorderRadius.circular(20),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 4,
+            height: 92,
+            decoration: BoxDecoration(
+              color: stripeColor,
+              borderRadius: BorderRadius.circular(999),
             ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (showBookMeta) ...[
-                    Text(
-                      entry.book.title,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    if ((entry.book.author ?? '').trim().isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text(
-                          entry.book.author!,
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(color: palette.inkSecondary),
-                        ),
-                      ),
-                    const SizedBox(height: 12),
-                  ],
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (showBookMeta) ...[
                   Text(
-                    annotation.quoteText?.trim().isNotEmpty == true
-                        ? annotation.quoteText!
-                        : '高亮片段',
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      fontWeight: FontWeight.w600,
+                    entry.book.title,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
-                  if ((annotation.noteText ?? '').trim().isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    Text(
-                      annotation.noteText!,
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                  ],
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      Text(
-                        annotation.updatedAt.split('T').first,
+                  if ((entry.book.author ?? '').trim().isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        entry.book.author!,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: palette.inkTertiary,
+                          color: palette.inkSecondary,
                         ),
                       ),
-                      if (showBookMeta)
-                        Text(
-                          entry.book.format.toUpperCase(),
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(
-                                color: palette.inkSecondary,
-                                fontWeight: FontWeight.w600,
-                              ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: [
-                      OutlinedButton.icon(
-                        onPressed: () => context.push(
-                          '/reader/${entry.book.id}?anchor=${Uri.encodeComponent(annotation.anchor)}',
-                        ),
-                        icon: const Icon(Icons.menu_book_outlined),
-                        label: const Text('打开原文'),
-                      ),
-                      TextButton.icon(
-                        onPressed: () => _confirmDelete(context, ref),
-                        icon: const Icon(Icons.delete_outline),
-                        label: const Text('删除'),
-                      ),
-                    ],
+                    ),
+                  const SizedBox(height: 12),
+                ],
+                Text(
+                  annotation.quoteText?.trim().isNotEmpty == true
+                      ? annotation.quoteText!
+                      : '高亮片段',
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+                ),
+                if ((annotation.noteText ?? '').trim().isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    annotation.noteText!,
+                    style: Theme.of(context).textTheme.bodyMedium,
                   ),
                 ],
-              ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text(
+                      annotation.updatedAt.split('T').first,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: palette.inkTertiary,
+                      ),
+                    ),
+                    if (showBookMeta)
+                      Text(
+                        entry.book.format.toUpperCase(),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: palette.inkSecondary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: () => context.push(
+                        '/reader/${entry.book.id}?anchor=${Uri.encodeComponent(annotation.anchor)}',
+                      ),
+                      icon: const Icon(Icons.menu_book_outlined),
+                      label: const Text('打开原文'),
+                    ),
+                    TextButton.icon(
+                      onPressed: () => _confirmDelete(context, ref),
+                      icon: const Icon(Icons.delete_outline),
+                      label: const Text('删除'),
+                    ),
+                  ],
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -852,7 +812,7 @@ class _AnnotationCard extends ConsumerWidget {
   Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => GlassAlertDialog(
         title: const Text('删除这条批注？'),
         content: Text(
           entry.annotation.noteText?.trim().isNotEmpty == true

@@ -10,6 +10,9 @@ import '../../shared/theme/reader_theme_extension.dart';
 import '../../shared/utils/responsive.dart';
 import '../../shared/widgets/centered_scale_dialog.dart';
 import '../../shared/widgets/change_password_dialog.dart';
+import '../../shared/widgets/glass_segmented_control.dart';
+import '../../shared/widgets/glass_surface.dart';
+import '../../shared/widgets/glass_dialog.dart';
 import '../auth/auth_controller.dart';
 import 'admin_library_sources_section.dart';
 import 'admin_center_controller.dart';
@@ -123,7 +126,7 @@ class AdminCenterScreen extends ConsumerWidget {
                         borderRadius: BorderRadius.circular(999),
                         child: SingleChildScrollView(
                           scrollDirection: Axis.horizontal,
-                          child: SegmentedButton<AdminSection>(
+                          child: GlassSegmentedControl<AdminSection>(
                             style: tablet
                                 ? null
                                 : const ButtonStyle(
@@ -218,23 +221,28 @@ class AdminCenterScreen extends ConsumerWidget {
       floatingActionButton:
           controller.selectedSection == AdminSection.users &&
               controller.canManageUsers
-          ? FloatingActionButton.extended(
-              onPressed: controller.isWorking
-                  ? null
-                  : () => showCenteredScaleDialog<void>(
-                      context,
-                      builder: (context) => CreateUserDialog(
-                        onSubmit: (username, password, role) => ref
-                            .read(adminCenterControllerProvider)
-                            .createUser(
-                              username: username,
-                              password: password,
-                              role: role,
-                            ),
+          ? Padding(
+              padding: EdgeInsets.only(
+                bottom: !tablet && !Responsive.isDesktopPlatform() ? 88 : 0,
+              ),
+              child: FloatingActionButton.extended(
+                onPressed: controller.isWorking
+                    ? null
+                    : () => showCenteredScaleDialog<void>(
+                        context,
+                        builder: (context) => CreateUserDialog(
+                          onSubmit: (username, password, role) => ref
+                              .read(adminCenterControllerProvider)
+                              .createUser(
+                                username: username,
+                                password: password,
+                                role: role,
+                              ),
+                        ),
                       ),
-                    ),
-              icon: const Icon(Icons.person_add_alt_1),
-              label: const Text('新建用户'),
+                icon: const Icon(Icons.person_add_alt_1),
+                label: const Text('新建用户'),
+              ),
             )
           : null,
     );
@@ -531,61 +539,55 @@ class _RoleManagementSection extends ConsumerWidget {
                     ),
                   ),
                   if (isCurrentUser)
-                    Material(
-                      color: palette.backgroundSoft,
+                    GlassSurface(
                       borderRadius: BorderRadius.circular(14),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 10,
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.lock_outline_rounded,
-                              size: 17,
-                              color: palette.inkSecondary,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              adminRoleLabel(user.role),
-                              style: Theme.of(context).textTheme.bodyMedium
-                                  ?.copyWith(fontWeight: FontWeight.w700),
-                            ),
-                          ],
-                        ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.lock_outline_rounded,
+                            size: 17,
+                            color: palette.inkSecondary,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            adminRoleLabel(user.role),
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                        ],
                       ),
                     )
                   else
-                    Material(
-                      color: palette.backgroundSoft,
+                    GlassSurface(
                       borderRadius: BorderRadius.circular(14),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            value: user.role,
-                            borderRadius: BorderRadius.circular(16),
-                            items: adminRoles
-                                .map(
-                                  (role) => DropdownMenuItem(
-                                    value: role.value,
-                                    child: Text(role.label),
-                                  ),
-                                )
-                                .toList(),
-                            onChanged: controller.isWorking
-                                ? null
-                                : (role) {
-                                    if (role == null) {
-                                      return;
-                                    }
-                                    ref
-                                        .read(adminCenterControllerProvider)
-                                        .updateUserRole(user, role);
-                                  },
-                          ),
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: user.role,
+                          borderRadius: BorderRadius.circular(16),
+                          items: adminRoles
+                              .map(
+                                (role) => DropdownMenuItem(
+                                  value: role.value,
+                                  child: Text(role.label),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: controller.isWorking
+                              ? null
+                              : (role) {
+                                  if (role == null) {
+                                    return;
+                                  }
+                                  ref
+                                      .read(adminCenterControllerProvider)
+                                      .updateUserRole(user, role);
+                                },
                         ),
                       ),
                     ),
@@ -699,7 +701,7 @@ class _BookManagementSection extends ConsumerWidget {
                 borderRadius: BorderRadius.circular(999),
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
-                  child: SegmentedButton<String>(
+                  child: GlassSegmentedControl<String>(
                     showSelectedIcon: false,
                     segments: controller.availableBookGroups
                         .map(
@@ -747,7 +749,7 @@ class _BookManagementSection extends ConsumerWidget {
                           : () async {
                               final confirmed = await showDialog<bool>(
                                 context: context,
-                                builder: (context) => AlertDialog(
+                                builder: (context) => GlassAlertDialog(
                                   title: const Text('批量删除图书'),
                                   content: Text(
                                     '确定删除已勾选的 ${controller.selectedBookCount} 本图书吗？这会同时清理图书授权、批注、书签和阅读进度记录。',
@@ -867,139 +869,122 @@ class _AdminBookTile extends StatelessWidget {
         MediaQuery.textScalerOf(context).scale(titleFontSize) *
         (titleStyle?.height ?? 1.3);
 
-    return InkWell(
-      borderRadius: BorderRadius.circular(14),
+    return GlassCard(
       onTap: onTap,
-      child: Ink(
-        decoration: BoxDecoration(
-          color: palette.panel,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: selected ? palette.accent : palette.line,
-            width: selected ? 1.6 : 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 12,
-              offset: const Offset(0, 5),
-            ),
-          ],
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(9),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                child: Stack(
-                  children: [
-                    Positioned.fill(
-                      child: HeroMode(
-                        enabled: !MediaQuery.of(context).disableAnimations,
-                        child: Hero(
-                          tag: 'admin-book-cover-${book.id}',
-                          transitionOnUserGestures: true,
-                          child: Material(
-                            color: Colors.transparent,
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(9),
-                                gradient: const LinearGradient(
-                                  colors: [
-                                    Color(0xFF5D3A22),
-                                    Color(0xFF93633A),
-                                  ],
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                ),
-                              ),
-                              child: imageUrl == null
-                                  ? _AdminBookFallback(title: book.title)
-                                  : ClipRRect(
-                                      borderRadius: BorderRadius.circular(9),
-                                      child: Image.network(
-                                        imageUrl!,
-                                        headers: headers,
-                                        fit: BoxFit.cover,
-                                        errorBuilder:
-                                            (context, error, stackTrace) =>
-                                                _AdminBookFallback(
-                                                  title: book.title,
-                                                ),
-                                      ),
-                                    ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      top: 8,
-                      left: 8,
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(
+        color: selected ? palette.accent : palette.line,
+        width: selected ? 1.6 : 1,
+      ),
+      padding: const EdgeInsets.all(9),
+      blur: false,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: HeroMode(
+                    enabled: !MediaQuery.of(context).disableAnimations,
+                    child: Hero(
+                      tag: 'admin-book-cover-${book.id}',
+                      transitionOnUserGestures: true,
                       child: Material(
-                        color: Colors.black.withValues(alpha: 0.28),
-                        borderRadius: BorderRadius.circular(999),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(999),
-                          onTap: onSelectionToggle,
-                          child: Padding(
-                            padding: const EdgeInsets.all(6),
-                            child: Icon(
-                              selected
-                                  ? Icons.check_circle
-                                  : Icons.radio_button_unchecked,
-                              color: Colors.white,
-                              size: 20,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    if ((book.groupName ?? '').trim().isNotEmpty)
-                      Positioned(
-                        right: 8,
-                        bottom: 8,
+                        color: Colors.transparent,
                         child: DecoratedBox(
                           decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.56),
-                            borderRadius: BorderRadius.circular(999),
+                            borderRadius: BorderRadius.circular(9),
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF5D3A22), Color(0xFF93633A)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
                           ),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 6,
-                            ),
-                            child: Text(
-                              book.groupName!,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
+                          child: imageUrl == null
+                              ? _AdminBookFallback(title: book.title)
+                              : ClipRRect(
+                                  borderRadius: BorderRadius.circular(9),
+                                  child: Image.network(
+                                    imageUrl!,
+                                    headers: headers,
+                                    fit: BoxFit.cover,
+                                    errorBuilder:
+                                        (context, error, stackTrace) =>
+                                            _AdminBookFallback(
+                                              title: book.title,
+                                            ),
+                                  ),
+                                ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 8,
+                  left: 8,
+                  child: Material(
+                    color: Colors.black.withValues(alpha: 0.28),
+                    borderRadius: BorderRadius.circular(999),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(999),
+                      onTap: onSelectionToggle,
+                      child: Padding(
+                        padding: const EdgeInsets.all(6),
+                        child: Icon(
+                          selected
+                              ? Icons.check_circle
+                              : Icons.radio_button_unchecked,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                if ((book.groupName ?? '').trim().isNotEmpty)
+                  Positioned(
+                    right: 8,
+                    bottom: 8,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.56),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        child: Text(
+                          book.groupName!,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 9),
-              SizedBox(
-                height: titleLineHeight * 2,
-                child: Align(
-                  alignment: Alignment.topLeft,
-                  child: Text(
-                    book.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: titleStyle,
+                    ),
                   ),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
+          const SizedBox(height: 9),
+          SizedBox(
+            height: titleLineHeight * 2,
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: Text(
+                book.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: titleStyle,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1140,7 +1125,6 @@ class _AnnotationManagementSectionState
 
   @override
   Widget build(BuildContext context) {
-    final palette = AppReaderPalette.of(context);
     final controller = widget.controller;
     final groups = _buildGroups(controller);
     final filteredGroups = _filterGroups(groups, _query);
@@ -1178,12 +1162,6 @@ class _AnnotationManagementSectionState
                           onPressed: _searchController.clear,
                           icon: const Icon(Icons.close),
                         ),
-                  filled: true,
-                  fillColor: palette.backgroundSoft,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(18),
-                    borderSide: BorderSide.none,
-                  ),
                 ),
               ),
             ],
@@ -1389,12 +1367,6 @@ class _AdminAnnotationBookDetailScreenState
                                 onPressed: _searchController.clear,
                                 icon: const Icon(Icons.close),
                               ),
-                        filled: true,
-                        fillColor: palette.backgroundSoft,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(18),
-                          borderSide: BorderSide.none,
-                        ),
                       ),
                     ),
                   ],
@@ -1792,7 +1764,7 @@ class _CreateUserDialogState extends State<CreateUserDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return GlassAlertDialog(
       scrollable: true,
       title: const Text('新建后台用户'),
       content: Form(
@@ -1883,23 +1855,7 @@ class _PanelCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = AppReaderPalette.of(context);
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: palette.panel,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: palette.line),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Padding(padding: const EdgeInsets.all(16), child: child),
-    );
+    return GlassCard(child: child);
   }
 }
 

@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
+enum AppPlatformLayout { phone, tablet, web, desktop }
+
 class Responsive {
   Responsive._();
 
@@ -24,6 +26,21 @@ class Responsive {
 
   static bool usesWideLayout(BuildContext context) =>
       isTablet(context) || isDesktop(context);
+
+  /// Centralized platform classification for visual systems that need
+  /// independent tuning without scattering platform checks across screens.
+  static AppPlatformLayout platformLayout(BuildContext context) {
+    if (kIsWeb) {
+      return AppPlatformLayout.web;
+    }
+    if (isDesktopPlatform()) {
+      return AppPlatformLayout.desktop;
+    }
+    if (isTablet(context)) {
+      return AppPlatformLayout.tablet;
+    }
+    return AppPlatformLayout.phone;
+  }
 
   static int bookshelfColumns(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;

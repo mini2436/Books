@@ -15,6 +15,7 @@ class GlassSurface extends StatelessWidget {
     this.tint,
     this.border,
     this.blur = true,
+    this.shadow = true,
     this.clipBehavior = Clip.antiAlias,
   });
 
@@ -25,6 +26,7 @@ class GlassSurface extends StatelessWidget {
   final Color? tint;
   final BoxBorder? border;
   final bool blur;
+  final bool shadow;
   final Clip clipBehavior;
 
   @override
@@ -63,15 +65,20 @@ class GlassSurface extends StatelessWidget {
       child: DecoratedBox(
         decoration: BoxDecoration(
           borderRadius: radius,
-          boxShadow: [
-            BoxShadow(
-              color: palette.ink.withValues(
-                alpha: style.shadowOpacity * shadowStrength,
-              ),
-              blurRadius: level == GlassSurfaceLevel.floating ? 30 : 22,
-              offset: Offset(0, level == GlassSurfaceLevel.floating ? 12 : 8),
-            ),
-          ],
+          boxShadow: shadow
+              ? [
+                  BoxShadow(
+                    color: palette.ink.withValues(
+                      alpha: style.shadowOpacity * shadowStrength,
+                    ),
+                    blurRadius: level == GlassSurfaceLevel.floating ? 30 : 22,
+                    offset: Offset(
+                      0,
+                      level == GlassSurfaceLevel.floating ? 12 : 8,
+                    ),
+                  ),
+                ]
+              : const [],
         ),
         child: ClipRRect(
           borderRadius: radius,

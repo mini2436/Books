@@ -85,6 +85,13 @@ class AdminCenterController extends ChangeNotifier {
   int get librarySourceCount => _librarySources.length;
   int get importJobCount => _importJobs.length;
   int get activeUserCount => _users.where((user) => user.enabled).length;
+  int get enabledSuperAdminCount => _users
+      .where(
+        (user) =>
+            user.enabled &&
+            UserRole.fromValue(user.role) == UserRole.superAdmin,
+      )
+      .length;
   int get selectedBookCount => _selectedBookIds.length;
   bool get hasBookSelection => _selectedBookIds.isNotEmpty;
 
@@ -619,6 +626,19 @@ class AdminCenterController extends ChangeNotifier {
   Future<void> updateUserEnabled(AdminUserView user, bool enabled) async {
     if (!canManageUsers || enabled == user.enabled) {
       return;
+    }
+
+    if (!enabled && UserRole.fromValue(user.role) == UserRole.superAdmin) {
+      if (!isCurrentUser(user)) {
+        _error = '管理员只能停用自己的账号';
+        notifyListeners();
+        return;
+      }
+      if (enabledSuperAdminCount <= 1) {
+        _error = '系统中至少需要保留一个启用的管理员账号';
+        notifyListeners();
+        return;
+      }
     }
 
     final previousUsers = _users;

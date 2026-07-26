@@ -9,6 +9,7 @@ import com.privatereader.common.toSqlTimestamp
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
 
 @Service
@@ -28,6 +29,7 @@ class UserAdminService(
         return UserView(id = userId, username = request.username, role = normalizedRole, enabled = true)
     }
 
+    @Transactional
     fun updateUser(actorId: Long, userId: Long, request: UpdateUserRequest): UserView {
         val existing = authRepository.findUserById(userId) ?: throw IllegalArgumentException("User not found")
         if (actorId == userId && request.role != null) {
@@ -36,6 +38,11 @@ class UserAdminService(
         }
         val newRole = request.role?.let(::normalizeRole) ?: existing.role
         val newEnabled = request.enabled ?: existing.enabled
+        if (existing.role == UserRole.SUPER_ADMIN.value && existing.enabled && !newEnabled) {
+            require(actorId == userId) { "Administrators can only disable their own account" }
+            val enabledAdministratorIds = lockEnabledAdministratorIds()
+            require(enabledAdministratorIds.size > 1) { "The last enabled administrator cannot be disabled" }
+        }
         // 更新指定用户的角色和启用状态，用于超级管理员维护账号权限。
         jdbcClient.sql(
             """
@@ -81,4 +88,18 @@ class UserAdminService(
     private fun normalizeRole(role: String): String {
         return UserRole.normalize(role)
     }
+
+    private fun lockEnabledAdministratorIds(): List<Long> =
+        // 锁定全部启用中的超级管理员，避免并发停用造成系统瞬间失去管理员。
+        jdbcClient.sql(
+            """
+            select id from users
+            where role = :role and enabled = true
+            order by id
+            for update
+            """.trimIndent(),
+        )
+            .param("role", UserRole.SUPER_ADMIN.value)
+            .query(Long::class.java)
+            .list()
 }

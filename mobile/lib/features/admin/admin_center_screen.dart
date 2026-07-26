@@ -218,33 +218,6 @@ class AdminCenterScreen extends ConsumerWidget {
           ),
         ),
       ),
-      floatingActionButton:
-          controller.selectedSection == AdminSection.users &&
-              controller.canManageUsers
-          ? Padding(
-              padding: EdgeInsets.only(
-                bottom: !tablet && !Responsive.isDesktopPlatform() ? 88 : 0,
-              ),
-              child: FloatingActionButton.extended(
-                onPressed: controller.isWorking
-                    ? null
-                    : () => showCenteredScaleDialog<void>(
-                        context,
-                        builder: (context) => CreateUserDialog(
-                          onSubmit: (username, password, role) => ref
-                              .read(adminCenterControllerProvider)
-                              .createUser(
-                                username: username,
-                                password: password,
-                                role: role,
-                              ),
-                        ),
-                      ),
-                icon: const Icon(Icons.person_add_alt_1),
-                label: const Text('新建用户'),
-              ),
-            )
-          : null,
     );
   }
 }
@@ -329,6 +302,15 @@ class _UserManagementSection extends ConsumerWidget {
           .resetUserPassword(user, values.newPassword);
     }
 
+    Future<void> promptCreateUser() => showCenteredScaleDialog<void>(
+      context,
+      builder: (context) => CreateUserDialog(
+        onSubmit: (username, password, role) => ref
+            .read(adminCenterControllerProvider)
+            .createUser(username: username, password: password, role: role),
+      ),
+    );
+
     if (!controller.canManageUsers) {
       return _EmptyPanel(
         title: '仅超级管理员可管理用户',
@@ -409,13 +391,18 @@ class _UserManagementSection extends ConsumerWidget {
                             ],
                           ),
                         ),
-                        Switch(
-                          value: user.enabled,
-                          onChanged: controller.isWorking
-                              ? null
-                              : (value) => ref
-                                    .read(adminCenterControllerProvider)
-                                    .updateUserEnabled(user, value),
+                        Tooltip(
+                          message: _userToggleTooltip(controller, user),
+                          child: Switch(
+                            value: user.enabled,
+                            onChanged:
+                                controller.isWorking ||
+                                    !_canToggleUser(controller, user)
+                                ? null
+                                : (value) => ref
+                                      .read(adminCenterControllerProvider)
+                                      .updateUserEnabled(user, value),
+                          ),
                         ),
                         if (UserRole.fromValue(user.role) !=
                             UserRole.superAdmin) ...[
@@ -447,8 +434,48 @@ class _UserManagementSection extends ConsumerWidget {
               ),
             ),
           ),
+        Padding(
+          padding: const EdgeInsets.only(top: 4, bottom: 18),
+          child: Center(
+            child: Tooltip(
+              message: '新建用户',
+              child: FloatingActionButton(
+                heroTag: 'admin-create-user',
+                onPressed: controller.isWorking ? null : promptCreateUser,
+                child: const Icon(Icons.person_add_alt_1_rounded),
+              ),
+            ),
+          ),
+        ),
       ],
     );
+  }
+
+  bool _canToggleUser(AdminCenterController controller, AdminUserView user) {
+    if (!user.enabled || UserRole.fromValue(user.role) != UserRole.superAdmin) {
+      return true;
+    }
+    return controller.isCurrentUser(user) &&
+        controller.enabledSuperAdminCount > 1;
+  }
+
+  String _userToggleTooltip(
+    AdminCenterController controller,
+    AdminUserView user,
+  ) {
+    if (!user.enabled) {
+      return '启用用户';
+    }
+    if (UserRole.fromValue(user.role) != UserRole.superAdmin) {
+      return '停用用户';
+    }
+    if (!controller.isCurrentUser(user)) {
+      return '管理员只能停用自己的账号';
+    }
+    if (controller.enabledSuperAdminCount <= 1) {
+      return '必须保留至少一个启用的管理员';
+    }
+    return '停用自己的管理员账号';
   }
 }
 

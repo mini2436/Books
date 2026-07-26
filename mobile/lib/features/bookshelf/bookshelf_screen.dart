@@ -919,7 +919,11 @@ class _RecentBookItem extends StatelessWidget {
         fit: StackFit.expand,
         children: [
           IgnorePointer(
-            child: _BookHeroFrame(heroTag: frameHeroTag, borderRadius: 14),
+            child: _BookHeroFrame(
+              heroTag: frameHeroTag,
+              borderRadius: 14,
+              shadow: false,
+            ),
           ),
           Material(
             color: Colors.transparent,
@@ -1280,11 +1284,13 @@ class _BookHeroFrame extends StatelessWidget {
     required this.heroTag,
     required this.borderRadius,
     this.dialog = false,
+    this.shadow = true,
   });
 
   final Object? heroTag;
   final double borderRadius;
   final bool dialog;
+  final bool shadow;
 
   @override
   Widget build(BuildContext context) {
@@ -1292,6 +1298,7 @@ class _BookHeroFrame extends StatelessWidget {
       level: dialog ? GlassSurfaceLevel.elevated : GlassSurfaceLevel.subtle,
       borderRadius: BorderRadius.circular(borderRadius),
       blur: dialog,
+      shadow: shadow,
       child: const SizedBox.expand(),
     );
     if (heroTag == null || MediaQuery.of(context).disableAnimations) {

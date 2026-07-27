@@ -232,6 +232,23 @@ class ApiClient {
     return AdminBookDetail.fromJson(data);
   }
 
+  Future<AdminBookDetail> rebuildAdminBookContent(
+    String accessToken,
+    int bookId,
+  ) async {
+    final data = await _request<Map<String, dynamic>>(
+      () => _dio.post<Map<String, dynamic>>(
+        '/api/admin/books/$bookId/content/rebuild',
+        options: Options(
+          headers: _headers(accessToken),
+          receiveTimeout: const Duration(minutes: 5),
+        ),
+      ),
+    );
+
+    return AdminBookDetail.fromJson(data);
+  }
+
   Future<int> bulkDeleteAdminBooks(
     String accessToken,
     List<int> bookIds,

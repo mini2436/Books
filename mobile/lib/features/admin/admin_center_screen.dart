@@ -10,6 +10,7 @@ import '../../shared/theme/reader_theme_extension.dart';
 import '../../shared/utils/responsive.dart';
 import '../../shared/widgets/centered_scale_dialog.dart';
 import '../../shared/widgets/change_password_dialog.dart';
+import '../../shared/widgets/glass_action_button.dart';
 import '../../shared/widgets/glass_segmented_control.dart';
 import '../../shared/widgets/glass_surface.dart';
 import '../../shared/widgets/glass_dialog.dart';
@@ -437,14 +438,10 @@ class _UserManagementSection extends ConsumerWidget {
         Padding(
           padding: const EdgeInsets.only(top: 4, bottom: 18),
           child: Center(
-            child: Tooltip(
-              message: '新建用户',
-              child: FloatingActionButton(
-                heroTag: 'admin-create-user',
-                shape: const CircleBorder(),
-                onPressed: controller.isWorking ? null : promptCreateUser,
-                child: const Icon(Icons.person_add_alt_1_rounded),
-              ),
+            child: GlassActionButton(
+              label: '添加用户',
+              icon: Icons.person_add_alt_1_rounded,
+              onPressed: controller.isWorking ? null : promptCreateUser,
             ),
           ),
         ),

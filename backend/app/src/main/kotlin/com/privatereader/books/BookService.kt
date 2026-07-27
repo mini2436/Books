@@ -576,6 +576,7 @@ class BookService(
             checksum = checksum,
             pluginId = fileRef.pluginId,
             filePath = filePath,
+            force = true,
         )
         return getAdminBookDetail(bookId)
     }
@@ -1031,8 +1032,9 @@ class BookService(
         checksum: String,
         pluginId: String,
         filePath: Path,
+        force: Boolean = false,
     ) {
-        if (hasReadyStructuredContentVersion(bookId, sourceFileId, checksum)) {
+        if (!force && hasReadyStructuredContentVersion(bookId, sourceFileId, checksum)) {
             return
         }
 

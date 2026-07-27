@@ -18,6 +18,7 @@ import org.w3c.dom.Element
 import org.w3c.dom.Node
 import org.w3c.dom.NodeList
 import java.io.ByteArrayInputStream
+import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.nio.file.Path
 import java.util.Base64
@@ -110,8 +111,8 @@ class EpubBookFormatPlugin : BookFormatPlugin {
         val imageItemsByPath = manifestItems.values
             .filter { it.mediaType in SUPPORTED_IMAGE_MEDIA_TYPES }
             .associateBy { it.fullPath }
-        val tocByPath = extractToc(zip, packageDocument, manifestItems)
-            .associateBy { it.href.substringBefore('#') }
+        val tocByPath = extractToc(zip, packagePath, packageDocument, manifestItems)
+            .groupBy { it.href.substringBefore('#') }
 
         val chapters = spineItems.mapIndexed { chapterIndex, spineItem ->
             val document = readXml(zip, spineItem.fullPath)
@@ -122,7 +123,7 @@ class EpubBookFormatPlugin : BookFormatPlugin {
                 imageItemsByPath = imageItemsByPath,
             )
             val fallbackText = document.documentElement?.textContent.normalizeWhitespace()
-            val chapterTitle = tocByPath[spineItem.fullPath]?.title
+            val chapterTitle = tocByPath[spineItem.fullPath]?.firstOrNull()?.title
                 ?: visibleBlocks.firstOrNull { it.type == StructuredBlockType.HEADING }?.plainText
                 ?: "Section ${chapterIndex + 1}"
             StructuredBookChapter(
@@ -158,7 +159,7 @@ class EpubBookFormatPlugin : BookFormatPlugin {
         val metadata = extractMetadata(packageDocument, file)
         val manifestItems = extractManifestItems(packageDocument, packageDir)
         val spineHrefs = extractSpineHrefs(packageDocument, manifestItems)
-        val toc = extractToc(zip, packageDocument, manifestItems)
+        val toc = extractToc(zip, packagePath, packageDocument, manifestItems)
         val primaryLocation = toc.firstOrNull()?.href ?: spineHrefs.firstOrNull() ?: packagePath
         val indexExcerpt = extractIndexText(zip, manifestItems, spineHrefs)
         ParsedEpub(
@@ -277,14 +278,22 @@ class EpubBookFormatPlugin : BookFormatPlugin {
 
     private fun extractToc(
         zip: ZipFile,
+        packagePath: String,
         document: Document,
         manifestItems: Map<String, EpubManifestItem>,
     ): List<ManifestTocItem> {
+        val spineHrefs = extractSpineHrefs(document, manifestItems)
+        val candidates = mutableListOf<TocCandidate>()
         val navItem = manifestItems.values.firstOrNull { "nav" in it.properties }
         if (navItem != null) {
-            val navToc = parseHtmlToc(zip, navItem)
+            val navToc = runCatching { parseHtmlToc(zip, navItem) }.getOrDefault(emptyList())
             if (navToc.isNotEmpty()) {
-                return navToc
+                candidates += evaluateTocCandidate(
+                    zip = zip,
+                    items = navToc,
+                    spineHrefs = spineHrefs,
+                    sourcePriority = TOC_PRIORITY_EPUB3_NAV,
+                )
             }
         }
 
@@ -295,13 +304,35 @@ class EpubBookFormatPlugin : BookFormatPlugin {
                 item.mediaType == "application/x-dtbncx+xml" || item.fullPath.endsWith(".ncx", ignoreCase = true)
             }
         if (ncxItem != null) {
-            val ncxToc = parseNcxToc(zip, ncxItem)
+            val ncxToc = runCatching { parseNcxToc(zip, ncxItem) }.getOrDefault(emptyList())
             if (ncxToc.isNotEmpty()) {
-                return ncxToc
+                candidates += evaluateTocCandidate(
+                    zip = zip,
+                    items = ncxToc,
+                    spineHrefs = spineHrefs,
+                    sourcePriority = TOC_PRIORITY_NCX,
+                )
             }
         }
 
-        return extractSpineHrefs(document, manifestItems)
+        val guideToc = runCatching { parseGuideToc(zip, packagePath, document) }.getOrDefault(emptyList())
+        if (guideToc.isNotEmpty()) {
+            candidates += evaluateTocCandidate(
+                zip = zip,
+                items = guideToc,
+                spineHrefs = spineHrefs,
+                sourcePriority = TOC_PRIORITY_GUIDE,
+            )
+        }
+
+        val selected = candidates
+            .filter { it.items.isNotEmpty() }
+            .maxWithOrNull(compareBy<TocCandidate> { it.score }.thenBy { it.sourcePriority })
+        if (selected != null) {
+            return selected.items
+        }
+
+        return spineHrefs
             .take(12)
             .mapIndexed { index, href -> ManifestTocItem(title = "Section ${index + 1}", href = href) }
     }
@@ -326,13 +357,15 @@ class EpubBookFormatPlugin : BookFormatPlugin {
                 if (href.isBlank() || title.isBlank()) {
                     continue
                 }
-                items += ManifestTocItem(
-                    title = title,
-                    href = resolveHref(navItem.fullPath, href),
-                )
+                if (!isExternalReference(href)) {
+                    items += ManifestTocItem(
+                        title = title,
+                        href = resolveHref(navItem.fullPath, href),
+                    )
+                }
             }
             if (items.isNotEmpty()) {
-                return items.distinctBy { it.href }
+                return deduplicateTocItems(items)
             }
         }
         return emptyList()
@@ -350,12 +383,122 @@ class EpubBookFormatPlugin : BookFormatPlugin {
             if (label.isNullOrBlank() || src.isBlank()) {
                 continue
             }
-            items += ManifestTocItem(
-                title = label,
-                href = resolveHref(ncxItem.fullPath, src),
-            )
+            if (!isExternalReference(src)) {
+                items += ManifestTocItem(
+                    title = label,
+                    href = resolveHref(ncxItem.fullPath, src),
+                )
+            }
         }
-        return items.distinctBy { it.href }
+        return deduplicateTocItems(items)
+    }
+
+    private fun parseGuideToc(zip: ZipFile, packagePath: String, packageDocument: Document): List<ManifestTocItem> {
+        val references = packageDocument.getElementsByTagNameNS("*", "reference")
+        for (index in 0 until references.length) {
+            val reference = references.item(index) as? Element ?: continue
+            val types = reference.getAttribute("type")
+                .lowercase()
+                .split(Regex("\\s+"))
+                .filter { it.isNotBlank() }
+            if ("toc" !in types) {
+                continue
+            }
+            val href = reference.getAttribute("href").trim()
+            if (href.isBlank() || isExternalReference(href)) {
+                continue
+            }
+            val guidePath = resolveHref(packagePath, href).substringBefore('#')
+            val guideDocument = readXml(zip, guidePath)
+            val anchors = guideDocument.getElementsByTagNameNS("*", "a")
+            val items = mutableListOf<ManifestTocItem>()
+            for (anchorIndex in 0 until anchors.length) {
+                val anchor = anchors.item(anchorIndex) as? Element ?: continue
+                val target = anchor.getAttribute("href").trim()
+                val title = anchor.textContent.normalizeWhitespace()
+                if (target.isBlank() || title.isBlank() || isExternalReference(target)) {
+                    continue
+                }
+                items += ManifestTocItem(
+                    title = title,
+                    href = resolveHref(guidePath, target),
+                )
+            }
+            if (items.isNotEmpty()) {
+                return deduplicateTocItems(items)
+            }
+        }
+        return emptyList()
+    }
+
+    private fun evaluateTocCandidate(
+        zip: ZipFile,
+        items: List<ManifestTocItem>,
+        spineHrefs: List<String>,
+        sourcePriority: Int,
+    ): TocCandidate {
+        val deduplicated = deduplicateTocItems(items)
+        val documentCache = mutableMapOf<String, Document?>()
+        val validItems = deduplicated.filter { item -> tocTargetExists(zip, item.href, documentCache) }
+        val validity = if (deduplicated.isEmpty()) 0.0 else validItems.size.toDouble() / deduplicated.size
+        val spineIndex = spineHrefs.withIndex().associate { (index, href) -> href.substringBefore('#') to index }
+        val targetIndices = validItems.mapNotNull { item -> spineIndex[item.href.substringBefore('#')] }
+        val monotonicity = if (targetIndices.size < 2) {
+            1.0
+        } else {
+            targetIndices.zipWithNext().count { (previous, next) -> next >= previous }.toDouble() /
+                (targetIndices.size - 1)
+        }
+        val tailConsistency = if (targetIndices.isEmpty()) {
+            1.0
+        } else {
+            (targetIndices.last() + 1).toDouble() / (targetIndices.maxOrNull()!! + 1)
+        }
+        return TocCandidate(
+            items = validItems,
+            score = validity * 0.55 + monotonicity * 0.30 + tailConsistency * 0.15,
+            sourcePriority = sourcePriority,
+        )
+    }
+
+    private fun tocTargetExists(
+        zip: ZipFile,
+        href: String,
+        documentCache: MutableMap<String, Document?>,
+    ): Boolean {
+        val entryPath = href.substringBefore('#')
+        val entry = zip.getEntry(entryPath) ?: return false
+        if (entry.isDirectory) {
+            return false
+        }
+        val rawFragment = href.substringAfter('#', "")
+        if (rawFragment.isBlank()) {
+            return true
+        }
+        val document = documentCache.getOrPut(entryPath) {
+            runCatching { readXml(zip, entryPath) }.getOrNull()
+        } ?: return true
+        val fragment = runCatching { URLDecoder.decode(rawFragment, StandardCharsets.UTF_8) }
+            .getOrDefault(rawFragment)
+        val elements = document.getElementsByTagNameNS("*", "*")
+        for (index in 0 until elements.length) {
+            val element = elements.item(index) as? Element ?: continue
+            if (element.getAttribute("id") == fragment || element.getAttribute("name") == fragment) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private fun deduplicateTocItems(items: List<ManifestTocItem>): List<ManifestTocItem> =
+        items.distinctBy { item -> item.title.normalizeWhitespace().lowercase() to item.href }
+
+    private fun isExternalReference(href: String): Boolean {
+        val normalized = href.trim().lowercase()
+        return normalized.startsWith("http://") ||
+            normalized.startsWith("https://") ||
+            normalized.startsWith("mailto:") ||
+            normalized.startsWith("javascript:")
     }
 
     private fun extractIndexText(
@@ -475,7 +618,11 @@ class EpubBookFormatPlugin : BookFormatPlugin {
                 collectInlineBlocks(
                     element = element,
                     blocks = blocks,
-                    textBlockType = StructuredBlockType.PARAGRAPH,
+                    textBlockType = if (isHeadingLike(element)) {
+                        StructuredBlockType.HEADING
+                    } else {
+                        StructuredBlockType.PARAGRAPH
+                    },
                     chapterPath = chapterPath,
                     imageItemsByPath = imageItemsByPath,
                 )
@@ -518,6 +665,23 @@ class EpubBookFormatPlugin : BookFormatPlugin {
                 )
             }
         }
+    }
+
+    private fun isHeadingLike(element: Element): Boolean {
+        if (element.getAttribute("role").equals("heading", ignoreCase = true)) {
+            return true
+        }
+        val epubType = element.getAttribute("epub:type")
+            .ifBlank { element.getAttributeNS("http://www.idpf.org/2007/ops", "type") }
+            .lowercase()
+            .split(Regex("\\s+"))
+        if (epubType.any { it in HEADING_EPUB_TYPES }) {
+            return true
+        }
+        return element.getAttribute("class")
+            .split(Regex("\\s+"))
+            .filter { it.isNotBlank() }
+            .any { className -> HEADING_CLASS_PATTERN.matches(className) }
     }
 
     private fun collectInlineBlocks(
@@ -779,6 +943,12 @@ class EpubBookFormatPlugin : BookFormatPlugin {
         val indexExcerpt: String,
     )
 
+    private data class TocCandidate(
+        val items: List<ManifestTocItem>,
+        val score: Double,
+        val sourcePriority: Int,
+    )
+
     private data class EpubManifestItem(
         val id: String,
         val href: String,
@@ -795,6 +965,21 @@ class EpubBookFormatPlugin : BookFormatPlugin {
 
     private companion object {
         private const val STRUCTURED_CONTENT_MODEL_V2 = "UNIFIED_V2"
+        private const val TOC_PRIORITY_GUIDE = 1
+        private const val TOC_PRIORITY_NCX = 2
+        private const val TOC_PRIORITY_EPUB3_NAV = 3
+        private val HEADING_EPUB_TYPES = setOf(
+            "chapter",
+            "part",
+            "section",
+            "subtitle",
+            "title",
+        )
+        private val HEADING_CLASS_PATTERN = Regex(
+            "(?:book[-_]?)?(?:title|heading|headline|subtitle)\\d*|" +
+                "(?:chapter|section)(?:[-_]?(?:title|heading))?\\d*",
+            RegexOption.IGNORE_CASE,
+        )
         private val SUPPORTED_IMAGE_MEDIA_TYPES = setOf(
             "image/jpeg",
             "image/png",

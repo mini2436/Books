@@ -4,8 +4,10 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/models/admin_models.dart';
 import '../../shared/theme/reader_theme_extension.dart';
-import '../../shared/widgets/glass_surface.dart';
 import '../../shared/utils/responsive.dart';
+import '../../shared/widgets/glass_action_button.dart';
+import '../../shared/widgets/glass_dialog.dart';
+import '../../shared/widgets/glass_surface.dart';
 import '../auth/auth_controller.dart';
 import 'admin_center_controller.dart';
 
@@ -331,6 +333,104 @@ class _BookDetailOperations extends StatelessWidget {
                           }
                         },
                   child: Text(controller.isWorking ? '保存中...' : '保存书籍信息'),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        _DetailPanel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '内容维护',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '重新读取源文件并生成目录与统一正文。适用于目录错乱、解析失败或解析器升级后的书籍。',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: palette.inkSecondary,
+                  height: 1.55,
+                ),
+              ),
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  _InfoPill(
+                    label: '当前状态',
+                    value: detail?.hasStructuredContent == true ? '已生成' : '未生成',
+                  ),
+                  _InfoPill(
+                    label: '内容模型',
+                    value: detail?.contentModel?.trim().isNotEmpty == true
+                        ? detail!.contentModel!
+                        : '-',
+                  ),
+                ],
+              ),
+              if (detail?.sourceMissing == true) ...[
+                const SizedBox(height: 12),
+                Text(
+                  '源文件缺失，无法重建。请先恢复原始书籍文件。',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.error,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 16),
+              Align(
+                alignment: Alignment.centerRight,
+                child: GlassActionButton(
+                  label: '重建结构化正文',
+                  loadingLabel: '正在重建...',
+                  icon: Icons.refresh_rounded,
+                  loading: controller.isRebuildingBook(
+                    detail?.id ?? summary?.id ?? 0,
+                  ),
+                  onPressed:
+                      detail == null ||
+                          detail!.sourceMissing ||
+                          controller.isWorking
+                      ? null
+                      : () async {
+                          final confirmed = await showDialog<bool>(
+                            context: context,
+                            builder: (dialogContext) => GlassAlertDialog(
+                              title: const Text('重建结构化正文'),
+                              content: const Text(
+                                '系统会重新读取源文件，生成新的目录与结构化正文版本。原始书籍文件不会被修改。是否继续？',
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.of(dialogContext).pop(false),
+                                  child: const Text('取消'),
+                                ),
+                                FilledButton.icon(
+                                  onPressed: () =>
+                                      Navigator.of(dialogContext).pop(true),
+                                  icon: const Icon(Icons.refresh_rounded),
+                                  label: const Text('确认重建'),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (confirmed != true || !context.mounted) {
+                            return;
+                          }
+                          await controller.rebuildStructuredContent(detail!.id);
+                          if (context.mounted) {
+                            _showOperationMessage(context, controller);
+                          }
+                        },
                 ),
               ),
             ],

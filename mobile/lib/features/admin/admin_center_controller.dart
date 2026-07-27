@@ -45,6 +45,7 @@ class AdminCenterController extends ChangeNotifier {
   Map<int, AdminBookDetail> _bookDetails = const {};
   Set<int> _loadingViewerBookIds = <int>{};
   Set<int> _loadingBookDetailIds = <int>{};
+  Set<int> _rebuildingBookIds = <int>{};
   Set<int> _selectedBookIds = <int>{};
   String _bookSearchQuery = '';
   String _selectedBookGroup = allBookGroupsLabel;
@@ -63,6 +64,7 @@ class AdminCenterController extends ChangeNotifier {
   List<AdminImportJobView> get importJobs => _importJobs;
   bool get isLoading => _isLoading;
   bool get isWorking => _isWorking;
+  bool isRebuildingBook(int bookId) => _rebuildingBookIds.contains(bookId);
   String? get error => _error;
   String? get notice => _notice;
   String get bookSearchQuery => _bookSearchQuery;
@@ -577,6 +579,34 @@ class AdminCenterController extends ChangeNotifier {
     });
   }
 
+  Future<void> rebuildStructuredContent(int bookId) async {
+    if (_rebuildingBookIds.contains(bookId)) {
+      return;
+    }
+
+    _rebuildingBookIds = {..._rebuildingBookIds, bookId};
+    notifyListeners();
+    try {
+      await _runMutation(() async {
+        final updated = await _authController.runAuthorized(
+          (token) => _apiClient.rebuildAdminBookContent(token, bookId),
+        );
+        _bookDetails = {..._bookDetails, bookId: updated};
+        _books = _books
+            .map(
+              (book) => book.id == bookId
+                  ? book.copyWith(updatedAt: updated.updatedAt)
+                  : book,
+            )
+            .toList();
+        _notice = '已重新生成《${updated.title}》的结构化正文';
+      });
+    } finally {
+      _rebuildingBookIds = Set<int>.from(_rebuildingBookIds)..remove(bookId);
+      notifyListeners();
+    }
+  }
+
   Future<void> deleteSelectedBooks() async {
     final targetIds = _selectedBookIds.toList()..sort();
     if (targetIds.isEmpty) {
@@ -784,6 +814,7 @@ class AdminCenterController extends ChangeNotifier {
     _bookDetails = const {};
     _loadingViewerBookIds = <int>{};
     _loadingBookDetailIds = <int>{};
+    _rebuildingBookIds = <int>{};
     _selectedBookIds = <int>{};
     _bookSearchQuery = '';
     _selectedBookGroup = allBookGroupsLabel;

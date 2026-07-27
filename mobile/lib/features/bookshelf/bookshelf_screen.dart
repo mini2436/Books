@@ -81,6 +81,7 @@ class _BookshelfScreenState extends ConsumerState<BookshelfScreen>
   Widget build(BuildContext context) {
     final controller = ref.watch(bookshelfControllerProvider);
     final auth = ref.watch(authControllerProvider);
+    final isOfflineGuest = auth.isOfflineGuest;
     final palette = AppReaderPalette.of(context);
     final accessToken = auth.accessToken;
     final apiClient = ref.read(apiClientProvider);
@@ -139,7 +140,10 @@ class _BookshelfScreenState extends ConsumerState<BookshelfScreen>
         hasScrollBody: false,
         child: Center(
           child: Text(
-            '书架空空如也，先从后台导入一本书吧。',
+            isOfflineGuest
+                ? '本机没有可阅读的离线书籍。\n返回登录后，可将书籍下载到本地再离线使用。'
+                : '书架空空如也，先从后台导入一本书吧。',
+            textAlign: TextAlign.center,
             style: Theme.of(
               context,
             ).textTheme.bodyLarge?.copyWith(color: palette.inkSecondary),
@@ -196,19 +200,34 @@ class _BookshelfScreenState extends ConsumerState<BookshelfScreen>
                     12,
                   ),
                   child: _ShelfHeader(
-                    initials: auth.user?.initials ?? 'PR',
+                    initials: isOfflineGuest
+                        ? '离'
+                        : auth.user?.initials ?? 'PR',
                     avatarUrl: avatarUrl,
                     avatarHeaders: coverHeaders,
                     bookCount: controller.books.length,
                     pendingCount: controller.pendingCount,
                     offlineBookCount: controller.offlineBookCount,
                     isOfflineMode: controller.isOfflineMode,
+                    isOfflineGuest: isOfflineGuest,
                     isLoading: controller.isLoading,
                     onSearch: () => context.push('/search'),
                     onRefresh: controller.refresh,
                   ),
                 ),
               ),
+              if (isOfflineGuest)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      horizontalPadding,
+                      0,
+                      horizontalPadding,
+                      14,
+                    ),
+                    child: _OfflineGuestBanner(onLogin: auth.exitOfflineMode),
+                  ),
+                ),
               if (controller.error != null && controller.books.isNotEmpty)
                 SliverToBoxAdapter(
                   child: Padding(
@@ -462,8 +481,9 @@ class _BookshelfScreenState extends ConsumerState<BookshelfScreen>
               headers: coverHeaders,
               isOfflineAvailable: controller.isBookCached(book.id),
               isDownloading: controller.isBookDownloading(book.id),
-              onOfflinePressed: () =>
-                  _toggleOfflineDownload(context, controller, book),
+              onOfflinePressed: controller.isOfflineGuest
+                  ? null
+                  : () => _toggleOfflineDownload(context, controller, book),
               heroTag: 'book-cover-grid-${book.id}',
               frameHeroTag: 'book-frame-grid-${book.id}',
               onTap: () => _showBookDetails(
@@ -533,7 +553,7 @@ class _BookshelfScreenState extends ConsumerState<BookshelfScreen>
               headers: coverHeaders,
               frameHeroTag: frameHeroTag,
               titleHeroTag: titleHeroTag,
-              onEdit: entry.key == '未分组'
+              onEdit: entry.key == '未分组' || controller.isOfflineGuest
                   ? null
                   : () async {
                       await _showRenameGroupDialog(
@@ -697,8 +717,13 @@ class _BookshelfSearchScreenState extends ConsumerState<BookshelfSearchScreen> {
                           headers: headers,
                           isOfflineAvailable: controller.isBookCached(book.id),
                           isDownloading: controller.isBookDownloading(book.id),
-                          onOfflinePressed: () =>
-                              _toggleOfflineDownload(context, controller, book),
+                          onOfflinePressed: controller.isOfflineGuest
+                              ? null
+                              : () => _toggleOfflineDownload(
+                                  context,
+                                  controller,
+                                  book,
+                                ),
                           heroTag: heroTag,
                           frameHeroTag: frameHeroTag,
                           onTap: () => _showBookDetails(
@@ -774,6 +799,7 @@ class _ShelfHeader extends StatelessWidget {
     required this.pendingCount,
     required this.offlineBookCount,
     required this.isOfflineMode,
+    required this.isOfflineGuest,
     required this.isLoading,
     required this.onSearch,
     required this.onRefresh,
@@ -786,6 +812,7 @@ class _ShelfHeader extends StatelessWidget {
   final int pendingCount;
   final int offlineBookCount;
   final bool isOfflineMode;
+  final bool isOfflineGuest;
   final bool isLoading;
   final VoidCallback onSearch;
   final VoidCallback onRefresh;
@@ -835,7 +862,9 @@ class _ShelfHeader extends StatelessWidget {
               ),
               const SizedBox(height: 2),
               Text(
-                isOfflineMode
+                isOfflineGuest
+                    ? '$bookCount 本离线藏书 · 只读模式'
+                    : isOfflineMode
                     ? '$bookCount 本藏书 · 离线模式 · $offlineBookCount 本可离线'
                     : pendingCount == 0
                     ? '$bookCount 本藏书 · $offlineBookCount 本可离线 · 已同步'
@@ -864,6 +893,37 @@ class _ShelfHeader extends StatelessWidget {
               : const Icon(Icons.refresh_rounded),
         ),
       ],
+    );
+  }
+}
+
+class _OfflineGuestBanner extends StatelessWidget {
+  const _OfflineGuestBanner({required this.onLogin});
+
+  final VoidCallback onLogin;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppReaderPalette.of(context);
+    return GlassSurface(
+      level: GlassSurfaceLevel.subtle,
+      borderRadius: BorderRadius.circular(16),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+      child: Row(
+        children: [
+          Icon(Icons.offline_bolt_rounded, size: 20, color: palette.accent),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '离线使用中：仅可阅读和搜索本机缓存书籍。',
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: palette.inkSecondary),
+            ),
+          ),
+          TextButton(onPressed: onLogin, child: const Text('登录同步')),
+        ],
+      ),
     );
   }
 }
@@ -1826,12 +1886,14 @@ Future<void> _showGroupFolder(
                                           .isBookCached(book.id),
                                       isDownloading: controller
                                           .isBookDownloading(book.id),
-                                      onOfflinePressed: () =>
-                                          _toggleOfflineDownload(
-                                            tileContext,
-                                            controller,
-                                            book,
-                                          ),
+                                      onOfflinePressed:
+                                          controller.isOfflineGuest
+                                          ? null
+                                          : () => _toggleOfflineDownload(
+                                              tileContext,
+                                              controller,
+                                              book,
+                                            ),
                                       heroTag: coverHeroTag,
                                       frameHeroTag: frameHeroTag,
                                       onTap: () => _showBookDetails(
@@ -2312,8 +2374,10 @@ class _BookDetailsDialogStateV2 extends State<_BookDetailsDialog> {
         ),
         const SizedBox(height: 10),
         Expanded(child: _buildAnnotationList(context)),
-        Divider(height: 28, color: palette.line),
-        _buildGroupSelector(context),
+        if (!widget.controller.isOfflineGuest) ...[
+          Divider(height: 28, color: palette.line),
+          _buildGroupSelector(context),
+        ],
         const SizedBox(height: 18),
         Row(
           children: [

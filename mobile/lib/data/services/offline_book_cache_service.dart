@@ -19,6 +19,18 @@ class OfflineBookCacheService {
 
   Future<Database>? _databaseFuture;
 
+  Future<int?> latestCachedUserId() async {
+    if (kIsWeb) return null;
+    final rows = await (await _database).rawQuery('''
+      SELECT user_id
+      FROM offline_books
+      ORDER BY downloaded_at DESC
+      LIMIT 1
+    ''');
+    if (rows.isEmpty) return null;
+    return rows.first['user_id'] as int?;
+  }
+
   Future<List<BookSummary>> loadCachedBooks(int userId) async {
     if (kIsWeb) return const [];
     final rows = await (await _database).query(

@@ -102,6 +102,7 @@ class ReaderController extends ChangeNotifier {
   bool get isPdf => detail?.isPdf == true;
 
   bool get isSupported => detail?.supportsStructuredReader == true || isPdf;
+  bool get isReadOnlyOffline => _authController.isOfflineGuest;
 
   BookContentChapter? get currentChapter => _chapterCache[currentChapterIndex];
   bool get hasCurrentLocationBookmark {
@@ -166,7 +167,7 @@ class ReaderController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final userId = _authController.user?.id;
+      final userId = _authController.activeUserId;
       if (_authController.isOfflineMode &&
           userId != null &&
           await _offlineBookCacheService.isBookCached(userId, bookId)) {
@@ -287,7 +288,7 @@ class ReaderController extends ChangeNotifier {
   }
 
   Future<void> _loadOffline() async {
-    final userId = _authController.user?.id;
+    final userId = _authController.activeUserId;
     if (userId == null) throw StateError('没有可用的本地用户');
     final loadedDetail = await _offlineBookCacheService.loadDetail(
       userId,
@@ -446,6 +447,7 @@ class ReaderController extends ChangeNotifier {
   }
 
   Future<void> addBookmark() async {
+    if (isReadOnlyOffline) return;
     final location = currentReadingLocation;
     if (location.isEmpty) {
       return;
@@ -507,6 +509,7 @@ class ReaderController extends ChangeNotifier {
   }
 
   Future<void> deleteBookmark(BookmarkView bookmark) async {
+    if (isReadOnlyOffline) return;
     final mutation = BookmarkMutation(
       bookmarkId: bookmark.id > 0 ? bookmark.id : null,
       bookId: bookId,
@@ -546,6 +549,7 @@ class ReaderController extends ChangeNotifier {
     String color = '#C3924A',
     AnnotationUnderlineStyle underlineStyle = AnnotationUnderlineStyle.none,
   }) async {
+    if (isReadOnlyOffline) return;
     await _saveAnnotation(
       quoteText: selection.selectedText,
       noteText: null,
@@ -560,6 +564,7 @@ class ReaderController extends ChangeNotifier {
     required String color,
     required AnnotationUnderlineStyle underlineStyle,
   }) async {
+    if (isReadOnlyOffline) return;
     await _saveAnnotation(
       quoteText: selection.selectedText,
       noteText: noteText,
@@ -575,6 +580,7 @@ class ReaderController extends ChangeNotifier {
     AnnotationSelection? selection,
     AnnotationUnderlineStyle? underlineStyle,
   }) async {
+    if (isReadOnlyOffline) return;
     final currentAnchor = AnnotationAnchor.parse(annotation.anchor);
     final nextUnderlineStyle = underlineStyle ?? currentAnchor.underlineStyle;
     final nextQuoteText = selection?.selectedText ?? annotation.quoteText;
@@ -605,6 +611,7 @@ class ReaderController extends ChangeNotifier {
   }
 
   Future<void> deleteAnnotation(AnnotationView annotation) async {
+    if (isReadOnlyOffline) return;
     final mutation = AnnotationMutation(
       annotationId: annotation.id,
       bookId: bookId,
@@ -779,7 +786,7 @@ class ReaderController extends ChangeNotifier {
     _loadingChapters.add(index);
     notifyListeners();
     try {
-      final userId = _authController.user?.id;
+      final userId = _authController.activeUserId;
       if (userId != null) {
         final local = await _offlineBookCacheService.loadChapter(
           userId,
@@ -877,7 +884,7 @@ class ReaderController extends ChangeNotifier {
       loadingImageResourceIds.add(resourceId);
       notifyListeners();
       try {
-        final userId = _authController.user?.id;
+        final userId = _authController.activeUserId;
         if (userId != null) {
           final local = await _offlineBookCacheService.loadResource(
             userId,
@@ -974,6 +981,8 @@ class ReaderController extends ChangeNotifier {
         ),
       );
 
+      if (_authController.isOfflineGuest) return;
+
       try {
         await _authController.runAuthorized(
           (accessToken) =>
@@ -993,7 +1002,7 @@ class ReaderController extends ChangeNotifier {
   }
 
   Future<void> _persistReaderState({ReadingProgressView? progress}) async {
-    final userId = _authController.user?.id;
+    final userId = _authController.activeUserId;
     if (userId == null) return;
     await _offlineBookCacheService.saveReaderState(
       userId: userId,

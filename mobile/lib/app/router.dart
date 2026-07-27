@@ -26,7 +26,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             : _routeWithNext('/splash', state.uri.toString());
       }
 
-      if (!authController.isAuthenticated) {
+      if (!authController.canAccessApp) {
         if (location == '/login') {
           return null;
         }
@@ -38,6 +38,12 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       if (location == '/login' || location == '/splash') {
         return _safeNextRoute(state.uri.queryParameters['next']) ?? '/shelf';
+      }
+
+      if (authController.isOfflineGuest &&
+          (location.startsWith('/annotations') ||
+              location.startsWith('/admin'))) {
+        return '/shelf';
       }
 
       if (location.startsWith('/admin') &&

@@ -136,6 +136,7 @@ class BookshelfController extends ChangeNotifier {
   int get offlineBookCount => _cachedBookIds.length;
   int get offlineLibrarySizeBytes => _offlineLibrarySizeBytes;
   bool get isOfflineMode => _authController.isOfflineMode;
+  bool get isOfflineGuest => _authController.isOfflineGuest;
   bool isBookCached(int bookId) => _cachedBookIds.contains(bookId);
   bool isBookDownloading(int bookId) => _downloadingBookIds.contains(bookId);
   Uint8List? offlineCoverForBook(int bookId) => _offlineCoverBytes[bookId];
@@ -158,7 +159,7 @@ class BookshelfController extends ChangeNotifier {
         (accessToken) => _apiClient.listAnnotations(accessToken, bookId),
       );
     } catch (_) {
-      final userId = _authController.user?.id;
+      final userId = _authController.activeUserId;
       if (userId == null ||
           !await _offlineBookCacheService.isBookCached(userId, bookId)) {
         rethrow;
@@ -242,7 +243,8 @@ class BookshelfController extends ChangeNotifier {
   }
 
   Future<void> refresh() async {
-    if (!_authController.isAuthenticated) {
+    final userId = _authController.activeUserId;
+    if (userId == null) {
       _books = const [];
       _readingProgresses = const [];
       _selectedFilterKey = bookshelfFilterAll;
@@ -252,7 +254,6 @@ class BookshelfController extends ChangeNotifier {
       return;
     }
 
-    final userId = _authController.user!.id;
     var localProgresses = <ReadingProgressView>[];
     try {
       final cachedBooks = await _offlineBookCacheService.loadCachedBooks(
@@ -281,6 +282,15 @@ class BookshelfController extends ChangeNotifier {
         error: error,
         stackTrace: stackTrace,
       );
+    }
+
+    if (_authController.isOfflineGuest) {
+      _books = await _offlineBookCacheService.loadCachedBooks(userId);
+      _pendingCount = 0;
+      _error = null;
+      _isLoading = false;
+      notifyListeners();
+      return;
     }
 
     _isLoading = true;
@@ -527,7 +537,7 @@ class BookshelfController extends ChangeNotifier {
   }
 
   void _handleAuthChange() {
-    final userId = _authController.user?.id;
+    final userId = _authController.activeUserId;
     if (_activeUserId == userId) return;
     _activeUserId = userId;
     if (userId != null) {

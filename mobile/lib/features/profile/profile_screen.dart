@@ -30,6 +30,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final preferences = ref.watch(readerPreferencesControllerProvider);
     final palette = AppReaderPalette.of(context);
     final user = auth.user;
+    final isOfflineGuest = auth.isOfflineGuest;
     final isNightMode = preferences.themeMode == ReaderThemeMode.night;
 
     return Scaffold(
@@ -57,7 +58,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           shape: const CircleBorder(),
                           clipBehavior: Clip.antiAlias,
                           child: InkWell(
-                            onTap: auth.isWorking ? null : _pickAvatar,
+                            onTap: auth.isWorking || user == null
+                                ? null
+                                : _pickAvatar,
                             child:
                                 user?.hasAvatar == true &&
                                     auth.accessToken != null
@@ -71,37 +74,42 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                         .coverHeaders(auth.accessToken!),
                                     fit: BoxFit.cover,
                                     errorBuilder: (_, _, _) => _AvatarInitials(
-                                      initials: user?.initials ?? 'PR',
+                                      initials: isOfflineGuest
+                                          ? '离'
+                                          : user?.initials ?? 'PR',
                                     ),
                                   )
                                 : _AvatarInitials(
-                                    initials: user?.initials ?? 'PR',
+                                    initials: isOfflineGuest
+                                        ? '离'
+                                        : user?.initials ?? 'PR',
                                   ),
                           ),
                         ),
                       ),
-                      Positioned(
-                        right: -2,
-                        bottom: -2,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: palette.accent,
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: palette.background,
-                              width: 3,
+                      if (user != null)
+                        Positioned(
+                          right: -2,
+                          bottom: -2,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: palette.accent,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: palette.background,
+                                width: 3,
+                              ),
                             ),
-                          ),
-                          child: const Padding(
-                            padding: EdgeInsets.all(6),
-                            child: Icon(
-                              Icons.camera_alt_rounded,
-                              size: 15,
-                              color: Colors.white,
+                            child: const Padding(
+                              padding: EdgeInsets.all(6),
+                              child: Icon(
+                                Icons.camera_alt_rounded,
+                                size: 15,
+                                color: Colors.white,
+                              ),
                             ),
                           ),
                         ),
-                      ),
                     ],
                   ),
                 ),
@@ -114,7 +122,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         children: [
                           Flexible(
                             child: Text(
-                              user?.displayLabel ?? '未登录',
+                              isOfflineGuest
+                                  ? '离线使用'
+                                  : user?.displayLabel ?? '未登录',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: Theme.of(context).textTheme.headlineSmall
@@ -134,7 +144,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        user == null
+                        isOfflineGuest
+                            ? '仅使用本机缓存 · 不连接服务器'
+                            : user == null
                             ? UserRole.reader.value
                             : '@${user.username} · ${user.role}',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
@@ -155,15 +167,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               children: [
                 Expanded(
                   child: _ProfileStat(
-                    label: '可读书籍',
+                    label: isOfflineGuest ? '离线书籍' : '可读书籍',
                     value: '${shelf.books.length}',
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: _ProfileStat(
-                    label: '待同步',
-                    value: '${shelf.pendingCount}',
+                    label: isOfflineGuest ? '当前模式' : '待同步',
+                    value: isOfflineGuest ? '只读' : '${shelf.pendingCount}',
                   ),
                 ),
               ],
@@ -179,12 +191,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 builder: (context) => const ReaderSettingsSheet(),
               ),
             ),
-            _ActionTile(
-              icon: Icons.password_rounded,
-              title: '修改密码',
-              subtitle: '验证当前密码后更新登录密码',
-              onTap: auth.isWorking || user == null ? null : _changePassword,
-            ),
+            if (!isOfflineGuest)
+              _ActionTile(
+                icon: Icons.password_rounded,
+                title: '修改密码',
+                subtitle: '验证当前密码后更新登录密码',
+                onTap: auth.isWorking || user == null ? null : _changePassword,
+              ),
             _ActionTile(
               icon: Icons.dark_mode_outlined,
               title: '夜间模式',
@@ -209,23 +222,28 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     );
               },
             ),
-            _ActionTile(
-              icon: Icons.sync,
-              title: '同步状态',
-              subtitle: '离线操作将在网络恢复后自动补偿',
-              trailing: Text(
-                '${shelf.pendingCount}',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            if (!isOfflineGuest)
+              _ActionTile(
+                icon: Icons.sync,
+                title: '同步状态',
+                subtitle: '离线操作将在网络恢复后自动补偿',
+                trailing: Text(
+                  '${shelf.pendingCount}',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
-            ),
             const SizedBox(height: 24),
             TextButton(
-              onPressed: auth.isWorking ? null : auth.signOut,
-              child: const Text(
-                '退出登录',
-                style: TextStyle(color: Color(0xFFD93025)),
+              onPressed: auth.isWorking
+                  ? null
+                  : isOfflineGuest
+                  ? auth.exitOfflineMode
+                  : auth.signOut,
+              child: Text(
+                isOfflineGuest ? '返回登录' : '退出登录',
+                style: const TextStyle(color: Color(0xFFD93025)),
               ),
             ),
           ],

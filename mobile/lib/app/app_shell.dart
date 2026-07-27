@@ -25,7 +25,12 @@ class AppShell extends ConsumerWidget {
             (auth) => auth.user?.canAccessAdmin ?? false,
           ),
         );
-        final visibleBranchIndexes = canAccessAdmin
+        final isOfflineGuest = ref.watch(
+          authControllerProvider.select((auth) => auth.isOfflineGuest),
+        );
+        final visibleBranchIndexes = isOfflineGuest
+            ? const [0, 3]
+            : canAccessAdmin
             ? const [0, 1, 2, 3]
             : const [0, 1, 3];
         return _AnimatedBranchContainer(
@@ -52,7 +57,12 @@ class AppShell extends ConsumerWidget {
         (auth) => auth.user?.canAccessAdmin ?? false,
       ),
     );
-    final visibleBranchIndexes = canAccessAdmin
+    final isOfflineGuest = ref.watch(
+      authControllerProvider.select((auth) => auth.isOfflineGuest),
+    );
+    final visibleBranchIndexes = isOfflineGuest
+        ? const [0, 3]
+        : canAccessAdmin
         ? const [0, 1, 2, 3]
         : const [0, 1, 3];
     final selectedIndex = visibleBranchIndexes.indexOf(
@@ -64,11 +74,12 @@ class AppShell extends ConsumerWidget {
         selectedIcon: Icons.menu_book,
         label: '书架',
       ),
-      const _ShellDestination(
-        icon: Icons.sticky_note_2_outlined,
-        selectedIcon: Icons.sticky_note_2,
-        label: '批注',
-      ),
+      if (!isOfflineGuest)
+        const _ShellDestination(
+          icon: Icons.sticky_note_2_outlined,
+          selectedIcon: Icons.sticky_note_2,
+          label: '批注',
+        ),
       if (canAccessAdmin)
         const _ShellDestination(
           icon: Icons.admin_panel_settings_outlined,

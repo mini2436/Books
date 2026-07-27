@@ -144,15 +144,37 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
             ),
-          FilledButton(
-            onPressed: auth.isWorking ? null : _submit,
-            child: auth.isWorking
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('登录'),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton(
+                  onPressed: auth.isWorking ? null : _submit,
+                  child: auth.isWorking
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('登录'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: auth.isWorking ? null : _enterOfflineMode,
+                  icon: const Icon(Icons.offline_bolt_outlined, size: 19),
+                  label: const Text('离线使用'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            '离线使用仅显示本机已缓存书籍，不会连接服务器或同步数据。',
+            textAlign: TextAlign.center,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: palette.inkTertiary),
           ),
         ],
       ),
@@ -221,6 +243,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     } catch (_) {
       // AuthController already stores the backend error for inline display.
     }
+  }
+
+  Future<void> _enterOfflineMode() async {
+    await ref.read(authControllerProvider).enterOfflineMode();
   }
 }
 

@@ -53,6 +53,12 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     });
   }
 
+  void _showOfflineReadOnlyNotice() {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('离线使用模式仅支持阅读，登录后可编辑批注和书签。')));
+  }
+
   @override
   Widget build(BuildContext context) {
     if (widget.bookId == null) {
@@ -189,6 +195,10 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
             focusedAnchor: controller.focusedAnchor,
             anchorJumpVersion: controller.anchorJumpVersion,
             onHighlight: (selection, existingAnnotation) async {
+              if (controller.isReadOnlyOffline) {
+                _showOfflineReadOnlyNotice();
+                return;
+              }
               if (existingAnnotation != null) {
                 final existingAnchor = AnnotationAnchor.parse(
                   existingAnnotation.anchor,
@@ -209,12 +219,17 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                 color: _defaultAnnotationColor(preferences.themeMode),
               );
             },
-            onAnnotate: (selection, existingAnnotation) =>
-                _openAnnotationComposer(
-                  controller,
-                  selection: selection,
-                  annotation: existingAnnotation,
-                ),
+            onAnnotate: (selection, existingAnnotation) async {
+              if (controller.isReadOnlyOffline) {
+                _showOfflineReadOnlyNotice();
+                return;
+              }
+              await _openAnnotationComposer(
+                controller,
+                selection: selection,
+                annotation: existingAnnotation,
+              );
+            },
             onSaveAnnotation:
                 (
                   selection,
@@ -223,6 +238,10 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                   required color,
                   required underlineStyle,
                 }) async {
+                  if (controller.isReadOnlyOffline) {
+                    _showOfflineReadOnlyNotice();
+                    return;
+                  }
                   if (existingAnnotation == null) {
                     await controller.addAnnotation(
                       selection: selection,
@@ -334,7 +353,8 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                               onSelectPanel: _toggleTabletPanel,
                               onAddBookmark: controller.addBookmark,
                               bookmarkDisabled:
-                                  controller.hasCurrentLocationBookmark,
+                                  controller.hasCurrentLocationBookmark ||
+                                  controller.isReadOnlyOffline,
                             ),
                             const SizedBox(height: 14),
                             _TabletReaderProgressRing(controller: controller),
@@ -351,10 +371,16 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                     panel: _tabletPanel,
                     controller: controller,
                     onClose: () => setState(() => _tabletPanel = null),
-                    onEditAnnotation: (annotation) => _openAnnotationComposer(
-                      controller,
-                      annotation: annotation,
-                    ),
+                    onEditAnnotation: (annotation) {
+                      if (controller.isReadOnlyOffline) {
+                        _showOfflineReadOnlyNotice();
+                        return;
+                      }
+                      _openAnnotationComposer(
+                        controller,
+                        annotation: annotation,
+                      );
+                    },
                   ),
                 ],
               ),
@@ -566,6 +592,10 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     AnnotationSelection? selection,
     AnnotationView? annotation,
   }) async {
+    if (controller.isReadOnlyOffline) {
+      _showOfflineReadOnlyNotice();
+      return;
+    }
     final existingAnchor = annotation == null
         ? null
         : AnnotationAnchor.parse(annotation.anchor);
@@ -1868,13 +1898,16 @@ class _ReaderBookmarksManager extends StatelessWidget {
                 ),
                 onPressed:
                     !currentLocationReady ||
-                        controller.hasCurrentLocationBookmark
+                        controller.hasCurrentLocationBookmark ||
+                        controller.isReadOnlyOffline
                     ? null
                     : controller.addBookmark,
                 icon: const Icon(Icons.bookmark_add_outlined),
                 label: Text(
                   controller.hasCurrentLocationBookmark
                       ? '当前位置已加入书签'
+                      : controller.isReadOnlyOffline
+                      ? '离线使用模式不可添加'
                       : '添加当前位置书签',
                 ),
               ),

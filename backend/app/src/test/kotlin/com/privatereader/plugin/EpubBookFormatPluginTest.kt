@@ -79,6 +79,124 @@ class EpubBookFormatPluginTest {
     }
 
     @Test
+    fun `falls back to guide toc when ncx jumps backwards and keeps first title per spine document`() {
+        val tempFile = Files.createTempFile("reader-epub2-broken-ncx", ".epub")
+        ZipOutputStream(Files.newOutputStream(tempFile)).use { zip ->
+            writeEntry(zip, "mimetype", "application/epub+zip")
+            writeEntry(
+                zip,
+                "META-INF/container.xml",
+                """
+                <container xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+                  <rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles>
+                </container>
+                """.trimIndent(),
+            )
+            writeEntry(
+                zip,
+                "OEBPS/content.opf",
+                """
+                <package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+                  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Broken NCX sample</dc:title></metadata>
+                  <manifest>
+                    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+                    <item id="toc" href="toc.xhtml" media-type="application/xhtml+xml"/>
+                    <item id="one" href="one.xhtml" media-type="application/xhtml+xml"/>
+                    <item id="two" href="two.xhtml" media-type="application/xhtml+xml"/>
+                    <item id="dedication" href="dedication.xhtml" media-type="application/xhtml+xml"/>
+                    <item id="afterword" href="afterword.xhtml" media-type="application/xhtml+xml"/>
+                  </manifest>
+                  <spine toc="ncx">
+                    <itemref idref="one"/>
+                    <itemref idref="two"/>
+                    <itemref idref="dedication"/>
+                    <itemref idref="afterword"/>
+                  </spine>
+                  <guide><reference type="toc" title="目录" href="toc.xhtml"/></guide>
+                </package>
+                """.trimIndent(),
+            )
+            writeEntry(
+                zip,
+                "OEBPS/toc.ncx",
+                """
+                <ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+                  <navMap>
+                    <navPoint id="p1"><navLabel><text>第一束信</text></navLabel><content src="one.xhtml#letter1"/></navPoint>
+                    <navPoint id="p2"><navLabel><text>1．为什么写信？</text></navLabel><content src="one.xhtml#letter1"/></navPoint>
+                    <navPoint id="p3"><navLabel><text>第二束信</text></navLabel><content src="two.xhtml#letter3"/></navPoint>
+                    <navPoint id="p4"><navLabel><text>译后记</text></navLabel><content src="one.xhtml#note1"/></navPoint>
+                  </navMap>
+                </ncx>
+                """.trimIndent(),
+            )
+            writeEntry(
+                zip,
+                "OEBPS/toc.xhtml",
+                """
+                <html xmlns="http://www.w3.org/1999/xhtml"><body>
+                  <p><a href="one.xhtml#letter1">第一束信：这是些什么信？</a></p>
+                  <p><a href="one.xhtml#letter1">1．为什么写信？</a></p>
+                  <p><a href="two.xhtml#letter3">第二束信：爱与友谊</a></p>
+                  <p><a href="afterword.xhtml">译后记</a></p>
+                </body></html>
+                """.trimIndent(),
+            )
+            writeEntry(
+                zip,
+                "OEBPS/one.xhtml",
+                """
+                <html xmlns="http://www.w3.org/1999/xhtml"><body>
+                  <p class="title5">第一束信</p>
+                  <p id="letter1" class="title2">1</p>
+                  <p>正文</p><a id="note1">注释</a>
+                </body></html>
+                """.trimIndent(),
+            )
+            writeEntry(
+                zip,
+                "OEBPS/two.xhtml",
+                """
+                <html xmlns="http://www.w3.org/1999/xhtml"><body>
+                  <p class="title5">第二束信</p><p id="letter3">3</p><p>正文</p>
+                </body></html>
+                """.trimIndent(),
+            )
+            writeEntry(
+                zip,
+                "OEBPS/dedication.xhtml",
+                """
+                <html xmlns="http://www.w3.org/1999/xhtml"><body>
+                  <p class="title1">献给莉莉</p>
+                </body></html>
+                """.trimIndent(),
+            )
+            writeEntry(
+                zip,
+                "OEBPS/afterword.xhtml",
+                """
+                <html xmlns="http://www.w3.org/1999/xhtml"><body>
+                  <p class="title1">译后记</p><p>后记正文</p>
+                </body></html>
+                """.trimIndent(),
+            )
+        }
+
+        val manifest = plugin.buildManifest(tempFile)
+        val content = plugin.extractStructuredContent(tempFile)
+
+        assertEquals(
+            listOf("第一束信：这是些什么信？", "1．为什么写信？", "第二束信：爱与友谊", "译后记"),
+            manifest.toc.map { it.title },
+        )
+        assertEquals(
+            listOf("第一束信：这是些什么信？", "第二束信：爱与友谊", "献给莉莉", "译后记"),
+            content.chapters.map { it.title },
+        )
+        assertEquals("heading", content.chapters[0].blocks.first().type.storageName)
+    }
+
+    @Test
     fun `extracts conventional cover omitted from epub manifest`() {
         val tempFile = Files.createTempFile("reader-epub-unlisted-cover", ".epub")
         val coverBytes = byteArrayOf(0x01, 0x02, 0x03)

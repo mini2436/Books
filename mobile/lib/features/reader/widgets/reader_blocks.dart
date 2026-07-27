@@ -25,7 +25,15 @@ class ReaderBlocksView extends StatelessWidget {
     required this.onHighlight,
     required this.onAnnotate,
     required this.onOpenAnnotations,
-  });
+    this.onRetryImages,
+    this.twoColumnContent = false,
+    this.pagedViewportWidth,
+    this.pagedColumnHeight,
+    this.pagedColumnCount = 1,
+  }) : assert(
+         (pagedViewportWidth == null) == (pagedColumnHeight == null),
+         'Paged viewport width and column height must be provided together.',
+       );
 
   final List<BookContentBlock> blocks;
   final Map<String, Uint8List> imageResources;
@@ -46,6 +54,11 @@ class ReaderBlocksView extends StatelessWidget {
   onAnnotate;
   final Future<void> Function(List<AnnotationView> annotations)
   onOpenAnnotations;
+  final Future<void> Function()? onRetryImages;
+  final bool twoColumnContent;
+  final double? pagedViewportWidth;
+  final double? pagedColumnHeight;
+  final int pagedColumnCount;
 
   @override
   Widget build(BuildContext context) {
@@ -53,73 +66,105 @@ class ReaderBlocksView extends StatelessWidget {
     final orderedBlockAnchors = blocks
         .map((block) => block.anchor)
         .toList(growable: false);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: blocks.map((block) {
-        final blockAnnotations = _annotationsForBlock(
-          block,
-          orderedBlockAnchors,
-        );
-        final highlightColor = _blockHighlightColor(blockAnnotations, palette);
-        Widget blockView;
-        switch (block.type) {
-          case 'image':
-            blockView = Padding(
-              padding: const EdgeInsets.only(bottom: 18),
-              child: _ImageBlockView(
-                block: block,
-                imageBytes: block.resourceId == null
-                    ? null
-                    : imageResources[block.resourceId],
-                failed:
-                    block.resourceId == null ||
-                    failedImageResourceIds.contains(block.resourceId),
-                constrainToViewport: constrainImagesToViewport,
-              ),
-            );
-            break;
-          case 'heading':
-            blockView = Padding(
-              padding: const EdgeInsets.only(bottom: 22),
-              child: _BlockHighlightFrame(
-                highlightColor: highlightColor,
+    final blockViews = blocks
+        .map((block) {
+          final blockAnnotations = _annotationsForBlock(
+            block,
+            orderedBlockAnchors,
+          );
+          final highlightColor = _blockHighlightColor(
+            blockAnnotations,
+            palette,
+          );
+          Widget blockView;
+          switch (block.type) {
+            case 'image':
+              blockView = Padding(
+                padding: const EdgeInsets.only(bottom: 18),
+                child: _ImageBlockView(
+                  block: block,
+                  imageBytes: block.resourceId == null
+                      ? null
+                      : imageResources[block.resourceId],
+                  failed:
+                      block.resourceId == null ||
+                      failedImageResourceIds.contains(block.resourceId),
+                  constrainToViewport: constrainImagesToViewport,
+                  maxImageHeight:
+                      pagedColumnHeight != null && pagedColumnCount == 2
+                      ? math.max(220, pagedColumnHeight! * 0.78)
+                      : null,
+                  onRetry: failedImageResourceIds.contains(block.resourceId)
+                      ? onRetryImages
+                      : null,
+                ),
+              );
+              break;
+            case 'heading':
+              blockView = Padding(
+                padding: const EdgeInsets.only(bottom: 22),
+                child: _BlockHighlightFrame(
+                  highlightColor: highlightColor,
+                  child: Text(
+                    block.renderedText,
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: palette.ink,
+                      fontFamily: preferences.fontFamily.fontFamily,
+                    ),
+                  ),
+                ),
+              );
+              break;
+            case 'divider':
+              blockView = Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
                 child: Text(
-                  block.renderedText,
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: palette.ink,
-                    fontFamily: preferences.fontFamily.fontFamily,
+                  '···',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    letterSpacing: 6,
+                    color: palette.inkTertiary,
                   ),
                 ),
-              ),
-            );
-            break;
-          case 'divider':
-            blockView = Padding(
-              padding: const EdgeInsets.symmetric(vertical: 24),
-              child: Text(
-                '···',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  letterSpacing: 6,
-                  color: palette.inkTertiary,
-                ),
-              ),
-            );
-            break;
-          case 'quote':
-            blockView = Padding(
-              padding: const EdgeInsets.only(bottom: 18),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  border: Border(
-                    left: BorderSide(color: palette.accent, width: 3),
+              );
+              break;
+            case 'quote':
+              blockView = Padding(
+                padding: const EdgeInsets.only(bottom: 18),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    border: Border(
+                      left: BorderSide(color: palette.accent, width: 3),
+                    ),
+                    color: highlightColor ?? palette.backgroundSoft,
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  color: highlightColor ?? palette.backgroundSoft,
-                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                    child: _SelectableBlockText(
+                      text: block.renderedText,
+                      anchor: block.anchor,
+                      annotations: blockAnnotations,
+                      orderedBlockAnchors: orderedBlockAnchors,
+                      preferences: preferences,
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        color: palette.inkSecondary,
+                        fontStyle: FontStyle.italic,
+                      ),
+                      onHighlight: onHighlight,
+                      onAnnotate: onAnnotate,
+                    ),
+                  ),
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+              );
+              break;
+            case 'paragraph':
+            default:
+              blockView = Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: _BlockHighlightFrame(
+                  highlightColor: highlightColor,
                   child: _SelectableBlockText(
                     text: block.renderedText,
                     anchor: block.anchor,
@@ -127,48 +172,141 @@ class ReaderBlocksView extends StatelessWidget {
                     orderedBlockAnchors: orderedBlockAnchors,
                     preferences: preferences,
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: palette.inkSecondary,
-                      fontStyle: FontStyle.italic,
+                      color: palette.ink,
+                      height: preferences.lineHeight / 1.4,
                     ),
                     onHighlight: onHighlight,
                     onAnnotate: onAnnotate,
                   ),
                 ),
-              ),
+              );
+              break;
+          }
+          if (blockAnnotations.isNotEmpty) {
+            blockView = GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => onOpenAnnotations(blockAnnotations),
+              child: blockView,
             );
-            break;
-          case 'paragraph':
-          default:
-            blockView = Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: _BlockHighlightFrame(
-                highlightColor: highlightColor,
-                child: _SelectableBlockText(
-                  text: block.renderedText,
-                  anchor: block.anchor,
-                  annotations: blockAnnotations,
-                  orderedBlockAnchors: orderedBlockAnchors,
-                  preferences: preferences,
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: palette.ink,
-                    height: preferences.lineHeight / 1.4,
-                  ),
-                  onHighlight: onHighlight,
-                  onAnnotate: onAnnotate,
-                ),
-              ),
-            );
-            break;
-        }
-        if (blockAnnotations.isNotEmpty) {
-          blockView = GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => onOpenAnnotations(blockAnnotations),
+          }
+          return KeyedSubtree(
+            key: keyForAnchor(block.anchor),
             child: blockView,
           );
+        })
+        .toList(growable: false);
+
+    final flowItems = <_ReaderFlowItem>[];
+    var pendingGroup = <Widget>[];
+
+    void flushPendingGroup() {
+      if (pendingGroup.isEmpty) return;
+      flowItems.add(
+        _ReaderFlowItem(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: pendingGroup,
+          ),
+        ),
+      );
+      pendingGroup = <Widget>[];
+    }
+
+    for (var index = 0; index < blocks.length; index += 1) {
+      final block = blocks[index];
+      if (block.type == 'heading' || block.type == 'divider') {
+        flushPendingGroup();
+        flowItems.add(
+          _ReaderFlowItem(child: blockViews[index], spansColumns: true),
+        );
+        continue;
+      }
+      pendingGroup.add(blockViews[index]);
+      if (block.isImage) {
+        flushPendingGroup();
+      }
+    }
+    flushPendingGroup();
+
+    final pageWidth = pagedViewportWidth;
+    final columnHeight = pagedColumnHeight;
+    if (pageWidth != null && columnHeight != null) {
+      const columnGap = 28.0;
+      final columnCount = pagedColumnCount.clamp(1, 2);
+      final columnWidth = math.max(
+        0.0,
+        (pageWidth - columnGap * (columnCount - 1)) / columnCount,
+      );
+      return SizedBox(
+        height: columnHeight,
+        child: Wrap(
+          direction: Axis.vertical,
+          runSpacing: columnGap,
+          children: blockViews
+              .map((view) => SizedBox(width: columnWidth, child: view))
+              .toList(growable: false),
+        ),
+      );
+    }
+
+    if (!twoColumnContent) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: blockViews,
+      );
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const columnGap = 28.0;
+        final columnWidth = math.max(
+          0.0,
+          (constraints.maxWidth - columnGap) / 2,
+        );
+        final rows = <Widget>[];
+        _ReaderFlowItem? pendingColumn;
+
+        void flushPendingColumn() {
+          final item = pendingColumn;
+          if (item == null) return;
+          rows.add(
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [SizedBox(width: columnWidth, child: item.child)],
+            ),
+          );
+          pendingColumn = null;
         }
-        return KeyedSubtree(key: keyForAnchor(block.anchor), child: blockView);
-      }).toList(),
+
+        for (final item in flowItems) {
+          if (item.spansColumns) {
+            flushPendingColumn();
+            rows.add(item.child);
+            continue;
+          }
+          if (pendingColumn == null) {
+            pendingColumn = item;
+            continue;
+          }
+          final left = pendingColumn!;
+          rows.add(
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(width: columnWidth, child: left.child),
+                const SizedBox(width: columnGap),
+                SizedBox(width: columnWidth, child: item.child),
+              ],
+            ),
+          );
+          pendingColumn = null;
+        }
+        flushPendingColumn();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: rows,
+        );
+      },
     );
   }
 
@@ -227,6 +365,13 @@ class ReaderBlocksView extends StatelessWidget {
   }
 }
 
+class _ReaderFlowItem {
+  const _ReaderFlowItem({required this.child, this.spansColumns = false});
+
+  final Widget child;
+  final bool spansColumns;
+}
+
 class _BlockHighlightFrame extends StatelessWidget {
   const _BlockHighlightFrame({required this.child, this.highlightColor});
 
@@ -258,12 +403,16 @@ class _ImageBlockView extends StatelessWidget {
     required this.imageBytes,
     required this.failed,
     required this.constrainToViewport,
+    this.maxImageHeight,
+    this.onRetry,
   });
 
   final BookContentBlock block;
   final Uint8List? imageBytes;
   final bool failed;
   final bool constrainToViewport;
+  final double? maxImageHeight;
+  final Future<void> Function()? onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -278,6 +427,7 @@ class _ImageBlockView extends StatelessWidget {
             failed: failed,
             palette: palette,
             aspectRatio: aspectRatio,
+            onRetry: onRetry,
           )
         : GestureDetector(
             onTap: () => _openPreview(context, imageBytes!, caption, heroTag),
@@ -293,6 +443,7 @@ class _ImageBlockView extends StatelessWidget {
                     failed: true,
                     palette: palette,
                     aspectRatio: aspectRatio,
+                    onRetry: onRetry,
                   ),
                 ),
               ),
@@ -300,17 +451,37 @@ class _ImageBlockView extends StatelessWidget {
           );
 
     if (constrainToViewport && imageBytes != null) {
-      final maxImageHeight = (MediaQuery.sizeOf(context).height - 164).clamp(
-        220.0,
-        double.infinity,
-      );
-      image = ConstrainedBox(
-        constraints: BoxConstraints(maxHeight: maxImageHeight),
-        child: image,
+      final effectiveMaxImageHeight =
+          maxImageHeight ??
+          (MediaQuery.sizeOf(context).height - 164).clamp(
+            220.0,
+            double.infinity,
+          );
+      final sourceImage = image;
+      image = LayoutBuilder(
+        builder: (context, constraints) {
+          final availableWidth = constraints.maxWidth;
+          final intrinsicHeight =
+              aspectRatio != null &&
+                  availableWidth.isFinite &&
+                  availableWidth > 0
+              ? availableWidth / aspectRatio
+              : effectiveMaxImageHeight;
+          final resolvedHeight = math.min(
+            effectiveMaxImageHeight,
+            intrinsicHeight,
+          );
+          return SizedBox(
+            width: double.infinity,
+            height: resolvedHeight,
+            child: sourceImage,
+          );
+        },
       );
     }
 
     return Column(
+      mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (aspectRatio == null)
@@ -453,11 +624,13 @@ class _ImagePlaceholder extends StatelessWidget {
     required this.failed,
     required this.palette,
     required this.aspectRatio,
+    this.onRetry,
   });
 
   final bool failed;
   final AppReaderPalette palette;
   final double? aspectRatio;
+  final Future<void> Function()? onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -471,11 +644,24 @@ class _ImagePlaceholder extends StatelessWidget {
       child: SizedBox(
         height: height,
         child: Center(
-          child: Text(
-            failed ? '图片无法加载' : '图片加载中',
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: palette.inkTertiary),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                failed ? '图片无法加载' : '图片加载中',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: palette.inkTertiary),
+              ),
+              if (failed && onRetry != null) ...[
+                const SizedBox(height: 8),
+                TextButton.icon(
+                  onPressed: onRetry,
+                  icon: const Icon(Icons.refresh, size: 18),
+                  label: const Text('重试'),
+                ),
+              ],
+            ],
           ),
         ),
       ),

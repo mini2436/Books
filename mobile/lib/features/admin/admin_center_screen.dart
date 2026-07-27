@@ -174,6 +174,17 @@ class AdminCenterScreen extends ConsumerWidget {
                               .clearBanner,
                         ),
                       ],
+                      if (controller.workingMessage != null) ...[
+                        const SizedBox(height: 12),
+                        _BannerMessage(
+                          icon: Icons.cloud_upload_outlined,
+                          message: controller.workingMessage!,
+                          foregroundColor: palette.accent,
+                          backgroundColor: palette.accent.withValues(
+                            alpha: 0.10,
+                          ),
+                        ),
+                      ],
                       if (controller.error != null) ...[
                         const SizedBox(height: 12),
                         _BannerMessage(
@@ -1093,6 +1104,7 @@ class _UploadBookButton extends ConsumerWidget {
           filePath: filePath,
           fileBytes: fileBytes,
           fileName: file.name,
+          fileSize: file.size,
         );
   }
 }
@@ -1930,14 +1942,14 @@ class _BannerMessage extends StatelessWidget {
     required this.message,
     required this.foregroundColor,
     required this.backgroundColor,
-    required this.onClose,
+    this.onClose,
   });
 
   final IconData icon;
   final String message;
   final Color foregroundColor;
   final Color backgroundColor;
-  final VoidCallback onClose;
+  final VoidCallback? onClose;
 
   @override
   Widget build(BuildContext context) {
@@ -1962,11 +1974,12 @@ class _BannerMessage extends StatelessWidget {
                 ),
               ),
             ),
-            IconButton(
-              visualDensity: VisualDensity.compact,
-              onPressed: onClose,
-              icon: Icon(Icons.close, color: foregroundColor),
-            ),
+            if (onClose != null)
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                onPressed: onClose,
+                icon: Icon(Icons.close, color: foregroundColor),
+              ),
           ],
         ),
       ),

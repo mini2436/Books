@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -18,6 +19,8 @@ import '../reader_controller.dart';
 import '../models/annotation_anchor.dart';
 import 'reader_font_asset_path.dart';
 import 'reader_blocks.dart';
+import 'reader_windows_image_server_stub.dart'
+    if (dart.library.io) 'reader_windows_image_server_io.dart';
 
 const List<String> _webAnnotationColors = [
   '#C3924A',
@@ -33,6 +36,27 @@ const List<String> _webAnnotationColors = [
   '#B85C7A',
   '#6E727A',
 ];
+
+@visibleForTesting
+String windowsReaderImageFileName(BookContentBlock block) {
+  final resourceId = block.resourceId ?? 'missing';
+  final safePrefix = resourceId
+      .replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_')
+      .takePrefix(72);
+  final hash = resourceId.hashCode.toUnsigned(32).toRadixString(16);
+  final extension = switch (block.imageMediaType?.toLowerCase()) {
+    'image/jpeg' || 'image/jpg' => 'jpg',
+    'image/webp' => 'webp',
+    'image/gif' => 'gif',
+    _ => 'png',
+  };
+  return '$safePrefix-$hash.$extension';
+}
+
+extension on String {
+  String takePrefix(int maximumLength) =>
+      length <= maximumLength ? this : substring(0, maximumLength);
+}
 
 class ReaderHtmlView extends StatefulWidget {
   const ReaderHtmlView({
@@ -53,6 +77,7 @@ class ReaderHtmlView extends StatefulWidget {
     required this.onAnnotate,
     required this.onSaveAnnotation,
     required this.onOpenAnnotations,
+    required this.onRetryImages,
     required this.onVisibleAnchorChanged,
     required this.onPageBoundaryPrevious,
     required this.onPageBoundaryNext,
@@ -98,6 +123,7 @@ class ReaderHtmlView extends StatefulWidget {
   onSaveAnnotation;
   final Future<void> Function(List<AnnotationView> annotations)
   onOpenAnnotations;
+  final Future<void> Function() onRetryImages;
   final ValueChanged<String> onVisibleAnchorChanged;
   final Future<void> Function() onPageBoundaryPrevious;
   final Future<void> Function() onPageBoundaryNext;
@@ -112,7 +138,8 @@ class ReaderHtmlView extends StatefulWidget {
   State<ReaderHtmlView> createState() => _ReaderHtmlViewState();
 }
 
-class _ReaderHtmlViewState extends State<ReaderHtmlView> {
+class _ReaderHtmlViewState extends State<ReaderHtmlView>
+    with SingleTickerProviderStateMixin {
   static ReaderFontFamilyPreference? _cachedEmbeddedFontPreference;
   static Future<String>? _cachedEmbeddedFontDataUriFuture;
 
@@ -123,6 +150,9 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
   late String _lastHtml;
   bool _pageReady = false;
   bool _useFlutterFallback = false;
+  WindowsReaderImageServer? _windowsImageServer;
+  final Map<String, int> _writtenWindowsImageLengths = <String, int>{};
+  int _windowsImageSyncGeneration = 0;
   int? _pendingBoundaryAnimationDirection;
   int _lastAnchorJumpVersion = -1;
   int _reloadGeneration = 0;
@@ -130,7 +160,14 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
   final Map<String, GlobalKey> _fallbackAnchorKeys = <String, GlobalKey>{};
   final List<String> _pendingTapZones = <String>[];
   final GlobalKey _fallbackViewportKey = GlobalKey();
+  final GlobalKey _fallbackPagedViewportKey = GlobalKey();
   final ScrollController _fallbackScrollController = ScrollController();
+  final ScrollController _fallbackPagedScrollController = ScrollController();
+  late final AnimationController _fallbackPageTurnController;
+  int _fallbackPageTurnDirection = 1;
+  bool _fallbackPageEntering = false;
+  bool _fallbackPageTurnInProgress = false;
+  bool _fallbackAnchorRestorePending = false;
   Timer? _blankPageGuard;
   Timer? _fallbackAnchorReportTimer;
   Timer? _fallbackAutoScrollTimer;
@@ -154,21 +191,27 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       kIsWeb || defaultTargetPlatform == TargetPlatform.linux;
 
   bool get _allowFlutterFallback =>
-      !_useWindowsWebView && (_forceFlutterReader || !widget.pagedMode);
+      _forceFlutterReader || _useWindowsWebView || !widget.pagedMode;
 
   @override
   void initState() {
     super.initState();
-    _lastHtml = _buildHtml();
+    _fallbackPageTurnController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 150),
+    );
+    _useFlutterFallback = _forceFlutterReader;
+    _lastHtml = _useFlutterFallback ? '' : _buildHtml();
     unawaited(_ensureEmbeddedFontLoaded());
-    if (_forceFlutterReader) {
-      _useFlutterFallback = true;
+    if (_useFlutterFallback) {
+      _fallbackAnchorRestorePending = _hasFallbackFocusedAnchorTarget;
       _attachFallbackScrollListener();
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _scrollFallbackToFocusedAnchor(force: true);
-        _reportFallbackVisibleAnchor();
+        unawaited(_restoreFallbackFocusedAnchor(force: true));
         _syncFallbackAutoScroll();
       });
+    }
+    if (_forceFlutterReader) {
       return;
     }
     if (_useWindowsWebView) {
@@ -230,6 +273,13 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
           windows_webview.WebviewHostResourceAccessKind.allow,
         );
       }
+      final imageServer = await createWindowsReaderImageServer();
+      if (imageServer == null) {
+        throw StateError('Windows reader image server is unavailable');
+      }
+      _windowsImageServer = imageServer;
+      _registerWindowsImageResources();
+      _lastHtml = _buildHtml();
       await controller.setBackgroundColor(widget.palette.background);
       _windowsWebMessageSubscription = controller.webMessage.listen(
         _handleWindowsBridgeMessage,
@@ -266,16 +316,35 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       unawaited(_ensureEmbeddedFontLoaded());
     }
     final chapterChanged = oldWidget.chapter.anchor != widget.chapter.anchor;
+    if (_useWindowsWebView &&
+        !_useFlutterFallback &&
+        _hasUnregisteredWindowsImageResources) {
+      unawaited(
+        _syncWindowsImageResourcesAndRefresh(
+          oldWidget,
+          chapterChanged: chapterChanged,
+        ),
+      );
+      return;
+    }
     final nextRootHtml = _buildRootHtml();
     final nextHtml = _buildHtml(rootHtml: nextRootHtml);
     if (_forceFlutterReader) {
       _lastHtml = nextHtml;
-      if (chapterChanged ||
+      final anchorTargetChanged =
+          chapterChanged ||
           widget.anchorJumpVersion != oldWidget.anchorJumpVersion ||
-          widget.focusedAnchor != oldWidget.focusedAnchor) {
+          widget.focusedAnchor != oldWidget.focusedAnchor;
+      if (anchorTargetChanged) {
+        _fallbackAnchorRestorePending = _hasFallbackFocusedAnchorTarget;
+      }
+      final shouldRestoreAnchor =
+          anchorTargetChanged ||
+          (_fallbackAnchorRestorePending &&
+              _fallbackFocusedAnchorLayoutSettled);
+      if (shouldRestoreAnchor) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          _scrollFallbackToFocusedAnchor(force: chapterChanged);
-          _reportFallbackVisibleAnchor();
+          unawaited(_restoreFallbackFocusedAnchor(force: true));
           _syncFallbackAutoScroll();
         });
       }
@@ -325,14 +394,94 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     if (_useFlutterFallback) {
       return LayoutBuilder(
         builder: (context, constraints) {
+          final imageBlockCount = widget.chapter.blocks
+              .where((block) => block.isImage)
+              .length;
+          final twoColumnContent =
+              widget.dualColumn &&
+              constraints.maxWidth >= 960 &&
+              imageBlockCount >= 2;
+          final maximumReaderWidth = twoColumnContent
+              ? Responsive.desktopContentMaxWidth
+              : Responsive.readerMaxWidth;
+          final contentViewportWidth = math.max(
+            0.0,
+            math.min(constraints.maxWidth - 40, maximumReaderWidth),
+          );
+          final pagedColumnHeight = math.max(0.0, constraints.maxHeight - 88);
+          final readerContent = widget.pagedMode
+              ? Center(
+                  child: SizedBox(
+                    key: _fallbackPagedViewportKey,
+                    width: contentViewportWidth,
+                    height: constraints.maxHeight,
+                    child: ClipRect(
+                      child: AnimatedBuilder(
+                        animation: _fallbackPageTurnController,
+                        builder: (context, child) => Transform.translate(
+                          offset: Offset(
+                            _fallbackPageHorizontalOffset(contentViewportWidth),
+                            0,
+                          ),
+                          child: child,
+                        ),
+                        child: SingleChildScrollView(
+                          controller: _fallbackPagedScrollController,
+                          scrollDirection: Axis.horizontal,
+                          physics: const NeverScrollableScrollPhysics(),
+                          padding: const EdgeInsets.fromLTRB(0, 64, 0, 24),
+                          child: ReaderBlocksView(
+                            blocks: widget.chapter.blocks,
+                            imageResources: widget.imageResources,
+                            failedImageResourceIds:
+                                widget.failedImageResourceIds,
+                            constrainImagesToViewport: true,
+                            annotations: widget.annotations,
+                            preferences: widget.preferences,
+                            keyForAnchor: _fallbackKeyForAnchor,
+                            onHighlight: widget.onHighlight,
+                            onAnnotate: widget.onAnnotate,
+                            onOpenAnnotations: widget.onOpenAnnotations,
+                            onRetryImages: widget.onRetryImages,
+                            pagedViewportWidth: contentViewportWidth,
+                            pagedColumnHeight: pagedColumnHeight,
+                            pagedColumnCount: twoColumnContent ? 2 : 1,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                )
+              : SingleChildScrollView(
+                  controller: _fallbackScrollController,
+                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 28),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(
+                        maxWidth: Responsive.readerMaxWidth,
+                      ),
+                      child: ReaderBlocksView(
+                        blocks: widget.chapter.blocks,
+                        imageResources: widget.imageResources,
+                        failedImageResourceIds: widget.failedImageResourceIds,
+                        constrainImagesToViewport: false,
+                        annotations: widget.annotations,
+                        preferences: widget.preferences,
+                        keyForAnchor: _fallbackKeyForAnchor,
+                        onHighlight: widget.onHighlight,
+                        onAnnotate: widget.onAnnotate,
+                        onOpenAnnotations: widget.onOpenAnnotations,
+                        onRetryImages: widget.onRetryImages,
+                      ),
+                    ),
+                  ),
+                );
           return GestureDetector(
             key: _fallbackViewportKey,
             behavior: HitTestBehavior.translucent,
             onTapUp: (details) => _handleFallbackViewportTap(
               details.localPosition.dx,
-              details.localPosition.dy,
               constraints.maxWidth,
-              constraints.maxHeight,
             ),
             child: NotificationListener<UserScrollNotification>(
               onNotification: (notification) {
@@ -342,29 +491,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
                 }
                 return false;
               },
-              child: SingleChildScrollView(
-                controller: _fallbackScrollController,
-                padding: const EdgeInsets.fromLTRB(20, 24, 20, 28),
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(
-                      maxWidth: Responsive.readerMaxWidth,
-                    ),
-                    child: ReaderBlocksView(
-                      blocks: widget.chapter.blocks,
-                      imageResources: widget.imageResources,
-                      failedImageResourceIds: widget.failedImageResourceIds,
-                      constrainImagesToViewport: widget.pagedMode,
-                      annotations: widget.annotations,
-                      preferences: widget.preferences,
-                      keyForAnchor: _fallbackKeyForAnchor,
-                      onHighlight: widget.onHighlight,
-                      onAnnotate: widget.onAnnotate,
-                      onOpenAnnotations: widget.onOpenAnnotations,
-                    ),
-                  ),
-                ),
-              ),
+              child: readerContent,
             ),
           );
         },
@@ -395,6 +522,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
                     onHighlight: widget.onHighlight,
                     onAnnotate: widget.onAnnotate,
                     onOpenAnnotations: widget.onOpenAnnotations,
+                    onRetryImages: widget.onRetryImages,
                     keyForAnchor: _fallbackKeyForAnchor,
                   ),
                 ),
@@ -411,6 +539,61 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       return ColoredBox(color: widget.palette.background);
     }
     return windows_webview.Webview(controller);
+  }
+
+  bool get _hasUnregisteredWindowsImageResources {
+    if (_windowsImageServer == null) return false;
+    for (final block in widget.chapter.blocks.where((block) => block.isImage)) {
+      final resourceId = block.resourceId;
+      final bytes = resourceId == null
+          ? null
+          : widget.imageResources[resourceId];
+      if (bytes == null) continue;
+      final fileName = windowsReaderImageFileName(block);
+      if (_writtenWindowsImageLengths[fileName] != bytes.length) return true;
+    }
+    return false;
+  }
+
+  void _registerWindowsImageResources() {
+    final imageServer = _windowsImageServer;
+    if (imageServer == null) return;
+    for (final block in widget.chapter.blocks.where((block) => block.isImage)) {
+      final resourceId = block.resourceId;
+      final bytes = resourceId == null
+          ? null
+          : widget.imageResources[resourceId];
+      if (bytes == null) continue;
+      final fileName = windowsReaderImageFileName(block);
+      if (_writtenWindowsImageLengths[fileName] == bytes.length) continue;
+      imageServer.put(fileName, block.imageMediaType ?? 'image/png', bytes);
+      _writtenWindowsImageLengths[fileName] = bytes.length;
+    }
+  }
+
+  Future<void> _syncWindowsImageResourcesAndRefresh(
+    ReaderHtmlView oldWidget, {
+    required bool chapterChanged,
+  }) async {
+    final generation = ++_windowsImageSyncGeneration;
+    try {
+      _registerWindowsImageResources();
+      if (!mounted || generation != _windowsImageSyncGeneration) return;
+      final nextRootHtml = _buildRootHtml();
+      final nextHtml = _buildHtml(rootHtml: nextRootHtml);
+      if (_canPatchReaderRoot(oldWidget) && _pageReady) {
+        _lastHtml = nextHtml;
+        await _replaceReaderRoot(nextRootHtml);
+      } else if (nextHtml != _lastHtml) {
+        await _reloadHtml(nextHtml, chapterChanged: chapterChanged);
+      }
+    } catch (error, stackTrace) {
+      _handleWebViewFailure(
+        reason: 'Windows reader image resource sync failed',
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
   }
 
   Future<void> _runReaderJavaScript(String script) async {
@@ -438,9 +621,20 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     _webAutoScrollTimer?.cancel();
     unawaited(_windowsWebMessageSubscription?.cancel());
     unawaited(_windowsLoadingSubscription?.cancel());
-    unawaited(_windowsController?.dispose());
+    unawaited(_disposeWindowsWebView());
+    _fallbackPageTurnController.dispose();
+    _fallbackPagedScrollController.dispose();
     _fallbackScrollController.dispose();
     super.dispose();
+  }
+
+  Future<void> _disposeWindowsWebView() async {
+    final controller = _windowsController;
+    final imageServer = _windowsImageServer;
+    if (controller != null) {
+      await controller.dispose();
+    }
+    await imageServer?.dispose();
   }
 
   Future<void> _handleBridgeMessage(JavaScriptMessage message) async {
@@ -686,26 +880,8 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     await _runReaderJavaScript('window.readerHandleTapZone($escapedZone);');
   }
 
-  void _handleFallbackViewportTap(
-    double localDx,
-    double localDy,
-    double width,
-    double height,
-  ) {
+  void _handleFallbackViewportTap(double localDx, double width) {
     if (!widget.pagedMode) {
-      if (height <= 0) {
-        widget.onToggleUi();
-        return;
-      }
-      final verticalRatio = localDy / height;
-      if (verticalRatio <= 0.30) {
-        unawaited(_turnFallbackPage(-1));
-        return;
-      }
-      if (verticalRatio >= 0.70) {
-        unawaited(_turnFallbackPage(1));
-        return;
-      }
       widget.onToggleUi();
       return;
     }
@@ -789,8 +965,6 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         oldWidget.preferences.fontScale == widget.preferences.fontScale &&
         oldWidget.preferences.lineHeight == widget.preferences.lineHeight &&
         oldWidget.preferences.fontFamily == widget.preferences.fontFamily &&
-        oldWidget.preferences.tabletPageTurnAxis ==
-            widget.preferences.tabletPageTurnAxis &&
         oldWidget.preferences.tabletPageTurnAnimation ==
             widget.preferences.tabletPageTurnAnimation &&
         oldWidget.palette.background == widget.palette.background &&
@@ -850,7 +1024,14 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
   }
 
   Future<void> _turnFallbackPage(int direction) async {
-    if (!_fallbackScrollController.hasClients) {
+    if (_fallbackPageTurnInProgress) {
+      return;
+    }
+    _fallbackAnchorRestorePending = false;
+    final scrollController = widget.pagedMode
+        ? _fallbackPagedScrollController
+        : _fallbackScrollController;
+    if (!scrollController.hasClients) {
       if (direction < 0) {
         await widget.onPageBoundaryPrevious();
       } else {
@@ -859,7 +1040,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       return;
     }
 
-    final position = _fallbackScrollController.position;
+    final position = scrollController.position;
     const boundaryTolerance = 4.0;
     if (direction < 0 &&
         position.pixels <= position.minScrollExtent + boundaryTolerance) {
@@ -872,7 +1053,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       return;
     }
 
-    final pageStep = (position.viewportDimension * 0.92).clamp(
+    final pageStep = (position.viewportDimension + 28).clamp(
       120.0,
       double.infinity,
     );
@@ -880,40 +1061,163 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       position.minScrollExtent,
       position.maxScrollExtent,
     );
-    await _fallbackScrollController.animateTo(
-      target,
-      duration: const Duration(milliseconds: 260),
-      curve: Curves.easeOutCubic,
-    );
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    if (reduceMotion) {
+      scrollController.jumpTo(target);
+      _reportFallbackVisibleAnchor();
+      return;
+    }
+
+    _fallbackPageTurnInProgress = true;
+    _fallbackPageTurnDirection = direction;
+    _fallbackPageEntering = false;
+    try {
+      await _fallbackPageTurnController.forward(from: 0);
+      if (!mounted || !scrollController.hasClients) {
+        return;
+      }
+      scrollController.jumpTo(target);
+      setState(() {
+        _fallbackPageEntering = true;
+      });
+      await _fallbackPageTurnController.forward(from: 0);
+    } finally {
+      _fallbackPageTurnInProgress = false;
+      if (mounted) {
+        setState(() {
+          _fallbackPageEntering = false;
+          _fallbackPageTurnController.value = 0;
+        });
+      }
+    }
     _reportFallbackVisibleAnchor();
   }
 
-  Future<void> _scrollFallbackToFocusedAnchor({bool force = false}) async {
-    if (!_useFlutterFallback ||
-        !_fallbackScrollController.hasClients ||
-        (!force && _lastAnchorJumpVersion == widget.anchorJumpVersion)) {
+  double _fallbackPageHorizontalOffset(double viewportWidth) {
+    if (!widget.pagedMode || viewportWidth <= 0) {
+      return 0;
+    }
+    final progress = Curves.easeOutCubic.transform(
+      _fallbackPageTurnController.value,
+    );
+    if (_fallbackPageEntering) {
+      return _fallbackPageTurnDirection * viewportWidth * (1 - progress);
+    }
+    return -_fallbackPageTurnDirection * viewportWidth * progress;
+  }
+
+  bool get _hasFallbackFocusedAnchorTarget {
+    final rawAnchor = widget.focusedAnchor ?? '';
+    if (rawAnchor == readerChapterStartMarker ||
+        rawAnchor == readerChapterEndMarker) {
+      return true;
+    }
+    final anchor = AnnotationAnchor.parse(rawAnchor).blockAnchor;
+    if (anchor.isEmpty) {
+      return false;
+    }
+    return widget.chapter.anchor == anchor ||
+        widget.chapter.blocks.any((block) => block.anchor == anchor);
+  }
+
+  bool get _fallbackFocusedAnchorLayoutSettled {
+    final rawAnchor = widget.focusedAnchor ?? '';
+    if (rawAnchor == readerChapterStartMarker || rawAnchor.isEmpty) {
+      return true;
+    }
+
+    final targetAnchor = AnnotationAnchor.parse(rawAnchor).blockAnchor;
+    final targetIndex = rawAnchor == readerChapterEndMarker
+        ? widget.chapter.blocks.length - 1
+        : widget.chapter.blocks.indexWhere(
+            (block) => block.anchor == targetAnchor,
+          );
+    if (targetIndex < 0) {
+      return false;
+    }
+
+    for (final block in widget.chapter.blocks.take(targetIndex + 1)) {
+      if (!block.isImage) {
+        continue;
+      }
+      final resourceId = block.resourceId;
+      if (resourceId == null || resourceId.isEmpty) {
+        continue;
+      }
+      if (!widget.imageResources.containsKey(resourceId) &&
+          !widget.failedImageResourceIds.contains(resourceId)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  Future<void> _restoreFallbackFocusedAnchor({bool force = false}) async {
+    if (!_hasFallbackFocusedAnchorTarget) {
+      _fallbackAnchorRestorePending = false;
       return;
+    }
+    final restored = await _scrollFallbackToFocusedAnchor(force: force);
+    if (!mounted || !restored || !_fallbackFocusedAnchorLayoutSettled) {
+      return;
+    }
+    _fallbackAnchorRestorePending = false;
+    _reportFallbackVisibleAnchor();
+  }
+
+  Future<bool> _scrollFallbackToFocusedAnchor({bool force = false}) async {
+    final scrollController = widget.pagedMode
+        ? _fallbackPagedScrollController
+        : _fallbackScrollController;
+    if (!_useFlutterFallback ||
+        !scrollController.hasClients ||
+        (!force && _lastAnchorJumpVersion == widget.anchorJumpVersion)) {
+      return false;
     }
     _lastAnchorJumpVersion = widget.anchorJumpVersion;
 
     final rawAnchor = widget.focusedAnchor ?? '';
     if (rawAnchor == readerChapterEndMarker) {
-      _fallbackScrollController.jumpTo(
-        _fallbackScrollController.position.maxScrollExtent,
-      );
-      return;
+      scrollController.jumpTo(scrollController.position.maxScrollExtent);
+      return true;
     }
     if (rawAnchor == readerChapterStartMarker || rawAnchor.isEmpty) {
-      _fallbackScrollController.jumpTo(
-        _fallbackScrollController.position.minScrollExtent,
-      );
-      return;
+      scrollController.jumpTo(scrollController.position.minScrollExtent);
+      return true;
     }
 
     final anchor = AnnotationAnchor.parse(rawAnchor).blockAnchor;
     final targetContext = _fallbackAnchorKeys[anchor]?.currentContext;
     if (targetContext == null) {
-      return;
+      return false;
+    }
+    if (widget.pagedMode && scrollController.hasClients) {
+      final targetBox = targetContext.findRenderObject() as RenderBox?;
+      final viewportBox =
+          _fallbackPagedViewportKey.currentContext?.findRenderObject()
+              as RenderBox?;
+      if (targetBox == null ||
+          !targetBox.hasSize ||
+          viewportBox == null ||
+          !viewportBox.hasSize) {
+        return false;
+      }
+      final position = scrollController.position;
+      final pageStep = position.viewportDimension + 28;
+      final targetContentX =
+          position.pixels +
+          targetBox.localToGlobal(Offset.zero).dx -
+          viewportBox.localToGlobal(Offset.zero).dx;
+      final snapTolerance = math.min(4.0, pageStep * 0.01);
+      final spreadStart =
+          ((targetContentX + snapTolerance) / pageStep).floorToDouble() *
+          pageStep;
+      scrollController.jumpTo(
+        spreadStart.clamp(position.minScrollExtent, position.maxScrollExtent),
+      );
+      _reportFallbackVisibleAnchor();
+      return true;
     }
     await Scrollable.ensureVisible(
       targetContext,
@@ -922,6 +1226,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       curve: Curves.easeOutCubic,
     );
     _reportFallbackVisibleAnchor();
+    return true;
   }
 
   void _scheduleFallbackAnchorReport() {
@@ -933,7 +1238,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
   }
 
   void _reportFallbackVisibleAnchor() {
-    if (!_useFlutterFallback || !mounted) {
+    if (!_useFlutterFallback || !mounted || _fallbackAnchorRestorePending) {
       return;
     }
     final viewportBox =
@@ -941,8 +1246,11 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
     if (viewportBox == null || !viewportBox.hasSize) {
       return;
     }
+    final viewportLeft = viewportBox.localToGlobal(Offset.zero).dx;
+    final viewportRight = viewportLeft + viewportBox.size.width;
     final viewportTop = viewportBox.localToGlobal(Offset.zero).dy;
     final viewportBottom = viewportTop + viewportBox.size.height;
+    final probeX = viewportLeft + viewportBox.size.width * 0.12;
     final probeY = viewportTop + viewportBox.size.height * 0.18;
 
     String? bestAnchor;
@@ -954,12 +1262,18 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       if (blockBox == null || !blockBox.hasSize) {
         continue;
       }
+      final blockLeft = blockBox.localToGlobal(Offset.zero).dx;
+      final blockRight = blockLeft + blockBox.size.width;
       final blockTop = blockBox.localToGlobal(Offset.zero).dy;
       final blockBottom = blockTop + blockBox.size.height;
-      if (blockBottom < viewportTop || blockTop > viewportBottom) {
+      if (blockRight < viewportLeft ||
+          blockLeft > viewportRight ||
+          blockBottom < viewportTop ||
+          blockTop > viewportBottom) {
         continue;
       }
-      final score = (blockTop - probeY).abs();
+      final score =
+          (blockTop - probeY).abs() + (blockLeft - probeX).abs() * 0.2;
       if (bestScore == null || score < bestScore) {
         bestScore = score;
         bestAnchor = block.anchor;
@@ -1016,17 +1330,22 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         .map((block) => block.renderedText.trim())
         .where((text) => text.isNotEmpty)
         .fold<int>(0, (sum, text) => sum + text.length);
-    if (expectedTextLength == 0) {
+    final expectedImageCount = widget.chapter.blocks
+        .where((block) => block.isImage)
+        .length;
+    if (expectedTextLength == 0 && expectedImageCount == 0) {
       return;
     }
     try {
       final result = await _runReaderJavaScriptReturningResult('''
         (function() {
           var root = document.getElementById("reader-root");
-          if (!root || !root.innerText) {
+          if (!root) {
             return 0;
           }
-          return root.innerText.trim().length;
+          var textLength = root.innerText ? root.innerText.trim().length : 0;
+          var imageCount = root.querySelectorAll(".reader-image, .reader-image-placeholder").length;
+          return textLength + imageCount;
         })();
         ''');
       final renderedLength = int.tryParse(
@@ -1094,6 +1413,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       return;
     }
     _fallbackScrollController.addListener(_scheduleFallbackAnchorReport);
+    _fallbackPagedScrollController.addListener(_scheduleFallbackAnchorReport);
     _fallbackScrollListenerAttached = true;
   }
 
@@ -1734,7 +2054,6 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       const colorRow = document.getElementById('reader-color-row');
       const underlineRow = document.getElementById('reader-underline-row');
       const pagedMode = ${widget.pagedMode ? 'true' : 'false'};
-      const pageTurnAxis = ${jsonEncode(widget.preferences.tabletPageTurnAxis.storageValue)};
       const annotationColors = ${jsonEncode(_webAnnotationColors)};
       const defaultAnnotationColor = ${jsonEncode(_defaultAnnotationColor(widget.preferences.themeMode))};
       const underlineOptions = [
@@ -1865,6 +2184,40 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         return best ? best.anchor : '';
       }
 
+      function findAnchorTarget(anchor) {
+        if (!anchor) {
+          return null;
+        }
+        return Array.from(document.querySelectorAll('[data-anchor], [data-block-anchor]'))
+          .find(function(node) {
+            return node.dataset.anchor === anchor || node.dataset.blockAnchor === anchor;
+          }) || null;
+      }
+
+      function restoreViewportAnchor(anchor) {
+        const target = findAnchorTarget(anchor);
+        if (!target) {
+          return false;
+        }
+        if (pagedMode && stage) {
+          updatePagedMetrics();
+          const stageRect = stage.getBoundingClientRect();
+          const targetRect = Array.from(target.getClientRects())
+            .find(function(rect) { return rect.width > 0 && rect.height > 0; }) ||
+            target.getBoundingClientRect();
+          const absoluteX = currentOffset + Math.max(0, targetRect.left - stageRect.left);
+          const targetPage = Math.max(
+            0,
+            Math.min(pageCount - 1, Math.floor(absoluteX / Math.max(pageSpan, 1))),
+          );
+          goToPage(targetPage, false);
+        } else {
+          target.scrollIntoView({ behavior: 'auto', block: 'start' });
+        }
+        scheduleViewportAnchorReport(120);
+        return true;
+      }
+
       function reportCurrentViewportAnchor() {
         const anchor = currentViewportAnchor();
         if (!anchor || anchor === lastProgressAnchor) {
@@ -1890,11 +2243,22 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
             window.requestAnimationFrame(callback);
           });
         };
-        if (document.fonts && document.fonts.ready && typeof document.fonts.ready.then === 'function') {
-          document.fonts.ready.then(finalize).catch(finalize);
-          return;
-        }
-        finalize();
+        const fontReady = document.fonts && document.fonts.ready &&
+            typeof document.fonts.ready.then === 'function'
+          ? document.fonts.ready.catch(function() {})
+          : Promise.resolve();
+        const imageReady = Promise.all(
+          Array.from(document.images).map(function(image) {
+            if (image.complete) {
+              return Promise.resolve();
+            }
+            return new Promise(function(resolve) {
+              image.addEventListener('load', resolve, { once: true });
+              image.addEventListener('error', resolve, { once: true });
+            });
+          })
+        );
+        Promise.all([fontReady, imageReady]).then(finalize).catch(finalize);
       }
 
       function afterTwoFrames(callback) {
@@ -1927,9 +2291,6 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
 
       function pageTurnTransform(direction, incoming, distance) {
         const signedDistance = (direction > 0 ? 1 : -1) * (incoming ? 1 : -1) * distance;
-        if (pageTurnAxis === 'vertical') {
-          return 'translate3d(0,' + signedDistance + '%,0) scale(0.996)';
-        }
         return 'translate3d(' + signedDistance + '%,0,0) scale(0.996)';
       }
 
@@ -2175,53 +2536,6 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
           return true;
         }
         return goToPage(targetPage, true);
-      }
-
-      function mobilePageStep() {
-        if (!stage) {
-          return window.innerHeight * 0.82;
-        }
-        return Math.max(120, stage.clientHeight * 0.82);
-      }
-
-      function mobileScrollBoundary() {
-        if (!stage) {
-          return { top: true, bottom: true };
-        }
-        const maxScroll = Math.max(0, stage.scrollHeight - stage.clientHeight);
-        return {
-          top: stage.scrollTop <= 4,
-          bottom: stage.scrollTop >= (maxScroll - 4)
-        };
-      }
-
-      function handleMobilePageTurn(direction) {
-        if (!stage || pagedMode) {
-          return false;
-        }
-        const step = mobilePageStep();
-        const boundary = mobileScrollBoundary();
-        if (direction < 0 && boundary.top) {
-          send({ type: 'previousChapter' });
-          return true;
-        }
-        if (direction > 0 && boundary.bottom) {
-          send({ type: 'nextChapter' });
-          return true;
-        }
-        const nextTop = Math.max(
-          0,
-          Math.min(
-            stage.scrollTop + (direction * step),
-            Math.max(0, stage.scrollHeight - stage.clientHeight),
-          ),
-        );
-        stage.scrollTo({
-          top: nextTop,
-          behavior: 'smooth',
-        });
-        scheduleViewportAnchorReport(260);
-        return true;
       }
 
       function renderSelectionOverlay(data) {
@@ -2576,11 +2890,8 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
           return;
         }
         if (pagedMode) {
-          const axisExtent = pageTurnAxis === 'vertical'
-            ? (window.innerHeight || document.documentElement.clientHeight || 1)
-            : (window.innerWidth || document.documentElement.clientWidth || 1);
-          const axisPosition = pageTurnAxis === 'vertical' ? clientY : clientX;
-          const ratio = axisPosition / axisExtent;
+          const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1;
+          const ratio = clientX / viewportWidth;
           if (ratio <= 0.32) {
             handlePageTurn(-1);
             return;
@@ -2590,16 +2901,6 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
             return;
           }
           send({ type: 'toggleUi' });
-          return;
-        }
-        const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 1;
-        const verticalRatio = clientY / viewportHeight;
-        if (verticalRatio <= 0.30) {
-          handleMobilePageTurn(-1);
-          return;
-        }
-        if (verticalRatio >= 0.70) {
-          handleMobilePageTurn(1);
           return;
         }
         send({ type: 'toggleUi' });
@@ -2662,12 +2963,8 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
               lastTouchHandledAt = Date.now();
               handleDocumentTap(event.target, touch.clientX, touch.clientY);
             } else if (pagedMode) {
-              const delta = pageTurnAxis === 'vertical'
-                ? touch.clientY - touchStartY
-                : touch.clientX - touchStartX;
-              const crossDelta = pageTurnAxis === 'vertical'
-                ? touch.clientX - touchStartX
-                : touch.clientY - touchStartY;
+              const delta = touch.clientX - touchStartX;
+              const crossDelta = touch.clientY - touchStartY;
               if (Math.abs(delta) >= 48 && Math.abs(delta) > Math.abs(crossDelta) * 1.15) {
                 lastTouchHandledAt = Date.now();
                 handlePageTurn(delta < 0 ? 1 : -1);
@@ -2826,7 +3123,8 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
           currentOffset: currentOffset,
           pageCount: pageCount,
           scrollTop: stage ? stage.scrollTop : 0,
-          scrollRatio: maxScroll <= 0 || !stage ? 0 : stage.scrollTop / maxScroll
+          scrollRatio: maxScroll <= 0 || !stage ? 0 : stage.scrollTop / maxScroll,
+          visibleAnchor: currentViewportAnchor()
         });
       };
 
@@ -2843,6 +3141,9 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
           return;
         }
         updatePagedMetrics();
+        if (restoreViewportAnchor(snapshot.visibleAnchor)) {
+          return;
+        }
         if (pagedMode) {
           const targetPage = Number.isFinite(snapshot.currentPage)
             ? snapshot.currentPage
@@ -2916,11 +3217,11 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
       };
 
       window.readerHandleTapZone = function(zone) {
-        if (zone === 'left' || zone === 'top') {
+        if (zone === 'left') {
           handlePageTurn(-1);
           return;
         }
-        if (zone === 'right' || zone === 'bottom') {
+        if (zone === 'right') {
           handlePageTurn(1);
           return;
         }
@@ -2955,8 +3256,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
 
       window.readerScrollToAnchor = function(anchor) {
         if (!anchor) return;
-        const target = Array.from(document.querySelectorAll('[data-anchor], [data-block-anchor]'))
-          .find(node => node.dataset.anchor === anchor || node.dataset.blockAnchor === anchor);
+        const target = findAnchorTarget(anchor);
         if (!target) return;
         if (pagedMode && stage) {
           updatePagedMetrics();
@@ -3062,9 +3362,12 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView> {
         ? ''
         : '<figcaption class="reader-image-caption">${_escapeHtml(caption)}</figcaption>';
     final mediaType = block.imageMediaType ?? 'image/png';
+    final imageSource = _useWindowsWebView
+        ? _windowsImageServer?.urlFor(windowsReaderImageFileName(block)) ?? ''
+        : 'data:${_escapeHtml(mediaType)};base64,${bytes == null ? '' : base64Encode(bytes)}';
     final imageHtml = bytes == null
         ? '<div class="reader-image-placeholder">${failed ? '图片无法加载' : '图片加载中'}</div>'
-        : '<img class="reader-image" src="data:${_escapeHtml(mediaType)};base64,${base64Encode(bytes)}" alt="${_escapeHtml(block.imageAlt ?? caption)}"/>';
+        : '<img class="reader-image" src="$imageSource" alt="${_escapeHtml(block.imageAlt ?? caption)}" onload="window.readerApplyLayout && window.readerApplyLayout()" onerror="this.outerHTML=\'<div class=&quot;reader-image-placeholder&quot;>图片无法加载</div>\'; window.readerApplyLayout && window.readerApplyLayout()"/>';
     return '<figure class="reader-block" data-type="image" data-block-anchor="${_escapeHtml(block.anchor)}" data-anchor="${_escapeHtml(block.anchor)}">$imageHtml$captionHtml</figure>';
   }
 
@@ -3299,6 +3602,7 @@ class _ReaderLoadingOverlay extends StatelessWidget {
     required this.onHighlight,
     required this.onAnnotate,
     required this.onOpenAnnotations,
+    required this.onRetryImages,
     required this.keyForAnchor,
   });
 
@@ -3321,6 +3625,7 @@ class _ReaderLoadingOverlay extends StatelessWidget {
   onAnnotate;
   final Future<void> Function(List<AnnotationView> annotations)
   onOpenAnnotations;
+  final Future<void> Function() onRetryImages;
   final GlobalKey Function(String anchor) keyForAnchor;
 
   @override
@@ -3392,6 +3697,7 @@ class _ReaderLoadingOverlay extends StatelessWidget {
           onHighlight: onHighlight,
           onAnnotate: onAnnotate,
           onOpenAnnotations: onOpenAnnotations,
+          onRetryImages: onRetryImages,
           keyForAnchor: keyForAnchor,
         ),
       ),

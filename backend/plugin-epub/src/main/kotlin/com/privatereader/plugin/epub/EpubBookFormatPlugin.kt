@@ -50,30 +50,103 @@ class EpubBookFormatPlugin : BookFormatPlugin {
         val packageDir = packagePath.substringBeforeLast('/', "")
         val manifestItems = extractManifestItems(packageDocument, packageDir)
         val coverItem = findCoverItem(packageDocument, manifestItems, packagePath)
-        val entry = coverItem?.let { zip.getEntry(it.fullPath) }
-            ?: zip.entries().asSequence()
-                .filterNot { entry -> entry.isDirectory }
-                .filter { entry -> inferMimeTypeFromPath(entry.name).startsWith("image/") }
-                .sortedBy { entry ->
-                    val fileName = entry.name.substringAfterLast('/').substringBeforeLast('.').lowercase()
-                    when {
-                        fileName == "cover" -> 0
-                        fileName.startsWith("cover") -> 1
-                        entry.name.contains("cover", ignoreCase = true) -> 2
-                        else -> 3
-                    }
-                }
-                .firstOrNull { entry -> entry.name.contains("cover", ignoreCase = true) }
+        val resolvedCover = coverItem?.let { resolveCoverImage(zip, it, manifestItems) }
+        val entry = resolvedCover?.let { zip.getEntry(it.path) }
+            ?: findConventionalCoverEntry(zip)
             ?: return null
         val bytes = zip.getInputStream(entry).use { it.readBytes() }
         if (bytes.isEmpty()) {
             return null
         }
+        val mimeType = detectImageMimeType(
+            bytes = bytes,
+            path = entry.name,
+            declaredMimeType = resolvedCover?.mediaType,
+        ) ?: return null
         CoverExtractionResult(
-            mimeType = coverItem?.mediaType?.ifBlank { inferMimeTypeFromPath(entry.name) }
-                ?: inferMimeTypeFromPath(entry.name),
+            mimeType = mimeType,
             bytes = bytes,
         )
+    }
+
+    /**
+     * EPUB 2 books often point the guide cover at an XHTML title page rather than
+     * at the image itself. Follow image references in XHTML/SVG wrappers instead
+     * of accidentally storing the wrapper document as the cover.
+     */
+    private fun resolveCoverImage(
+        zip: ZipFile,
+        item: EpubManifestItem,
+        manifestItems: Map<String, EpubManifestItem>,
+        visitedPaths: Set<String> = emptySet(),
+    ): CoverArchiveItem? {
+        if (item.fullPath in visitedPaths) return null
+        val declaredMimeType = item.mediaType.ifBlank { inferMimeTypeFromPath(item.fullPath) }
+        if (declaredMimeType.startsWith("image/") && declaredMimeType != "image/svg+xml") {
+            return CoverArchiveItem(item.fullPath, declaredMimeType)
+        }
+        if (!isCoverWrapper(declaredMimeType, item.fullPath)) return null
+
+        val document = runCatching { readXml(zip, item.fullPath) }.getOrNull() ?: return null
+        val imageElements = sequence {
+            yieldAll(document.getElementsByTagNameNS("*", "img").asSequence())
+            yieldAll(document.getElementsByTagNameNS("*", "image").asSequence())
+        }
+        for (node in imageElements) {
+            val image = node as? Element ?: continue
+            val href = image.getAttribute("src")
+                .ifBlank { image.getAttribute("href") }
+                .ifBlank { image.getAttribute("xlink:href") }
+                .ifBlank { image.getAttributeNS("http://www.w3.org/1999/xlink", "href") }
+                .trim()
+            if (href.isBlank() || href.startsWith("data:", ignoreCase = true)) continue
+            val resolvedPath = resolveHref(item.fullPath, href).substringBefore('#')
+            val nestedItem = manifestItems.values.firstOrNull { it.fullPath == resolvedPath }
+            if (nestedItem != null) {
+                resolveCoverImage(zip, nestedItem, manifestItems, visitedPaths + item.fullPath)?.let { return it }
+            }
+            val entry = zip.getEntry(resolvedPath) ?: continue
+            if (!entry.isDirectory && inferMimeTypeFromPath(entry.name).startsWith("image/")) {
+                return CoverArchiveItem(entry.name, inferMimeTypeFromPath(entry.name))
+            }
+        }
+        return null
+    }
+
+    private fun findConventionalCoverEntry(zip: ZipFile): ZipEntry? =
+        zip.entries().asSequence()
+            .filterNot { entry -> entry.isDirectory }
+            .filter { entry -> inferMimeTypeFromPath(entry.name).startsWith("image/") }
+            .filter { entry -> entry.name.contains("cover", ignoreCase = true) }
+            .sortedBy { entry ->
+                val fileName = entry.name.substringAfterLast('/').substringBeforeLast('.').lowercase()
+                when {
+                    fileName == "cover" -> 0
+                    fileName.startsWith("cover") -> 1
+                    else -> 2
+                }
+            }
+            .firstOrNull()
+
+    private fun isCoverWrapper(mediaType: String, path: String): Boolean =
+        mediaType.contains("html", ignoreCase = true) ||
+            mediaType == "image/svg+xml" ||
+            path.endsWith(".xhtml", ignoreCase = true) ||
+            path.endsWith(".html", ignoreCase = true) ||
+            path.endsWith(".svg", ignoreCase = true)
+
+    private fun detectImageMimeType(bytes: ByteArray, path: String, declaredMimeType: String?): String? {
+        val declared = declaredMimeType.orEmpty().lowercase().takeIf { it.startsWith("image/") }
+        val inferred = inferMimeTypeFromPath(path).takeIf { it.startsWith("image/") }
+        return when {
+            bytes.size >= 3 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte() && bytes[2] == 0xFF.toByte() -> "image/jpeg"
+            bytes.size >= 8 && bytes.copyOfRange(0, 8).contentEquals(PNG_SIGNATURE) -> "image/png"
+            bytes.size >= 6 && String(bytes, 0, 6, StandardCharsets.US_ASCII).startsWith("GIF8") -> "image/gif"
+            bytes.size >= 12 && String(bytes, 0, 4, StandardCharsets.US_ASCII) == "RIFF" &&
+                String(bytes, 8, 4, StandardCharsets.US_ASCII) == "WEBP" -> "image/webp"
+            declared != null -> declared
+            else -> inferred
+        }
     }
 
     override fun extractResource(file: Path, resourceId: String): BookResource? = ZipFile(file.toFile()).use { zip ->
@@ -957,6 +1030,11 @@ class EpubBookFormatPlugin : BookFormatPlugin {
         val properties: Set<String>,
     )
 
+    private data class CoverArchiveItem(
+        val path: String,
+        val mediaType: String,
+    )
+
     private data class PendingBlock(
         val type: StructuredBlockType,
         val text: String,
@@ -979,6 +1057,9 @@ class EpubBookFormatPlugin : BookFormatPlugin {
             "(?:book[-_]?)?(?:title|heading|headline|subtitle)\\d*|" +
                 "(?:chapter|section)(?:[-_]?(?:title|heading))?\\d*",
             RegexOption.IGNORE_CASE,
+        )
+        private val PNG_SIGNATURE = byteArrayOf(
+            0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
         )
         private val SUPPORTED_IMAGE_MEDIA_TYPES = setOf(
             "image/jpeg",

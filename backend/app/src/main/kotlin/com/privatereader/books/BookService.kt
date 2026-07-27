@@ -87,7 +87,7 @@ class BookService(
             reconcileExistingImport(existing.bookId, filePath, preparedImport)
             storeBookCover(existing.bookId, fileHash, preparedImport.cover)
             refreshStructuredContent(existing.bookId, existing.fileId, fileHash, plugin.pluginId, filePath)
-            bookResourceStorageService.cacheReferencedResources(existing.bookId, fileHash, plugin.pluginId, filePath)
+            cacheImportedResources(existing.bookId, fileHash, plugin.pluginId, filePath)
             insertImportJob(existing.bookId, sourceId, existing.fileId, "Reused existing import from ${plugin.pluginId}")
             if (actorId != null) {
                 grantBook(existing.bookId, actorId, actorId)
@@ -140,7 +140,7 @@ class BookService(
         upsertBookFormat(bookId, preparedImport)
         storeBookCover(bookId, fileHash, preparedImport.cover)
         refreshStructuredContent(bookId, fileId, fileHash, plugin.pluginId, filePath)
-        bookResourceStorageService.cacheReferencedResources(bookId, fileHash, plugin.pluginId, filePath)
+        cacheImportedResources(bookId, fileHash, plugin.pluginId, filePath)
         insertImportJob(bookId, sourceId, fileId, "Imported by ${plugin.pluginId}")
 
         if (actorId != null) {
@@ -869,7 +869,9 @@ class BookService(
             """
             select cover_content_type, cover_data
             from books
-            where id = :bookId and cover_data is not null and cover_content_type is not null
+            where id = :bookId
+              and cover_data is not null
+              and lower(cover_content_type) like 'image/%'
             """.trimIndent(),
         )
             .param("bookId", bookId)
@@ -883,7 +885,7 @@ class BookService(
             .orElse(null)
 
     private fun storeBookCover(bookId: Long, sourceFileHash: String, cover: CoverExtractionResult?) {
-        if (cover == null || cover.bytes.isEmpty()) return
+        if (cover == null || cover.bytes.isEmpty() || !cover.mimeType.startsWith("image/", ignoreCase = true)) return
         jdbcClient.sql(
             """
             update books
@@ -900,6 +902,19 @@ class BookService(
             .param("updatedAt", Instant.now().toSqlTimestamp())
             .param("bookId", bookId)
             .update()
+    }
+
+    private fun cacheImportedResources(bookId: Long, fileHash: String, pluginId: String, filePath: Path) {
+        val fileSize = runCatching { Files.size(filePath) }.getOrDefault(0L)
+        if (fileSize > appProperties.eagerResourceCacheMaxFileSizeBytes) {
+            logger.info(
+                "Skipping eager resource cache for large book {} ({} bytes); resources will be cached on demand",
+                bookId,
+                fileSize,
+            )
+            return
+        }
+        bookResourceStorageService.cacheReferencedResources(bookId, fileHash, pluginId, filePath)
     }
 
     private fun CoverExtractionResult.toResource(): BookCoverResource =

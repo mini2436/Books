@@ -287,8 +287,8 @@ class ApiClient {
         options: Options(
           headers: _headers(accessToken),
           contentType: 'multipart/form-data',
-          sendTimeout: const Duration(minutes: 5),
-          receiveTimeout: const Duration(minutes: 5),
+          sendTimeout: const Duration(minutes: 30),
+          receiveTimeout: const Duration(minutes: 30),
         ),
       ),
     );
@@ -798,13 +798,29 @@ class ApiClient {
   }
 
   String _extractMessage(DioException error) {
+    if (error.response?.statusCode == 413) {
+      return '文件超过服务器上传限制，请联系管理员调整上传配置';
+    }
     final responseData = error.response?.data;
     if (responseData is Map<String, dynamic>) {
-      return (responseData['error'] ?? responseData['message'] ?? '请求失败')
-          .toString();
+      final message = (responseData['error'] ?? responseData['message'])
+          ?.toString();
+      if (message != null && message.isNotEmpty) {
+        if (message.toLowerCase().contains('uploaded file is too large')) {
+          return '文件超过服务器上传限制，请联系管理员调整上传配置';
+        }
+        return message;
+      }
+      return '请求失败';
     }
     if (responseData is String && responseData.trim().isNotEmpty) {
       return responseData.trim();
+    }
+    if (error.type == DioExceptionType.sendTimeout) {
+      return '文件上传超时，请确认服务器仍在运行后重试';
+    }
+    if (error.type == DioExceptionType.receiveTimeout) {
+      return '服务器解析图书超时，请稍后检查导入结果';
     }
     return error.message ?? '网络请求失败';
   }

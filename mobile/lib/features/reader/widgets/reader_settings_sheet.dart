@@ -5,8 +5,6 @@ import '../../settings/reader_preferences_controller.dart';
 import '../../../shared/theme/reader_theme_extension.dart';
 import '../../../shared/widgets/glass_segmented_control.dart';
 import '../../../shared/widgets/glass_bottom_sheet.dart';
-import '../../../shared/widgets/glass_surface.dart';
-import '../../../shared/utils/responsive.dart';
 
 class ReaderSettingsSheet extends ConsumerWidget {
   const ReaderSettingsSheet({super.key});
@@ -45,7 +43,6 @@ class ReaderSettingsPanelContent extends ConsumerWidget {
     final controller = ref.watch(readerPreferencesControllerProvider);
     final preferences = controller.value;
     final palette = AppReaderPalette.of(context);
-    final tablet = Responsive.isTablet(context);
     final sectionGap = compact ? 14.0 : 18.0;
     final titleGap = compact ? 12.0 : 16.0;
     final themeSpacing = compact ? 10.0 : 12.0;
@@ -166,39 +163,6 @@ class ReaderSettingsPanelContent extends ConsumerWidget {
             );
           }).toList(),
         ),
-        if (tablet) ...[
-          SizedBox(height: compact ? 18 : 24),
-          _SectionTitle(title: '平板阅读', bottomSpacing: compact ? 8 : 12),
-          GlassCard(
-            borderRadius: BorderRadius.circular(compact ? 16 : 18),
-            padding: EdgeInsets.all(compact ? 14 : 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '翻页方向',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: palette.inkTertiary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                SizedBox(height: compact ? 8 : 10),
-                GlassSegmentedControl<TabletPageTurnAxis>(
-                  style: segmentedStyle,
-                  segments: TabletPageTurnAxis.values
-                      .map(
-                        (axis) =>
-                            ButtonSegment(value: axis, label: Text(axis.label)),
-                      )
-                      .toList(),
-                  selected: {preferences.tabletPageTurnAxis},
-                  onSelectionChanged: (selection) =>
-                      controller.setTabletPageTurnAxis(selection.first),
-                ),
-              ],
-            ),
-          ),
-        ],
       ],
     );
 

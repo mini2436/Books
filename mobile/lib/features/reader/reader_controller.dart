@@ -914,6 +914,19 @@ class ReaderController extends ChangeNotifier {
     }
   }
 
+  Future<void> retryCurrentChapterImages() async {
+    final chapter = currentChapter;
+    if (chapter == null) return;
+    final resourceIds = chapter.blocks
+        .where((block) => block.isImage)
+        .map((block) => block.resourceId)
+        .whereType<String>()
+        .toSet();
+    failedImageResourceIds.removeAll(resourceIds);
+    notifyListeners();
+    await _prefetchImageResources(chapter);
+  }
+
   void _pruneImageCache() {
     final keepChapterIndexes = {
       currentChapterIndex - 1,

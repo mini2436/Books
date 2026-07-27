@@ -1,5 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:private_reader_mobile/data/services/settings_storage.dart';
 import 'package:private_reader_mobile/features/settings/reader_preferences_controller.dart';
+import 'package:private_reader_mobile/shared/theme/reader_theme_extension.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   test('bundled reader fonts resolve to their Flutter font families', () {
@@ -40,4 +43,26 @@ void main() {
       ReaderFontFamilyPreference.wenKai,
     );
   });
+
+  test(
+    'saving reader settings removes the legacy vertical paging option',
+    () async {
+      SharedPreferences.setMockInitialValues({
+        'reader.tabletPageTurnAxis': 'vertical',
+      });
+
+      await SettingsStorage().save(
+        const ReaderPreferences(
+          themeMode: ReaderThemeMode.paper,
+          fontScale: 1,
+          lineHeight: 1.8,
+          fontFamily: ReaderFontFamilyPreference.system,
+          tabletPageTurnAnimation: TabletPageTurnAnimation.smooth,
+        ),
+      );
+
+      final preferences = await SharedPreferences.getInstance();
+      expect(preferences.containsKey('reader.tabletPageTurnAxis'), isFalse);
+    },
+  );
 }

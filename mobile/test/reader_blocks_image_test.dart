@@ -42,6 +42,7 @@ void main() {
           onHighlight: (_, _) async {},
           onAnnotate: (_, _) async {},
           onOpenAnnotations: (_) async {},
+          onRetryImages: () async {},
         ),
       ),
     );
@@ -75,11 +76,253 @@ void main() {
           onHighlight: (_, _) async {},
           onAnnotate: (_, _) async {},
           onOpenAnnotations: (_) async {},
+          onRetryImages: () async {},
         ),
       ),
     );
 
     expect(find.text('图片无法加载'), findsOneWidget);
+    expect(find.text('重试'), findsOneWidget);
+  });
+
+  testWidgets('ReaderBlocksView lays image pages out in two columns', (
+    tester,
+  ) async {
+    const blocks = [
+      BookContentBlock(
+        blockIndex: 0,
+        type: 'image',
+        anchor: 'chapter-0-block-1',
+        text: '',
+        plainText: '',
+        meta: {
+          'resourceId': 'image-1',
+          'mediaType': 'image/png',
+          'width': 1,
+          'height': 1,
+        },
+      ),
+      BookContentBlock(
+        blockIndex: 1,
+        type: 'image',
+        anchor: 'chapter-0-block-2',
+        text: '',
+        plainText: '',
+        meta: {
+          'resourceId': 'image-2',
+          'mediaType': 'image/png',
+          'width': 1,
+          'height': 1,
+        },
+      ),
+    ];
+    final anchorKeys = <String, GlobalKey>{};
+
+    await tester.pumpWidget(
+      _testApp(
+        SizedBox(
+          width: 760,
+          child: ReaderBlocksView(
+            blocks: blocks,
+            imageResources: {'image-1': _onePixelPng, 'image-2': _onePixelPng},
+            failedImageResourceIds: const {},
+            constrainImagesToViewport: true,
+            annotations: const <AnnotationView>[],
+            preferences: _preferences,
+            keyForAnchor: (anchor) =>
+                anchorKeys.putIfAbsent(anchor, GlobalKey.new),
+            onHighlight: (_, _) async {},
+            onAnnotate: (_, _) async {},
+            onOpenAnnotations: (_) async {},
+            onRetryImages: () async {},
+            twoColumnContent: true,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final firstPosition = tester.getTopLeft(
+      find.byKey(anchorKeys['chapter-0-block-1']!),
+    );
+    final secondPosition = tester.getTopLeft(
+      find.byKey(anchorKeys['chapter-0-block-2']!),
+    );
+    expect(secondPosition.dx, greaterThan(firstPosition.dx));
+    expect(secondPosition.dy, firstPosition.dy);
+  });
+
+  testWidgets('ReaderBlocksView keeps mixed text with its following image', (
+    tester,
+  ) async {
+    const blocks = [
+      BookContentBlock(
+        blockIndex: 0,
+        type: 'paragraph',
+        anchor: 'chapter-0-block-1',
+        text: '左栏说明',
+        plainText: '左栏说明',
+        meta: {},
+      ),
+      BookContentBlock(
+        blockIndex: 1,
+        type: 'image',
+        anchor: 'chapter-0-block-2',
+        text: '',
+        plainText: '',
+        meta: {
+          'resourceId': 'image-1',
+          'mediaType': 'image/png',
+          'width': 1,
+          'height': 1,
+        },
+      ),
+      BookContentBlock(
+        blockIndex: 2,
+        type: 'paragraph',
+        anchor: 'chapter-0-block-3',
+        text: '右栏说明',
+        plainText: '右栏说明',
+        meta: {},
+      ),
+      BookContentBlock(
+        blockIndex: 3,
+        type: 'image',
+        anchor: 'chapter-0-block-4',
+        text: '',
+        plainText: '',
+        meta: {
+          'resourceId': 'image-2',
+          'mediaType': 'image/png',
+          'width': 1,
+          'height': 1,
+        },
+      ),
+    ];
+    final anchorKeys = <String, GlobalKey>{};
+
+    await tester.pumpWidget(
+      _testApp(
+        SizedBox(
+          width: 760,
+          child: ReaderBlocksView(
+            blocks: blocks,
+            imageResources: {'image-1': _onePixelPng, 'image-2': _onePixelPng},
+            failedImageResourceIds: const {},
+            constrainImagesToViewport: true,
+            annotations: const <AnnotationView>[],
+            preferences: _preferences,
+            keyForAnchor: (anchor) =>
+                anchorKeys.putIfAbsent(anchor, GlobalKey.new),
+            onHighlight: (_, _) async {},
+            onAnnotate: (_, _) async {},
+            onOpenAnnotations: (_) async {},
+            onRetryImages: () async {},
+            twoColumnContent: true,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final leftText = tester.getTopLeft(
+      find.byKey(anchorKeys['chapter-0-block-1']!),
+    );
+    final leftImage = tester.getTopLeft(
+      find.byKey(anchorKeys['chapter-0-block-2']!),
+    );
+    final rightText = tester.getTopLeft(
+      find.byKey(anchorKeys['chapter-0-block-3']!),
+    );
+    final rightImage = tester.getTopLeft(
+      find.byKey(anchorKeys['chapter-0-block-4']!),
+    );
+    expect(leftImage.dx, leftText.dx);
+    expect(rightImage.dx, rightText.dx);
+    expect(rightText.dx, greaterThan(leftText.dx));
+    expect(rightText.dy, leftText.dy);
+  });
+
+  testWidgets('paged columns fill remaining space below landscape images', (
+    tester,
+  ) async {
+    const blocks = [
+      BookContentBlock(
+        blockIndex: 0,
+        type: 'image',
+        anchor: 'chapter-0-block-1',
+        text: '',
+        plainText: '',
+        meta: {
+          'resourceId': 'image-1',
+          'mediaType': 'image/png',
+          'width': 2,
+          'height': 1,
+        },
+      ),
+      BookContentBlock(
+        blockIndex: 1,
+        type: 'paragraph',
+        anchor: 'chapter-0-block-2',
+        text: '图片下方的连续文字',
+        plainText: '图片下方的连续文字',
+        meta: {},
+      ),
+      BookContentBlock(
+        blockIndex: 2,
+        type: 'image',
+        anchor: 'chapter-0-block-3',
+        text: '',
+        plainText: '',
+        meta: {
+          'resourceId': 'image-2',
+          'mediaType': 'image/png',
+          'width': 1,
+          'height': 1,
+        },
+      ),
+    ];
+    final anchorKeys = <String, GlobalKey>{};
+
+    await tester.pumpWidget(
+      _testApp(
+        SizedBox(
+          width: 760,
+          height: 500,
+          child: ReaderBlocksView(
+            blocks: blocks,
+            imageResources: {'image-1': _onePixelPng, 'image-2': _onePixelPng},
+            failedImageResourceIds: const {},
+            constrainImagesToViewport: true,
+            annotations: const <AnnotationView>[],
+            preferences: _preferences,
+            keyForAnchor: (anchor) =>
+                anchorKeys.putIfAbsent(anchor, GlobalKey.new),
+            onHighlight: (_, _) async {},
+            onAnnotate: (_, _) async {},
+            onOpenAnnotations: (_) async {},
+            pagedViewportWidth: 760,
+            pagedColumnHeight: 500,
+            pagedColumnCount: 2,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final firstImage = tester.getTopLeft(
+      find.byKey(anchorKeys['chapter-0-block-1']!),
+    );
+    final paragraph = tester.getTopLeft(
+      find.byKey(anchorKeys['chapter-0-block-2']!),
+    );
+    final secondImage = tester.getTopLeft(
+      find.byKey(anchorKeys['chapter-0-block-3']!),
+    );
+    expect(paragraph.dx, firstImage.dx);
+    expect(paragraph.dy, greaterThan(firstImage.dy));
+    expect(secondImage.dx, greaterThan(firstImage.dx));
+    expect(secondImage.dy, firstImage.dy);
   });
 
   testWidgets('ReaderBlocksView shows annotation actions after selection', (
@@ -110,6 +353,7 @@ void main() {
           },
           onAnnotate: (_, _) async {},
           onOpenAnnotations: (_) async {},
+          onRetryImages: () async {},
         ),
       ),
     );
@@ -149,7 +393,6 @@ const ReaderPreferences _preferences = ReaderPreferences(
   fontScale: 1,
   lineHeight: 1.8,
   fontFamily: ReaderFontFamilyPreference.system,
-  tabletPageTurnAxis: TabletPageTurnAxis.horizontal,
   tabletPageTurnAnimation: TabletPageTurnAnimation.smooth,
 );
 

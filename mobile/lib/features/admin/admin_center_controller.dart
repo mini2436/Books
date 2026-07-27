@@ -53,6 +53,7 @@ class AdminCenterController extends ChangeNotifier {
   bool _isWorking = false;
   String? _error;
   String? _notice;
+  String? _workingMessage;
 
   AdminSection get selectedSection => _selectedSection;
   List<AdminUserView> get users => _users;
@@ -67,6 +68,7 @@ class AdminCenterController extends ChangeNotifier {
   bool isRebuildingBook(int bookId) => _rebuildingBookIds.contains(bookId);
   String? get error => _error;
   String? get notice => _notice;
+  String? get workingMessage => _workingMessage;
   String get bookSearchQuery => _bookSearchQuery;
   String get selectedBookGroup => _selectedBookGroup;
   Set<int> get selectedBookIds => _selectedBookIds;
@@ -295,20 +297,38 @@ class AdminCenterController extends ChangeNotifier {
     String? filePath,
     Uint8List? fileBytes,
     String? fileName,
+    int? fileSize,
   }) async {
-    await _runMutation(() async {
-      final uploaded = await _authController.runAuthorized(
-        (token) => _apiClient.uploadAdminBook(
-          token,
-          filePath: filePath,
-          fileBytes: fileBytes,
-          fileName: fileName,
-        ),
-      );
-      await refresh();
-      _notice = '已导入《${uploaded.title}》';
-      _selectedSection = AdminSection.books;
-    });
+    final sizeLabel = fileSize == null ? null : _formatFileSize(fileSize);
+    _workingMessage = sizeLabel == null
+        ? '正在上传并解析图书，请勿关闭窗口'
+        : '正在上传 $sizeLabel，上传后还需要解析，请勿关闭窗口';
+    try {
+      await _runMutation(() async {
+        final uploaded = await _authController.runAuthorized(
+          (token) => _apiClient.uploadAdminBook(
+            token,
+            filePath: filePath,
+            fileBytes: fileBytes,
+            fileName: fileName,
+          ),
+        );
+        await refresh();
+        _notice = '已导入《${uploaded.title}》';
+        _selectedSection = AdminSection.books;
+      });
+    } finally {
+      _workingMessage = null;
+      notifyListeners();
+    }
+  }
+
+  String _formatFileSize(int bytes) {
+    const megabyte = 1024 * 1024;
+    if (bytes >= megabyte) {
+      return '${(bytes / megabyte).toStringAsFixed(1)} MB';
+    }
+    return '${(bytes / 1024).toStringAsFixed(1)} KB';
   }
 
   Future<void> createLibrarySource({
@@ -776,6 +796,7 @@ class AdminCenterController extends ChangeNotifier {
   void clearBanner() {
     _error = null;
     _notice = null;
+    _workingMessage = null;
     notifyListeners();
   }
 

@@ -20,8 +20,8 @@ spring:
     port: ${SPRING_RABBITMQ_PORT:5672}
   servlet:
     multipart:
-      max-file-size: ${SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE:200MB}
-      max-request-size: ${SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE:220MB}
+      max-file-size: ${SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE:1GB}
+      max-request-size: ${SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE:1100MB}
 
 management:
   endpoints:
@@ -36,4 +36,5 @@ app:
   bootstrap-admin-password: ${APP_BOOTSTRAP_ADMIN_PASSWORD:admin12345}
   access-token-ttl-minutes: 120
   refresh-token-ttl-days: 30
+  eager-resource-cache-max-file-size-bytes: ${APP_EAGER_RESOURCE_CACHE_MAX_FILE_SIZE_BYTES:104857600}
 

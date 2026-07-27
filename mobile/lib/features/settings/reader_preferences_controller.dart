@@ -13,8 +13,6 @@ enum ReaderFontFamilyPreference {
   wenKai,
 }
 
-enum TabletPageTurnAxis { horizontal, vertical }
-
 enum TabletPageTurnAnimation { smooth }
 
 extension ReaderThemePreferenceX on ReaderThemeMode {
@@ -96,26 +94,6 @@ extension ReaderFontFamilyPreferenceX on ReaderFontFamilyPreference {
   }
 }
 
-extension TabletPageTurnAxisX on TabletPageTurnAxis {
-  String get storageValue => name;
-
-  String get label {
-    switch (this) {
-      case TabletPageTurnAxis.horizontal:
-        return '左右翻页';
-      case TabletPageTurnAxis.vertical:
-        return '上下翻页';
-    }
-  }
-
-  static TabletPageTurnAxis fromStorage(String? value) {
-    return TabletPageTurnAxis.values.firstWhere(
-      (item) => item.name == value,
-      orElse: () => TabletPageTurnAxis.horizontal,
-    );
-  }
-}
-
 extension TabletPageTurnAnimationX on TabletPageTurnAnimation {
   String get storageValue => name;
 
@@ -141,7 +119,6 @@ class ReaderPreferences {
     required this.fontScale,
     required this.lineHeight,
     required this.fontFamily,
-    required this.tabletPageTurnAxis,
     required this.tabletPageTurnAnimation,
   });
 
@@ -149,7 +126,6 @@ class ReaderPreferences {
   final double fontScale;
   final double lineHeight;
   final ReaderFontFamilyPreference fontFamily;
-  final TabletPageTurnAxis tabletPageTurnAxis;
   final TabletPageTurnAnimation tabletPageTurnAnimation;
 
   ReaderPreferences copyWith({
@@ -157,7 +133,6 @@ class ReaderPreferences {
     double? fontScale,
     double? lineHeight,
     ReaderFontFamilyPreference? fontFamily,
-    TabletPageTurnAxis? tabletPageTurnAxis,
     TabletPageTurnAnimation? tabletPageTurnAnimation,
   }) {
     return ReaderPreferences(
@@ -165,7 +140,6 @@ class ReaderPreferences {
       fontScale: fontScale ?? this.fontScale,
       lineHeight: lineHeight ?? this.lineHeight,
       fontFamily: fontFamily ?? this.fontFamily,
-      tabletPageTurnAxis: tabletPageTurnAxis ?? this.tabletPageTurnAxis,
       tabletPageTurnAnimation:
           tabletPageTurnAnimation ?? this.tabletPageTurnAnimation,
     );
@@ -193,7 +167,6 @@ class ReaderPreferencesController extends ChangeNotifier {
     fontScale: 1,
     lineHeight: 1.8,
     fontFamily: ReaderFontFamilyPreference.system,
-    tabletPageTurnAxis: TabletPageTurnAxis.horizontal,
     tabletPageTurnAnimation: TabletPageTurnAnimation.smooth,
   );
 
@@ -202,7 +175,6 @@ class ReaderPreferencesController extends ChangeNotifier {
   double get fontScale => _preferences.fontScale;
   double get lineHeight => _preferences.lineHeight;
   ReaderFontFamilyPreference get fontFamily => _preferences.fontFamily;
-  TabletPageTurnAxis get tabletPageTurnAxis => _preferences.tabletPageTurnAxis;
   TabletPageTurnAnimation get tabletPageTurnAnimation =>
       _preferences.tabletPageTurnAnimation;
 
@@ -226,12 +198,6 @@ class ReaderPreferencesController extends ChangeNotifier {
 
   Future<void> setFontFamily(ReaderFontFamilyPreference value) async {
     _preferences = _preferences.copyWith(fontFamily: value);
-    notifyListeners();
-    await _settingsStorage.save(_preferences);
-  }
-
-  Future<void> setTabletPageTurnAxis(TabletPageTurnAxis value) async {
-    _preferences = _preferences.copyWith(tabletPageTurnAxis: value);
     notifyListeners();
     await _settingsStorage.save(_preferences);
   }

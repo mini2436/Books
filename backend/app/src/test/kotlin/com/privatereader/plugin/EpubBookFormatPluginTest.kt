@@ -231,6 +231,53 @@ class EpubBookFormatPluginTest {
     }
 
     @Test
+    fun `follows epub 2 guide cover through xhtml wrapper`() {
+        val tempFile = Files.createTempFile("reader-epub-wrapper-cover", ".epub")
+        val coverBytes = byteArrayOf(
+            0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0x01, 0x02, 0x03,
+        )
+        ZipOutputStream(Files.newOutputStream(tempFile)).use { zip ->
+            writeEntry(
+                zip,
+                "META-INF/container.xml",
+                """
+                <container xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+                  <rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles>
+                </container>
+                """.trimIndent(),
+            )
+            writeEntry(
+                zip,
+                "OEBPS/content.opf",
+                """
+                <package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+                  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Wrapper cover</dc:title></metadata>
+                  <manifest>
+                    <item id="titlepage" href="Text/titlepage.xhtml" media-type="application/xhtml+xml"/>
+                    <item id="cover.jpg" href="Images/cover.jpg" media-type="image/jpeg"/>
+                  </manifest>
+                  <guide><reference href="Text/titlepage.xhtml" title="Cover" type="cover"/></guide>
+                </package>
+                """.trimIndent(),
+            )
+            writeEntry(
+                zip,
+                "OEBPS/Text/titlepage.xhtml",
+                """
+                <html xmlns="http://www.w3.org/1999/xhtml"><body><img src="../Images/cover.jpg"/></body></html>
+                """.trimIndent(),
+            )
+            writeBytes(zip, "OEBPS/Images/cover.jpg", coverBytes)
+        }
+
+        val cover = plugin.extractCover(tempFile)
+
+        assertNotNull(cover)
+        assertEquals("image/jpeg", cover?.mimeType)
+        assertArrayEquals(coverBytes, cover?.bytes)
+    }
+
+    @Test
     fun `extracts structured chapters from epub spine`() {
         val tempFile = Files.createTempFile("reader-epub", ".epub")
         ZipOutputStream(Files.newOutputStream(tempFile)).use { zip ->

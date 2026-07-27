@@ -22,6 +22,12 @@ import 'widgets/reader_settings_sheet.dart';
 
 enum _TabletReaderPanel { toc, notes, bookmarks, settings }
 
+@visibleForTesting
+bool readerUsesPagedMode({
+  required bool wideReader,
+  required bool autoScrollEnabled,
+}) => wideReader || !autoScrollEnabled;
+
 class ReaderScreen extends ConsumerStatefulWidget {
   const ReaderScreen({super.key, required this.bookId, this.initialAnchor});
 
@@ -68,6 +74,11 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     final windowsReader =
         !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
     final wideReader = windowsReader || tablet || desktop;
+    final mobileAutoScroll = !wideReader && _autoScrollEnabled;
+    final readerPagedMode = readerUsesPagedMode(
+      wideReader: wideReader,
+      autoScrollEnabled: _autoScrollEnabled,
+    );
 
     if (controller.isLoading && controller.currentChapter == null) {
       return Scaffold(
@@ -171,9 +182,9 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
             preferences: preferences,
             palette: palette,
             uiVisible: controller.uiVisible,
-            autoScrollEnabled: _autoScrollEnabled && !wideReader,
+            autoScrollEnabled: mobileAutoScroll,
             autoScrollPixelsPerSecond: _autoScrollSpeed,
-            pagedMode: wideReader,
+            pagedMode: readerPagedMode,
             dualColumn: wideReader,
             focusedAnchor: controller.focusedAnchor,
             anchorJumpVersion: controller.anchorJumpVersion,
@@ -231,6 +242,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                 },
             onOpenAnnotations: (annotations) =>
                 _openAnnotationsFromReader(controller, annotations),
+            onRetryImages: controller.retryCurrentChapterImages,
             onVisibleAnchorChanged: controller.updateVisibleAnchor,
             onPageBoundaryPrevious: controller.previousChapterFromPageBoundary,
             onPageBoundaryNext: controller.nextChapterFromPageBoundary,
@@ -250,10 +262,6 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
               _dispatchViewportTapZone('left'),
           const SingleActivator(LogicalKeyboardKey.arrowRight): () =>
               _dispatchViewportTapZone('right'),
-          const SingleActivator(LogicalKeyboardKey.arrowUp): () =>
-              _dispatchViewportTapZone('top'),
-          const SingleActivator(LogicalKeyboardKey.arrowDown): () =>
-              _dispatchViewportTapZone('bottom'),
           const SingleActivator(LogicalKeyboardKey.space): () =>
               _dispatchViewportTapZone('center'),
           const SingleActivator(LogicalKeyboardKey.keyM):

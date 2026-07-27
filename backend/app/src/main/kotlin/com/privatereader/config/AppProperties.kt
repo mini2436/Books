@@ -10,5 +10,6 @@ data class AppProperties(
     val bootstrapAdminPassword: String = "admin12345",
     val accessTokenTtlMinutes: Long = 120,
     val refreshTokenTtlDays: Long = 30,
+    val eagerResourceCacheMaxFileSizeBytes: Long = 100L * 1024 * 1024,
 )
 

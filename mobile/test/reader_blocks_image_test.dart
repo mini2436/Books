@@ -377,6 +377,72 @@ void main() {
     expect(highlightedSelection?.selectedText, '选择这段');
     expect(find.text('复制'), findsNothing);
   });
+
+  testWidgets('explicit annotation opens only from its painted text', (
+    tester,
+  ) async {
+    const block = BookContentBlock(
+      blockIndex: 0,
+      type: 'paragraph',
+      anchor: 'chapter-0-block-annotation',
+      text: '点击这段批注文字',
+      plainText: '点击这段批注文字',
+      meta: {},
+    );
+    final blockKey = GlobalKey();
+    final openedAnnotations = <AnnotationView>[];
+    final annotation = AnnotationView(
+      id: 7,
+      bookId: 1,
+      quoteText: block.text,
+      noteText: '测试批注',
+      color: '#7A4A24',
+      anchor: const AnnotationAnchor(
+        blockAnchor: 'chapter-0-block-annotation',
+        startOffset: 0,
+        endOffset: 8,
+        underlineStyle: AnnotationUnderlineStyle.wavy,
+      ).serialize(),
+      version: 1,
+      deleted: false,
+      updatedAt: '',
+    );
+
+    await tester.pumpWidget(
+      _testApp(
+        ReaderBlocksView(
+          blocks: const [block],
+          imageResources: const {},
+          failedImageResourceIds: const {},
+          constrainImagesToViewport: false,
+          annotations: [annotation],
+          preferences: _preferences,
+          keyForAnchor: (_) => blockKey,
+          onHighlight: (_, _) async {},
+          onAnnotate: (_, _) async {},
+          onOpenAnnotations: (annotations) async {
+            openedAnnotations.addAll(annotations);
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final textRect = tester.getRect(find.byType(SelectableText));
+    await tester.tapAt(textRect.center);
+    await tester.pump();
+    expect(openedAnnotations.map((item) => item.id), [7]);
+
+    openedAnnotations.clear();
+    final blockRect = tester.getRect(find.byKey(blockKey));
+    await tester.tapAt(Offset(blockRect.center.dx, blockRect.bottom - 2));
+    await tester.pump();
+    expect(openedAnnotations, isEmpty);
+
+    await tester.dragFrom(textRect.center, const Offset(40, 0));
+    await tester.pump();
+    expect(openedAnnotations, isEmpty);
+  });
 }
 
 Widget _testApp(Widget child) {

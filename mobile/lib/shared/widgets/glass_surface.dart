@@ -42,10 +42,23 @@ class GlassSurface extends StatelessWidget {
         ? Colors.white.withValues(alpha: style.borderOpacity)
         : palette.ink.withValues(alpha: style.borderOpacity);
     final shadowStrength = level == GlassSurfaceLevel.subtle ? 0.45 : 1.0;
+    final topTint = Color.alphaBlend(
+      Colors.white.withValues(alpha: dark ? 0.05 : 0.12),
+      surfaceColor,
+    );
+    final bottomTint = Color.alphaBlend(
+      palette.accent.withValues(alpha: dark ? 0.04 : 0.025),
+      surfaceColor,
+    );
 
     Widget content = DecoratedBox(
       decoration: BoxDecoration(
-        color: surfaceColor,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [topTint, surfaceColor, bottomTint],
+          stops: const [0, 0.48, 1],
+        ),
         borderRadius: radius,
         border: border ?? Border.all(color: borderColor),
       ),

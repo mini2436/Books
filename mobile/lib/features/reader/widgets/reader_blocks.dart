@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -154,6 +156,7 @@ class ReaderBlocksView extends StatelessWidget {
                       ),
                       onHighlight: onHighlight,
                       onAnnotate: onAnnotate,
+                      onOpenAnnotations: onOpenAnnotations,
                     ),
                   ),
                 ),
@@ -177,15 +180,22 @@ class ReaderBlocksView extends StatelessWidget {
                     ),
                     onHighlight: onHighlight,
                     onAnnotate: onAnnotate,
+                    onOpenAnnotations: onOpenAnnotations,
                   ),
                 ),
               );
               break;
           }
-          if (blockAnnotations.isNotEmpty) {
+          final legacyBlockAnnotations = blockAnnotations
+              .where(
+                (annotation) =>
+                    !AnnotationAnchor.parse(annotation.anchor).hasExplicitRange,
+              )
+              .toList(growable: false);
+          if (legacyBlockAnnotations.isNotEmpty) {
             blockView = GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: () => onOpenAnnotations(blockAnnotations),
+              onTap: () => onOpenAnnotations(legacyBlockAnnotations),
               child: blockView,
             );
           }
@@ -679,6 +689,7 @@ class _SelectableBlockText extends StatelessWidget {
     required this.style,
     required this.onHighlight,
     required this.onAnnotate,
+    required this.onOpenAnnotations,
   });
 
   final String text;
@@ -697,6 +708,8 @@ class _SelectableBlockText extends StatelessWidget {
     AnnotationView? existingAnnotation,
   )
   onAnnotate;
+  final Future<void> Function(List<AnnotationView> annotations)
+  onOpenAnnotations;
 
   @override
   Widget build(BuildContext context) {
@@ -717,63 +730,69 @@ class _SelectableBlockText extends StatelessWidget {
       height: preferences.lineHeight / 1.6,
     );
 
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: IgnorePointer(
-            child: CustomPaint(
-              painter: _AnnotationPainter(
-                text: text,
-                style: baseStyle,
-                textDirection: Directionality.of(context),
-                annotations: resolvedAnnotations,
-                drawBackgrounds: true,
-                drawUnderlines: false,
+    return _AnnotationTapRegion(
+      text: text,
+      style: baseStyle,
+      annotations: resolvedAnnotations,
+      onOpenAnnotations: onOpenAnnotations,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: IgnorePointer(
+              child: CustomPaint(
+                painter: _AnnotationPainter(
+                  text: text,
+                  style: baseStyle,
+                  textDirection: Directionality.of(context),
+                  annotations: resolvedAnnotations,
+                  drawBackgrounds: true,
+                  drawUnderlines: false,
+                ),
               ),
             ),
           ),
-        ),
-        _SelectableTextWithActions(
-          text,
-          style: baseStyle,
-          onHighlight: (selection) async {
-            final normalizedSelection = _normalizeSelection(selection);
-            if (normalizedSelection == null) {
-              return;
-            }
-            final intent = _resolveSelectionIntent(
-              normalizedSelection,
-              resolvedAnnotations,
-            );
-            await onHighlight(intent.selection, intent.existingAnnotation);
-          },
-          onAnnotate: (selection) async {
-            final normalizedSelection = _normalizeSelection(selection);
-            if (normalizedSelection == null) {
-              return;
-            }
-            final intent = _resolveSelectionIntent(
-              normalizedSelection,
-              resolvedAnnotations,
-            );
-            await onAnnotate(intent.selection, intent.existingAnnotation);
-          },
-        ),
-        Positioned.fill(
-          child: IgnorePointer(
-            child: CustomPaint(
-              painter: _AnnotationPainter(
-                text: text,
-                style: baseStyle,
-                textDirection: Directionality.of(context),
-                annotations: resolvedAnnotations,
-                drawBackgrounds: false,
-                drawUnderlines: true,
+          _SelectableTextWithActions(
+            text,
+            style: baseStyle,
+            onHighlight: (selection) async {
+              final normalizedSelection = _normalizeSelection(selection);
+              if (normalizedSelection == null) {
+                return;
+              }
+              final intent = _resolveSelectionIntent(
+                normalizedSelection,
+                resolvedAnnotations,
+              );
+              await onHighlight(intent.selection, intent.existingAnnotation);
+            },
+            onAnnotate: (selection) async {
+              final normalizedSelection = _normalizeSelection(selection);
+              if (normalizedSelection == null) {
+                return;
+              }
+              final intent = _resolveSelectionIntent(
+                normalizedSelection,
+                resolvedAnnotations,
+              );
+              await onAnnotate(intent.selection, intent.existingAnnotation);
+            },
+          ),
+          Positioned.fill(
+            child: IgnorePointer(
+              child: CustomPaint(
+                painter: _AnnotationPainter(
+                  text: text,
+                  style: baseStyle,
+                  textDirection: Directionality.of(context),
+                  annotations: resolvedAnnotations,
+                  drawBackgrounds: false,
+                  drawUnderlines: true,
+                ),
               ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -851,6 +870,101 @@ class _SelectableBlockText extends StatelessWidget {
       );
     }
     return _SelectionIntent(selection: selection, existingAnnotation: null);
+  }
+}
+
+class _AnnotationTapRegion extends StatefulWidget {
+  const _AnnotationTapRegion({
+    required this.text,
+    required this.style,
+    required this.annotations,
+    required this.onOpenAnnotations,
+    required this.child,
+  });
+
+  final String text;
+  final TextStyle style;
+  final List<ResolvedAnnotation> annotations;
+  final Future<void> Function(List<AnnotationView> annotations)
+  onOpenAnnotations;
+  final Widget child;
+
+  @override
+  State<_AnnotationTapRegion> createState() => _AnnotationTapRegionState();
+}
+
+class _AnnotationTapRegionState extends State<_AnnotationTapRegion> {
+  final Map<int, Offset> _pointerStarts = <int, Offset>{};
+  final Set<int> _movedPointers = <int>{};
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) => Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (event) {
+          _pointerStarts[event.pointer] = event.localPosition;
+          _movedPointers.remove(event.pointer);
+        },
+        onPointerMove: (event) {
+          final start = _pointerStarts[event.pointer];
+          if (start == null) return;
+          final tolerance = event.kind == ui.PointerDeviceKind.mouse
+              ? 4.0
+              : kTouchSlop;
+          if ((event.localPosition - start).distance > tolerance) {
+            _movedPointers.add(event.pointer);
+          }
+        },
+        onPointerCancel: (event) {
+          _pointerStarts.remove(event.pointer);
+          _movedPointers.remove(event.pointer);
+        },
+        onPointerUp: (event) {
+          final hadStart = _pointerStarts.remove(event.pointer) != null;
+          final moved = _movedPointers.remove(event.pointer);
+          if (!hadStart || moved) return;
+          _openAnnotationsAt(
+            context,
+            event.localPosition,
+            constraints.maxWidth,
+          );
+        },
+        child: widget.child,
+      ),
+    );
+  }
+
+  void _openAnnotationsAt(
+    BuildContext context,
+    Offset localPosition,
+    double maximumWidth,
+  ) {
+    if (widget.annotations.isEmpty || !maximumWidth.isFinite) return;
+    final textPainter = TextPainter(
+      text: TextSpan(text: widget.text, style: widget.style),
+      textAlign: TextAlign.justify,
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      locale: Localizations.maybeLocaleOf(context),
+    )..layout(maxWidth: maximumWidth);
+    final matches = <int, AnnotationView>{};
+    for (final annotation in widget.annotations) {
+      final boxes = textPainter.getBoxesForSelection(
+        TextSelection(
+          baseOffset: annotation.range.start,
+          extentOffset: annotation.range.end,
+        ),
+      );
+      if (boxes.any((box) => box.toRect().inflate(2).contains(localPosition))) {
+        matches[annotation.annotation.id] = annotation.annotation;
+      }
+    }
+    if (matches.isNotEmpty) {
+      unawaited(
+        widget.onOpenAnnotations(matches.values.toList(growable: false)),
+      );
+    }
   }
 }
 

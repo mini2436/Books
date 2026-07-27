@@ -38,6 +38,21 @@ const List<String> _webAnnotationColors = [
 ];
 
 @visibleForTesting
+const String readerToolbarComposerBackground = 'transparent';
+
+@visibleForTesting
+double readerToolbarBackgroundOpacity(ReaderThemeMode themeMode) =>
+    themeMode == ReaderThemeMode.night ? 0.62 : 0.42;
+
+@visibleForTesting
+double readerToolbarSoftSurfaceOpacity(ReaderThemeMode themeMode) =>
+    themeMode == ReaderThemeMode.night ? 0.42 : 0.34;
+
+@visibleForTesting
+double readerToolbarBorderOpacity(ReaderThemeMode themeMode) =>
+    themeMode == ReaderThemeMode.night ? 0.2 : 0.12;
+
+@visibleForTesting
 String windowsReaderImageFileName(BookContentBlock block) {
   final resourceId = block.resourceId ?? 'missing';
   final safePrefix = resourceId
@@ -1638,13 +1653,32 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
     final headingSize = 30 * widget.preferences.fontScale;
     final htmlBlocks = rootHtml ?? _buildRootHtml();
     final toolbarBackground = _cssColor(
-      widget.palette.background.withValues(alpha: 0.76),
+      widget.palette.background.withValues(
+        alpha: readerToolbarBackgroundOpacity(widget.preferences.themeMode),
+      ),
+    );
+    final toolbarSoftBackground = _cssColor(
+      widget.palette.backgroundSoft.withValues(
+        alpha: readerToolbarSoftSurfaceOpacity(widget.preferences.themeMode),
+      ),
     );
     final toolbarBorder = _cssColor(
-      widget.palette.line.withValues(alpha: 0.86),
+      widget.palette.ink.withValues(
+        alpha: readerToolbarBorderOpacity(widget.preferences.themeMode),
+      ),
     );
     final toolbarFocusShadow = _cssColor(
       widget.palette.accent.withValues(alpha: 0.22),
+    );
+    final toolbarHighlight = _cssColor(
+      Colors.white.withValues(
+        alpha: widget.preferences.themeMode == ReaderThemeMode.night
+            ? 0.08
+            : 0.38,
+      ),
+    );
+    final toolbarTint = _cssColor(
+      widget.palette.accent.withValues(alpha: 0.035),
     );
 
     return '''
@@ -1665,8 +1699,11 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
       --reader-selection: ${_cssColor(widget.palette.selection)};
       --reader-mask: ${_cssColor(widget.palette.mask)};
       --reader-toolbar-bg: $toolbarBackground;
+      --reader-toolbar-soft-bg: $toolbarSoftBackground;
       --reader-toolbar-border: $toolbarBorder;
       --reader-toolbar-focus: $toolbarFocusShadow;
+      --reader-toolbar-highlight: $toolbarHighlight;
+      --reader-toolbar-tint: $toolbarTint;
     }
     * { box-sizing: border-box; }
     html, body {
@@ -1849,12 +1886,15 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
       display: none;
       max-width: calc(100vw - 24px);
       border-radius: 16px;
-      background: var(--reader-bg-soft);
-      background-color: var(--reader-toolbar-bg);
+      background:
+        linear-gradient(135deg, var(--reader-toolbar-highlight), transparent 44%, var(--reader-toolbar-tint)),
+        var(--reader-toolbar-bg);
       -webkit-backdrop-filter: blur(18px) saturate(1.12);
       backdrop-filter: blur(18px) saturate(1.12);
       border: 1px solid var(--reader-toolbar-border);
-      box-shadow: 0 14px 34px rgba(0, 0, 0, 0.22);
+      box-shadow:
+        0 16px 42px rgba(0, 0, 0, 0.16),
+        inset 0 1px 0 var(--reader-toolbar-highlight);
       overflow: hidden;
       color: var(--reader-ink);
       transform: translateY(0);
@@ -1895,7 +1935,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
       width: min(340px, calc(100vw - 24px));
       padding: 12px;
       gap: 10px;
-      background: var(--reader-toolbar-bg);
+      background: $readerToolbarComposerBackground;
       color: var(--reader-ink);
     }
     .reader-toolbar.composing .reader-quickbar {
@@ -1909,7 +1949,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
       overflow: hidden;
       padding: 10px;
       border-radius: 12px;
-      background: var(--reader-bg-soft);
+      background: var(--reader-toolbar-soft-bg);
       color: var(--reader-ink-secondary);
       font-size: 13px;
       line-height: 1.45;
@@ -1971,7 +2011,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
     .reader-underline-row button {
       padding: 7px 10px;
       border: 1px solid var(--reader-line);
-      background: var(--reader-bg-soft);
+      background: var(--reader-toolbar-soft-bg);
       font-size: 13px;
     }
     .reader-underline-row button.selected {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/admin_models.dart';
+import '../../data/services/local_library_folder_picker.dart';
 import '../../shared/theme/reader_theme_extension.dart';
 import '../../shared/widgets/glass_surface.dart';
 import '../../shared/widgets/glass_dialog.dart';
@@ -36,7 +37,7 @@ class AdminLibrarySourcesSection extends ConsumerWidget {
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          '配置 WebDAV 或本地目录扫描源，按周期自动扫描并导入新书。',
+                          '本地目录由当前设备手动选择并按需上传；只有 WebDAV 支持服务端定时扫描。',
                           style: Theme.of(context).textTheme.bodyMedium
                               ?.copyWith(color: palette.inkSecondary),
                         ),
@@ -76,7 +77,7 @@ class AdminLibrarySourcesSection extends ConsumerWidget {
           const _SectionCard(
             child: _EmptyBlock(
               title: '还没有扫描源',
-              body: '先添加一个 WebDAV 书库或本地目录，后台就能定时扫描并自动入库。',
+              body: '添加本地上传目录或 WebDAV。普通目录需要手动选择后刷新，避免多端文件权限失效。',
             ),
           )
         else
@@ -179,7 +180,7 @@ class _LibrarySourceCard extends ConsumerWidget {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      source.isWebDav ? 'WebDAV 扫描源' : '本地目录扫描源',
+                      source.isWebDav ? 'WebDAV 托管扫描' : '客户端手动上传目录',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: palette.inkSecondary,
                       ),
@@ -187,27 +188,36 @@ class _LibrarySourceCard extends ConsumerWidget {
                   ],
                 ),
               ),
-              Switch(
-                value: source.enabled,
-                onChanged: controller.isWorking
-                    ? null
-                    : (value) => ref
-                          .read(adminCenterControllerProvider)
-                          .toggleLibrarySourceEnabled(source, value),
-              ),
+              if (source.isWebDav)
+                Switch(
+                  value: source.enabled,
+                  onChanged: controller.isWorking
+                      ? null
+                      : (value) => ref
+                            .read(adminCenterControllerProvider)
+                            .toggleLibrarySourceEnabled(source, value),
+                )
+              else
+                _StatusPill(label: '仅手动扫描', highlighted: true),
             ],
           ),
           const SizedBox(height: 14),
-          _InfoLine(label: '地址', value: endpoint.isEmpty ? '-' : endpoint),
           _InfoLine(
-            label: '账号',
-            value: source.username?.trim().isNotEmpty == true
-                ? source.username!
-                : '匿名访问',
+            label: source.isWebDav ? '地址' : '目录',
+            value: endpoint.isEmpty ? '-' : endpoint,
           ),
+          if (source.isWebDav)
+            _InfoLine(
+              label: '账号',
+              value: source.username?.trim().isNotEmpty == true
+                  ? source.username!
+                  : '匿名访问',
+            ),
           _InfoLine(
-            label: '周期',
-            value: '每 ${source.scanIntervalMinutes} 分钟扫描一次',
+            label: '方式',
+            value: source.isWebDav
+                ? '每 ${source.scanIntervalMinutes} 分钟自动扫描'
+                : '每次由当前设备重新选择目录并手动扫描',
           ),
           _InfoLine(
             label: '上次扫描',
@@ -228,17 +238,94 @@ class _LibrarySourceCard extends ConsumerWidget {
               FilledButton.tonalIcon(
                 onPressed: controller.isWorking
                     ? null
-                    : () => ref
-                          .read(adminCenterControllerProvider)
-                          .rescanLibrarySource(source),
-                icon: const Icon(Icons.sync_rounded),
-                label: const Text('立即扫描'),
+                    : () => source.isWebDav
+                          ? ref
+                                .read(adminCenterControllerProvider)
+                                .rescanLibrarySource(source)
+                          : _pickAndScanClientFolder(context, ref),
+                icon: Icon(
+                  source.isWebDav
+                      ? Icons.sync_rounded
+                      : Icons.drive_folder_upload_outlined,
+                ),
+                label: Text(source.isWebDav ? '立即扫描' : '选择目录并扫描'),
+              ),
+              TextButton.icon(
+                onPressed: controller.isWorking
+                    ? null
+                    : () => _confirmDelete(context, ref),
+                icon: const Icon(Icons.delete_outline_rounded),
+                label: const Text('删除任务'),
               ),
             ],
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _pickAndScanClientFolder(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final picker = LocalLibraryFolderPicker();
+    try {
+      final folder = await picker.pickFolder();
+      if (folder == null || !context.mounted) return;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => GlassAlertDialog(
+          title: const Text('确认手动扫描'),
+          content: Text(
+            '已选择“${folder.displayName}”，发现 ${folder.files.length} 个支持的图书文件。'
+            '服务端会先比较摘要，只上传新增或发生变化的文件。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('开始扫描'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+      await ref
+          .read(adminCenterControllerProvider)
+          .scanClientLibrarySource(source, folder, picker);
+    } on LocalFolderPickerException catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    }
+  }
+
+  Future<void> _confirmDelete(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => GlassAlertDialog(
+        title: const Text('删除同步任务？'),
+        content: Text('将删除“${source.name}”的扫描配置和文件摘要。已经导入的图书会继续保留，不会从书库删除。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('删除任务'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await ref.read(adminCenterControllerProvider).deleteLibrarySource(source);
+    }
   }
 }
 
@@ -322,6 +409,8 @@ class _LibrarySourceDialogState extends ConsumerState<_LibrarySourceDialog> {
   late final TextEditingController _intervalController;
   late String _sourceType;
   late bool _enabled;
+  PickedLocalLibraryFolder? _selectedFolder;
+  final LocalLibraryFolderPicker _folderPicker = LocalLibraryFolderPicker();
   bool _submitting = false;
 
   @override
@@ -339,7 +428,9 @@ class _LibrarySourceDialogState extends ConsumerState<_LibrarySourceDialog> {
     _intervalController = TextEditingController(
       text: (source?.scanIntervalMinutes ?? 60).toString(),
     );
-    _sourceType = source?.sourceType ?? 'WEBDAV';
+    _sourceType = source == null || source.isWebDav
+        ? (source?.sourceType ?? 'CLIENT_FOLDER')
+        : 'CLIENT_FOLDER';
     _enabled = source?.enabled ?? true;
   }
 
@@ -384,8 +475,8 @@ class _LibrarySourceDialogState extends ConsumerState<_LibrarySourceDialog> {
                 ),
               ),
               items: const [
+                DropdownMenuItem(value: 'CLIENT_FOLDER', child: Text('本地上传目录')),
                 DropdownMenuItem(value: 'WEBDAV', child: Text('WebDAV')),
-                DropdownMenuItem(value: 'WATCHED_FOLDER', child: Text('本地目录')),
               ],
               onChanged: (value) {
                 if (value == null) {
@@ -393,6 +484,9 @@ class _LibrarySourceDialogState extends ConsumerState<_LibrarySourceDialog> {
                 }
                 setState(() {
                   _sourceType = value;
+                  if (value == 'CLIENT_FOLDER') {
+                    _enabled = false;
+                  }
                 });
               },
             ),
@@ -421,37 +515,45 @@ class _LibrarySourceDialogState extends ConsumerState<_LibrarySourceDialog> {
                 decoration: const InputDecoration(labelText: '密码'),
                 obscureText: true,
               ),
-            ] else
-              TextFormField(
-                controller: _rootPathController,
-                decoration: const InputDecoration(labelText: '本地目录'),
-                validator: (value) =>
-                    (value == null || value.trim().isEmpty) ? '请输入本地目录' : null,
+            ] else ...[
+              _FolderSelectionField(
+                displayPath: _rootPathController.text.trim(),
+                fileCount: _selectedFolder?.files.length,
+                onPressed: _pickFolder,
               ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _intervalController,
-              decoration: const InputDecoration(labelText: '扫描周期（分钟）'),
-              keyboardType: TextInputType.number,
-              validator: (value) {
-                final minutes = int.tryParse(value ?? '');
-                if (minutes == null || minutes <= 0) {
-                  return '请输入大于 0 的分钟数';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 12),
-            SwitchListTile.adaptive(
-              value: _enabled,
-              contentPadding: EdgeInsets.zero,
-              title: const Text('启用定时扫描'),
-              onChanged: (value) {
-                setState(() {
-                  _enabled = value;
-                });
-              },
-            ),
+              const SizedBox(height: 10),
+              const _InlineHint(
+                icon: Icons.touch_app_outlined,
+                text: '不会自动扫描。以后每次刷新都需要由当前设备重新选择目录，兼容浏览器、桌面和移动端权限。',
+              ),
+            ],
+            if (isWebDav) ...[
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _intervalController,
+                decoration: const InputDecoration(labelText: '扫描周期（分钟）'),
+                keyboardType: TextInputType.number,
+                validator: (value) {
+                  final minutes = int.tryParse(value ?? '');
+                  if (minutes == null || minutes <= 0) {
+                    return '请输入大于 0 的分钟数';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              SwitchListTile.adaptive(
+                value: _enabled,
+                contentPadding: EdgeInsets.zero,
+                title: const Text('启用定时扫描'),
+                subtitle: const Text('仅 WebDAV 会由服务端按周期自动访问'),
+                onChanged: (value) {
+                  setState(() {
+                    _enabled = value;
+                  });
+                },
+              ),
+            ],
           ],
         ),
       ),
@@ -478,8 +580,14 @@ class _LibrarySourceDialogState extends ConsumerState<_LibrarySourceDialog> {
     });
 
     final controller = ref.read(adminCenterControllerProvider);
-    final minutes = int.parse(_intervalController.text.trim());
     final isWebDav = _sourceType == 'WEBDAV';
+    if (!isWebDav && _rootPathController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请通过“选择目录”按钮指定上传目录')));
+      return;
+    }
+    final minutes = isWebDav ? int.parse(_intervalController.text.trim()) : 60;
 
     if (widget.source == null) {
       await controller.createLibrarySource(
@@ -490,7 +598,7 @@ class _LibrarySourceDialogState extends ConsumerState<_LibrarySourceDialog> {
         remotePath: isWebDav ? _remotePathController.text.trim() : null,
         username: isWebDav ? _usernameController.text.trim() : null,
         password: isWebDav ? _passwordController.text : null,
-        enabled: _enabled,
+        enabled: isWebDav && _enabled,
         scanIntervalMinutes: minutes,
       );
     } else {
@@ -503,13 +611,33 @@ class _LibrarySourceDialogState extends ConsumerState<_LibrarySourceDialog> {
         remotePath: isWebDav ? _remotePathController.text.trim() : null,
         username: isWebDav ? _usernameController.text.trim() : null,
         password: isWebDav ? _passwordController.text : null,
-        enabled: _enabled,
+        enabled: isWebDav && _enabled,
         scanIntervalMinutes: minutes,
       );
     }
 
     if (mounted) {
       Navigator.of(context).pop();
+    }
+  }
+
+  Future<void> _pickFolder() async {
+    try {
+      final folder = await _folderPicker.pickFolder();
+      if (folder == null || !mounted) return;
+      setState(() {
+        _selectedFolder = folder;
+        _rootPathController.text = folder.displayPath;
+        if (_nameController.text.trim().isEmpty) {
+          _nameController.text = folder.displayName;
+        }
+      });
+    } on LocalFolderPickerException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
     }
   }
 }
@@ -522,6 +650,97 @@ class _SectionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GlassCard(child: child);
+  }
+}
+
+class _FolderSelectionField extends StatelessWidget {
+  const _FolderSelectionField({
+    required this.displayPath,
+    required this.fileCount,
+    required this.onPressed,
+  });
+
+  final String displayPath;
+  final int? fileCount;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppReaderPalette.of(context);
+    final hasSelection = displayPath.isNotEmpty;
+    return InkWell(
+      onTap: onPressed,
+      borderRadius: BorderRadius.circular(14),
+      child: Ink(
+        decoration: BoxDecoration(
+          color: palette.backgroundSoft,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: palette.line),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+          child: Row(
+            children: [
+              Icon(
+                Icons.folder_open_outlined,
+                color: hasSelection ? palette.accent : palette.inkSecondary,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      hasSelection ? displayPath : '尚未选择目录',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      fileCount == null
+                          ? '点击调用系统目录选择器，不能手动输入路径'
+                          : '已识别 $fileCount 个支持的图书文件',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: palette.inkSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Icon(Icons.chevron_right_rounded),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InlineHint extends StatelessWidget {
+  const _InlineHint({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppReaderPalette.of(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 18, color: palette.inkSecondary),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            text,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: palette.inkSecondary),
+          ),
+        ),
+      ],
+    );
   }
 }
 

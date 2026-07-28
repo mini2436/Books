@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/admin_models.dart';
 import '../../data/models/user_role.dart';
 import '../../data/services/api_client.dart';
+import '../../data/services/local_library_folder_models.dart';
 import '../auth/auth_controller.dart';
 
 final adminCenterControllerProvider =
@@ -539,6 +540,90 @@ class AdminCenterController extends ChangeNotifier {
       final missingMarked = (result['missingMarked'] as num?)?.toInt() ?? 0;
       _selectedSection = AdminSection.librarySources;
       _notice = '${source.name} 扫描完成，导入 $imported 本，标记缺失 $missingMarked 本';
+    });
+  }
+
+  Future<void> scanClientLibrarySource(
+    AdminLibrarySourceView source,
+    PickedLocalLibraryFolder folder,
+    LocalLibraryFileReader fileReader,
+  ) async {
+    await _runMutation(() async {
+      try {
+        _workingMessage = '正在比较 ${folder.files.length} 个本地文件摘要';
+        notifyListeners();
+        final plan = await _authController.runAuthorized(
+          (token) => _apiClient.planClientLibraryScan(
+            token,
+            source.id,
+            folder.files.map((file) => file.toJson()).toList(),
+          ),
+        );
+        final filesByPath = {
+          for (final file in folder.files) file.relativePath: file,
+        };
+        var uploaded = 0;
+        for (final relativePath in plan.uploadPaths) {
+          final file = filesByPath[relativePath];
+          if (file == null) {
+            throw StateError('扫描计划包含本地目录中不存在的文件：$relativePath');
+          }
+          _workingMessage =
+              '正在上传 ${uploaded + 1}/${plan.uploadPaths.length} · ${file.fileName}';
+          notifyListeners();
+          final bytes = await fileReader.readFile(file);
+          await _authController.runAuthorized(
+            (token) => _apiClient.uploadClientLibraryFile(
+              token,
+              source.id,
+              relativePath: file.relativePath,
+              fileName: file.fileName,
+              sizeBytes: file.sizeBytes,
+              lastModifiedMillis: file.lastModifiedMillis,
+              bytes: bytes,
+            ),
+          );
+          uploaded += 1;
+        }
+        await refresh();
+        _selectedSection = AdminSection.librarySources;
+        _notice =
+            '${source.name} 扫描完成，上传 $uploaded 本，'
+            '跳过 ${plan.unchanged} 本，标记缺失 ${plan.missingMarked} 本';
+      } finally {
+        _workingMessage = null;
+      }
+    });
+  }
+
+  Future<void> deleteLibrarySource(AdminLibrarySourceView source) async {
+    await _runMutation(() async {
+      await _authController.runAuthorized(
+        (token) => _apiClient.deleteLibrarySource(token, source.id),
+      );
+      _librarySources = _librarySources
+          .where((item) => item.id != source.id)
+          .toList();
+      _importJobs = _importJobs
+          .map(
+            (job) => job.sourceId == source.id
+                ? AdminImportJobView(
+                    id: job.id,
+                    bookId: job.bookId,
+                    bookTitle: job.bookTitle,
+                    sourceId: null,
+                    sourceName: null,
+                    fileId: job.fileId,
+                    status: job.status,
+                    message: job.message,
+                    createdAt: job.createdAt,
+                    updatedAt: job.updatedAt,
+                  )
+                : job,
+          )
+          .toList();
+      _selectedSection = AdminSection.librarySources;
+      _notice = '已删除同步任务 ${source.name}，已导入图书仍保留在书库中';
     });
   }
 

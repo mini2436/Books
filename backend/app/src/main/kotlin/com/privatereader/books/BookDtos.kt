@@ -180,6 +180,24 @@ data class LibrarySourceView(
     val lastScanAt: String?,
 )
 
+data class ClientLibraryFileSummaryRequest(
+    @field:NotBlank
+    val relativePath: String,
+    val sizeBytes: Long,
+    val lastModifiedMillis: Long,
+)
+
+data class ClientLibraryScanPlanRequest(
+    val files: List<ClientLibraryFileSummaryRequest>,
+)
+
+data class ClientLibraryScanPlanView(
+    val sourceId: Long,
+    val uploadPaths: List<String>,
+    val unchanged: Int,
+    val missingMarked: Int,
+)
+
 data class CreateUserRequest(
     @field:NotBlank
     val username: String,

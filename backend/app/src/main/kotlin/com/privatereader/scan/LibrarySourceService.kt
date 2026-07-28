@@ -1,6 +1,8 @@
 package com.privatereader.scan
 
 import com.privatereader.books.BookService
+import com.privatereader.books.ClientLibraryScanPlanRequest
+import com.privatereader.books.ClientLibraryScanPlanView
 import com.privatereader.books.CreateLibrarySourceRequest
 import com.privatereader.books.LibrarySourceView
 import com.privatereader.books.UpdateLibrarySourceRequest
@@ -9,6 +11,8 @@ import com.privatereader.config.AppProperties
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
+import org.springframework.web.multipart.MultipartFile
 import java.io.StringReader
 import java.net.URI
 import java.net.URLDecoder
@@ -18,6 +22,7 @@ import java.net.http.HttpResponse
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.time.Duration
 import java.time.Instant
@@ -104,6 +109,28 @@ class LibrarySourceService(
         return getSourceView(sourceId)
     }
 
+    @Transactional
+    fun deleteSource(sourceId: Long) {
+        getSourceRecord(sourceId)
+        // 删除同步任务不删除已入库图书；将托管文件降级为普通上传来源。
+        jdbcClient.sql(
+            """
+            update book_files
+            set source_id = null,
+                source_type = 'MANAGED_UPLOAD',
+                source_path = null,
+                updated_at = :updatedAt
+            where source_id = :sourceId
+            """.trimIndent(),
+        )
+            .param("updatedAt", Instant.now().toSqlTimestamp())
+            .param("sourceId", sourceId)
+            .update()
+        jdbcClient.sql("delete from library_sources where id = :sourceId")
+            .param("sourceId", sourceId)
+            .update()
+    }
+
     fun listSources(): List<LibrarySourceView> =
         // 查询全部扫描源配置，供后台扫描源管理页面展示。
         jdbcClient.sql(
@@ -122,8 +149,10 @@ class LibrarySourceService(
         val scanStartedAt = Instant.now()
         return try {
             val result = when (source.sourceType) {
-                SourceType.WATCHED_FOLDER -> scanWatchedFolder(source)
                 SourceType.WEBDAV -> scanWebDav(source)
+                SourceType.CLIENT_FOLDER,
+                SourceType.WATCHED_FOLDER,
+                -> throw IllegalArgumentException("Client folders must be scanned from the client device")
             }
             touchLastScan(source.id, scanStartedAt)
             mapOf(
@@ -141,11 +170,107 @@ class LibrarySourceService(
     fun scanAllEnabledSources() {
         val now = Instant.now()
         listSourceRecords()
-            .filter { it.enabled }
+            .filter { it.enabled && it.sourceType == SourceType.WEBDAV }
             .filter { shouldScan(it, now) }
             .forEach { source ->
                 runCatching { scanSource(source.id) }
             }
+    }
+
+    @Transactional
+    fun planClientScan(sourceId: Long, request: ClientLibraryScanPlanRequest): ClientLibraryScanPlanView {
+        val source = getSourceRecord(sourceId)
+        require(source.sourceType.isClientFolder) { "Only client folder sources accept local scan summaries" }
+        require(request.files.size <= 20_000) { "A single scan supports at most 20000 files" }
+
+        val summaries = request.files.associate { summary ->
+            require(summary.sizeBytes >= 0) { "File size must not be negative" }
+            require(summary.lastModifiedMillis >= 0) { "Last modified time must not be negative" }
+            val relativePath = normalizeClientRelativePath(summary.relativePath)
+            relativePath to ClientFileSummary(
+                relativePath = relativePath,
+                sizeBytes = summary.sizeBytes,
+                lastModifiedMillis = summary.lastModifiedMillis,
+            )
+        }
+        require(summaries.size == request.files.size) { "Duplicate relative file paths are not allowed" }
+
+        val tracked = listClientFileSignatures(sourceId)
+        val uploadPaths = summaries.values
+            .filter { tracked[it.relativePath] != it.signature }
+            .map { it.relativePath }
+            .sorted()
+        val missingPaths = tracked.keys - summaries.keys
+        missingPaths.forEach { missingPath ->
+            bookService.markMissingSourcePath(sourceId, missingPath)
+            jdbcClient.sql(
+                "delete from library_source_files where source_id = :sourceId and relative_path = :relativePath",
+            )
+                .param("sourceId", sourceId)
+                .param("relativePath", missingPath)
+                .update()
+        }
+        touchLastScan(sourceId, Instant.now())
+        return ClientLibraryScanPlanView(
+            sourceId = sourceId,
+            uploadPaths = uploadPaths,
+            unchanged = summaries.size - uploadPaths.size,
+            missingMarked = missingPaths.size,
+        )
+    }
+
+    @Transactional
+    fun uploadClientFile(
+        sourceId: Long,
+        relativePath: String,
+        sizeBytes: Long,
+        lastModifiedMillis: Long,
+        file: MultipartFile,
+        actorId: Long,
+    ): Map<String, Any> {
+        val source = getSourceRecord(sourceId)
+        require(source.sourceType.isClientFolder) { "Only client folder sources accept file uploads" }
+        require(!file.isEmpty) { "Uploaded file must not be empty" }
+        require(sizeBytes >= 0 && lastModifiedMillis >= 0) { "Invalid client file summary" }
+        val normalizedPath = normalizeClientRelativePath(relativePath)
+        require(file.size == sizeBytes) { "Uploaded file size does not match the scan summary" }
+
+        val originalName = Path.of(file.originalFilename ?: normalizedPath.substringAfterLast('/'))
+            .fileName
+            .toString()
+        val signature = ClientFileSummary(normalizedPath, sizeBytes, lastModifiedMillis).signature
+        val targetDirectory = Path.of(
+            appProperties.storageRoot,
+            "client-library-sources",
+            "source-$sourceId",
+            hashString("$normalizedPath\u0000$signature"),
+        )
+        Files.createDirectories(targetDirectory)
+        val targetFile = targetDirectory.resolve(originalName)
+        file.inputStream.use { input ->
+            Files.copy(input, targetFile, StandardCopyOption.REPLACE_EXISTING)
+        }
+
+        val imported = try {
+            bookService.importDiscoveredFile(
+                filePath = targetFile,
+                sourceType = SourceType.CLIENT_FOLDER.name,
+                sourceId = sourceId,
+                actorId = actorId,
+                sourcePathOverride = normalizedPath,
+            )
+        } catch (exception: Exception) {
+            Files.deleteIfExists(targetFile)
+            Files.deleteIfExists(targetDirectory)
+            throw exception
+        }
+        upsertClientFileSummary(sourceId, ClientFileSummary(normalizedPath, sizeBytes, lastModifiedMillis))
+        return mapOf(
+            "sourceId" to sourceId,
+            "relativePath" to normalizedPath,
+            "bookId" to imported.id,
+            "title" to imported.title,
+        )
     }
 
     private fun scanWatchedFolder(source: SourceRecord): ScanResult {
@@ -220,6 +345,70 @@ class LibrarySourceService(
     private fun shouldScan(source: SourceRecord, now: Instant): Boolean {
         val lastScanAt = source.lastScanAt ?: return true
         return lastScanAt.plusSeconds(source.scanIntervalMinutes.toLong() * 60) <= now
+    }
+
+    private fun listClientFileSignatures(sourceId: Long): Map<String, String> =
+        jdbcClient.sql(
+            """
+            select relative_path, client_signature
+            from library_source_files
+            where source_id = :sourceId
+            """.trimIndent(),
+        )
+            .param("sourceId", sourceId)
+            .query { rs, _ -> rs.getString("relative_path") to rs.getString("client_signature") }
+            .list()
+            .toMap()
+
+    private fun upsertClientFileSummary(sourceId: Long, summary: ClientFileSummary) {
+        val now = Instant.now()
+        val updated = jdbcClient.sql(
+            """
+            update library_source_files
+            set file_size = :fileSize,
+                last_modified_millis = :lastModifiedMillis,
+                client_signature = :clientSignature,
+                updated_at = :updatedAt
+            where source_id = :sourceId and relative_path = :relativePath
+            """.trimIndent(),
+        )
+            .param("fileSize", summary.sizeBytes)
+            .param("lastModifiedMillis", summary.lastModifiedMillis)
+            .param("clientSignature", summary.signature)
+            .param("updatedAt", now.toSqlTimestamp())
+            .param("sourceId", sourceId)
+            .param("relativePath", summary.relativePath)
+            .update()
+        if (updated == 0) {
+            jdbcClient.sql(
+                """
+                insert into library_source_files (
+                    source_id, relative_path, file_size, last_modified_millis,
+                    client_signature, updated_at
+                ) values (
+                    :sourceId, :relativePath, :fileSize, :lastModifiedMillis,
+                    :clientSignature, :updatedAt
+                )
+                """.trimIndent(),
+            )
+                .param("sourceId", sourceId)
+                .param("relativePath", summary.relativePath)
+                .param("fileSize", summary.sizeBytes)
+                .param("lastModifiedMillis", summary.lastModifiedMillis)
+                .param("clientSignature", summary.signature)
+                .param("updatedAt", now.toSqlTimestamp())
+                .update()
+        }
+    }
+
+    private fun normalizeClientRelativePath(value: String): String {
+        val normalized = value.trim().replace('\\', '/').trim('/')
+        require(normalized.isNotEmpty()) { "Relative file path must not be blank" }
+        require(normalized.length <= 1000) { "Relative file path is too long" }
+        require(normalized.split('/').none { it.isBlank() || it == "." || it == ".." }) {
+            "Relative file path contains an unsafe segment"
+        }
+        return normalized
     }
 
     private fun getSourceView(sourceId: Long): LibrarySourceView = getSourceRecord(sourceId).toLibrarySourceView()
@@ -470,7 +659,7 @@ class LibrarySourceService(
             id = id,
             name = name,
             sourceType = sourceType.name,
-            rootPath = rootPath.takeIf { sourceType == SourceType.WATCHED_FOLDER },
+            rootPath = rootPath.takeIf { sourceType.isClientFolder },
             baseUrl = baseUrl,
             remotePath = remotePath,
             username = username,
@@ -558,19 +747,21 @@ class LibrarySourceService(
                 require(normalizedName.isNotEmpty()) { "Source name must not be blank" }
                 val type = SourceType.fromValue(sourceType)
                 return when (type) {
-                    SourceType.WATCHED_FOLDER -> {
+                    SourceType.CLIENT_FOLDER,
+                    SourceType.WATCHED_FOLDER,
+                    -> {
                         val normalizedRootPath = rootPath?.trim()?.takeIf { it.isNotEmpty() }
-                            ?: throw IllegalArgumentException("Watched folder path is required")
+                            ?: throw IllegalArgumentException("Selected folder label is required")
                         NormalizedSourceRequest(
                             name = normalizedName,
-                            sourceType = type,
+                            sourceType = SourceType.CLIENT_FOLDER,
                             rootPath = normalizedRootPath,
                             baseUrl = null,
                             remotePath = null,
                             username = null,
                             password = null,
-                            enabled = enabled,
-                            scanIntervalMinutes = scanIntervalMinutes,
+                            enabled = false,
+                            scanIntervalMinutes = 60,
                         )
                     }
 
@@ -604,14 +795,26 @@ class LibrarySourceService(
     }
 
     private enum class SourceType {
+        CLIENT_FOLDER,
         WATCHED_FOLDER,
         WEBDAV,
         ;
+
+        val isClientFolder: Boolean
+            get() = this == CLIENT_FOLDER || this == WATCHED_FOLDER
 
         companion object {
             fun fromValue(value: String): SourceType =
                 entries.firstOrNull { it.name == value.trim().uppercase() }
                     ?: throw IllegalArgumentException("Unsupported source type: $value")
         }
+    }
+
+    private data class ClientFileSummary(
+        val relativePath: String,
+        val sizeBytes: Long,
+        val lastModifiedMillis: Long,
+    ) {
+        val signature: String = "$sizeBytes:$lastModifiedMillis"
     }
 }

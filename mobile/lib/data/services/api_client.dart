@@ -550,6 +550,59 @@ class ApiClient {
     );
   }
 
+  Future<AdminClientScanPlan> planClientLibraryScan(
+    String accessToken,
+    int sourceId,
+    List<Map<String, dynamic>> files,
+  ) async {
+    final data = await _request<Map<String, dynamic>>(
+      () => _dio.post<Map<String, dynamic>>(
+        '/api/admin/library-sources/$sourceId/client-scan/plan',
+        data: {'files': files},
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+    return AdminClientScanPlan.fromJson(data);
+  }
+
+  Future<Map<String, dynamic>> uploadClientLibraryFile(
+    String accessToken,
+    int sourceId, {
+    required String relativePath,
+    required String fileName,
+    required int sizeBytes,
+    required int lastModifiedMillis,
+    required Uint8List bytes,
+    void Function(int sent, int total)? onSendProgress,
+  }) async {
+    final formData = FormData.fromMap({
+      'relativePath': relativePath,
+      'sizeBytes': sizeBytes,
+      'lastModifiedMillis': lastModifiedMillis,
+      'file': MultipartFile.fromBytes(bytes, filename: fileName),
+    });
+    return _request<Map<String, dynamic>>(
+      () => _dio.post<Map<String, dynamic>>(
+        '/api/admin/library-sources/$sourceId/client-files',
+        data: formData,
+        options: Options(
+          headers: _headers(accessToken),
+          contentType: 'multipart/form-data',
+        ),
+        onSendProgress: onSendProgress,
+      ),
+    );
+  }
+
+  Future<void> deleteLibrarySource(String accessToken, int sourceId) async {
+    await _request<Map<String, dynamic>>(
+      () => _dio.delete<Map<String, dynamic>>(
+        '/api/admin/library-sources/$sourceId',
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+  }
+
   Future<List<AdminImportJobView>> listImportJobs(String accessToken) async {
     final data = await _request<List<dynamic>>(
       () => _dio.get<List<dynamic>>(

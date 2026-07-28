@@ -294,6 +294,7 @@ class AdminLibrarySourceView {
   final String? lastScanAt;
 
   bool get isWebDav => sourceType == 'WEBDAV';
+  bool get isClientFolder => !isWebDav;
 
   factory AdminLibrarySourceView.fromJson(Map<String, dynamic> json) {
     return AdminLibrarySourceView(
@@ -335,6 +336,31 @@ class AdminLibrarySourceView {
       enabled: enabled ?? this.enabled,
       scanIntervalMinutes: scanIntervalMinutes ?? this.scanIntervalMinutes,
       lastScanAt: lastScanAt ?? this.lastScanAt,
+    );
+  }
+}
+
+class AdminClientScanPlan {
+  const AdminClientScanPlan({
+    required this.sourceId,
+    required this.uploadPaths,
+    required this.unchanged,
+    required this.missingMarked,
+  });
+
+  final int sourceId;
+  final List<String> uploadPaths;
+  final int unchanged;
+  final int missingMarked;
+
+  factory AdminClientScanPlan.fromJson(Map<String, dynamic> json) {
+    return AdminClientScanPlan(
+      sourceId: (json['sourceId'] as num).toInt(),
+      uploadPaths: (json['uploadPaths'] as List<dynamic>? ?? const [])
+          .map((item) => item.toString())
+          .toList(),
+      unchanged: (json['unchanged'] as num?)?.toInt() ?? 0,
+      missingMarked: (json['missingMarked'] as num?)?.toInt() ?? 0,
     );
   }
 }

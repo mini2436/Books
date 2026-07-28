@@ -21,11 +21,14 @@ class SyncCoordinator {
     required this.currentServerKey,
     required this.currentUserId,
     required Listenable authListenable,
+    Stream<List<ConnectivityResult>>? connectivityChanges,
   }) : _authListenable = authListenable {
     _authListenable.addListener(_handleAuthChanged);
-    _subscription = Connectivity().onConnectivityChanged.listen(
-      (_) => unawaited(flushPendingOperations()),
-    );
+    offlineQueueService.addListener(_handleQueueChanged);
+    _subscription =
+        (connectivityChanges ?? Connectivity().onConnectivityChanged).listen(
+          (_) => _requestBackgroundFlush(),
+        );
   }
 
   final ApiClient apiClient;
@@ -39,23 +42,60 @@ class SyncCoordinator {
 
   StreamSubscription<List<ConnectivityResult>>? _subscription;
   Future<int>? _flushInFlight;
+  bool _flushRequested = false;
+  bool _disposed = false;
 
   Future<int> flushPendingOperations() {
-    _flushInFlight ??= _flushInternal().whenComplete(() {
-      _flushInFlight = null;
+    if (_disposed) return Future.value(0);
+    _flushRequested = true;
+    final current = _flushInFlight;
+    if (current != null) return current;
+
+    late final Future<int> started;
+    started = _drainFlushRequests().whenComplete(() {
+      if (identical(_flushInFlight, started)) {
+        _flushInFlight = null;
+      }
+      if (_flushRequested && !_disposed) {
+        _requestBackgroundFlush();
+      }
     });
-    return _flushInFlight!;
+    _flushInFlight = started;
+    return started;
   }
 
   void dispose() {
+    _disposed = true;
+    _flushRequested = false;
     _authListenable.removeListener(_handleAuthChanged);
+    offlineQueueService.removeListener(_handleQueueChanged);
     _subscription?.cancel();
   }
 
   void _handleAuthChanged() {
     if (isAuthenticated()) {
-      unawaited(flushPendingOperations());
+      _requestBackgroundFlush();
     }
+  }
+
+  void _handleQueueChanged() {
+    if (isAuthenticated()) {
+      _requestBackgroundFlush();
+    }
+  }
+
+  void _requestBackgroundFlush() {
+    if (_disposed) return;
+    unawaited(flushPendingOperations().then<void>((_) {}).catchError((_) {}));
+  }
+
+  Future<int> _drainFlushRequests() async {
+    var completed = 0;
+    while (_flushRequested && !_disposed) {
+      _flushRequested = false;
+      completed += await _flushInternal();
+    }
+    return completed;
   }
 
   Future<int> _flushInternal() async {

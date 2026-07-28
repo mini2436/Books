@@ -17,6 +17,7 @@ import '../../shared/widgets/glass_dialog.dart';
 import '../auth/auth_controller.dart';
 import 'admin_library_sources_section.dart';
 import 'admin_center_controller.dart';
+import 'admin_book_import_progress_dialog.dart';
 
 class AdminCenterScreen extends ConsumerWidget {
   const AdminCenterScreen({super.key});
@@ -1098,7 +1099,7 @@ class _UploadBookButton extends ConsumerWidget {
       return;
     }
 
-    await ref
+    final upload = ref
         .read(adminCenterControllerProvider)
         .uploadBook(
           filePath: filePath,
@@ -1106,6 +1107,12 @@ class _UploadBookButton extends ConsumerWidget {
           fileName: file.name,
           fileSize: file.size,
         );
+    await showCenteredScaleDialog<void>(
+      context,
+      barrierDismissible: false,
+      builder: (_) => const AdminBookImportProgressDialog(),
+    );
+    await upload;
   }
 }
 

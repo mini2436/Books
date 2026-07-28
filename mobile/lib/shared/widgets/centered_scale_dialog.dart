@@ -5,11 +5,12 @@ import 'package:flutter/material.dart';
 Future<T?> showCenteredScaleDialog<T>(
   BuildContext context, {
   required WidgetBuilder builder,
+  bool barrierDismissible = true,
 }) {
   final reduceMotion = MediaQuery.of(context).disableAnimations;
   return showGeneralDialog<T>(
     context: context,
-    barrierDismissible: true,
+    barrierDismissible: barrierDismissible,
     barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
     barrierColor: Colors.black54,
     transitionDuration: reduceMotion

@@ -18,6 +18,46 @@ final adminCenterControllerProvider =
 
 enum AdminSection { users, roles, books, annotations, librarySources }
 
+enum AdminBookImportPhase {
+  uploading,
+  processing,
+  refreshing,
+  completed,
+  failed,
+}
+
+class AdminBookImportProgress {
+  const AdminBookImportProgress({
+    required this.fileName,
+    required this.phase,
+    required this.bytesSent,
+    required this.totalBytes,
+    this.importedTitle,
+    this.errorMessage,
+  });
+
+  final String fileName;
+  final AdminBookImportPhase phase;
+  final int bytesSent;
+  final int totalBytes;
+  final String? importedTitle;
+  final String? errorMessage;
+
+  bool get isTerminal =>
+      phase == AdminBookImportPhase.completed ||
+      phase == AdminBookImportPhase.failed;
+
+  double? get uploadFraction {
+    if (totalBytes <= 0) return null;
+    return (bytesSent / totalBytes).clamp(0.0, 1.0);
+  }
+
+  int? get uploadPercentage {
+    final fraction = uploadFraction;
+    return fraction == null ? null : (fraction * 100).round();
+  }
+}
+
 class AdminCenterController extends ChangeNotifier {
   AdminCenterController({
     required AuthController authController,
@@ -54,6 +94,7 @@ class AdminCenterController extends ChangeNotifier {
   String? _error;
   String? _notice;
   String? _workingMessage;
+  AdminBookImportProgress? _bookImportProgress;
 
   AdminSection get selectedSection => _selectedSection;
   List<AdminUserView> get users => _users;
@@ -69,6 +110,7 @@ class AdminCenterController extends ChangeNotifier {
   String? get error => _error;
   String? get notice => _notice;
   String? get workingMessage => _workingMessage;
+  AdminBookImportProgress? get bookImportProgress => _bookImportProgress;
   String get bookSearchQuery => _bookSearchQuery;
   String get selectedBookGroup => _selectedBookGroup;
   Set<int> get selectedBookIds => _selectedBookIds;
@@ -300,27 +342,95 @@ class AdminCenterController extends ChangeNotifier {
     int? fileSize,
   }) async {
     final sizeLabel = fileSize == null ? null : _formatFileSize(fileSize);
+    final resolvedFileName = fileName?.trim().isNotEmpty == true
+        ? fileName!.trim()
+        : '所选图书';
+    _bookImportProgress = AdminBookImportProgress(
+      fileName: resolvedFileName,
+      phase: AdminBookImportPhase.uploading,
+      bytesSent: 0,
+      totalBytes: fileSize ?? 0,
+    );
     _workingMessage = sizeLabel == null
         ? '正在上传并解析图书，请勿关闭窗口'
         : '正在上传 $sizeLabel，上传后还需要解析，请勿关闭窗口';
+    _isWorking = true;
+    _error = null;
+    _notice = null;
+    notifyListeners();
     try {
-      await _runMutation(() async {
-        final uploaded = await _authController.runAuthorized(
-          (token) => _apiClient.uploadAdminBook(
-            token,
-            filePath: filePath,
-            fileBytes: fileBytes,
-            fileName: fileName,
-          ),
-        );
-        await refresh();
-        _notice = '已导入《${uploaded.title}》';
-        _selectedSection = AdminSection.books;
-      });
+      final uploaded = await _authController.runAuthorized(
+        (token) => _apiClient.uploadAdminBook(
+          token,
+          filePath: filePath,
+          fileBytes: fileBytes,
+          fileName: fileName,
+          onSendProgress: _handleBookUploadProgress,
+        ),
+      );
+      _bookImportProgress = AdminBookImportProgress(
+        fileName: resolvedFileName,
+        phase: AdminBookImportPhase.refreshing,
+        bytesSent: _bookImportProgress?.bytesSent ?? fileSize ?? 0,
+        totalBytes: _bookImportProgress?.totalBytes ?? fileSize ?? 0,
+        importedTitle: uploaded.title,
+      );
+      _workingMessage = '图书已导入，正在更新书库';
+      notifyListeners();
+      await refresh();
+      _notice = '已导入《${uploaded.title}》';
+      _selectedSection = AdminSection.books;
+      _bookImportProgress = AdminBookImportProgress(
+        fileName: resolvedFileName,
+        phase: AdminBookImportPhase.completed,
+        bytesSent: _bookImportProgress?.bytesSent ?? fileSize ?? 0,
+        totalBytes: _bookImportProgress?.totalBytes ?? fileSize ?? 0,
+        importedTitle: uploaded.title,
+      );
+    } catch (error) {
+      _error = error.toString();
+      _bookImportProgress = AdminBookImportProgress(
+        fileName: resolvedFileName,
+        phase: AdminBookImportPhase.failed,
+        bytesSent: _bookImportProgress?.bytesSent ?? 0,
+        totalBytes: _bookImportProgress?.totalBytes ?? fileSize ?? 0,
+        errorMessage: error.toString(),
+      );
     } finally {
+      _isWorking = false;
       _workingMessage = null;
       notifyListeners();
     }
+  }
+
+  void dismissBookImportProgress() {
+    if (!(_bookImportProgress?.isTerminal ?? false)) return;
+    _bookImportProgress = null;
+    notifyListeners();
+  }
+
+  void _handleBookUploadProgress(int sent, int total) {
+    final current = _bookImportProgress;
+    if (current == null || current.isTerminal) return;
+    final resolvedTotal = total > 0 ? total : current.totalBytes;
+    final nextPhase = resolvedTotal > 0 && sent >= resolvedTotal
+        ? AdminBookImportPhase.processing
+        : AdminBookImportPhase.uploading;
+    final next = AdminBookImportProgress(
+      fileName: current.fileName,
+      phase: nextPhase,
+      bytesSent: sent,
+      totalBytes: resolvedTotal,
+    );
+    if (current.phase == next.phase &&
+        current.uploadPercentage == next.uploadPercentage) {
+      return;
+    }
+    _bookImportProgress = next;
+    _workingMessage = nextPhase == AdminBookImportPhase.processing
+        ? '上传完成，服务器正在解析图书'
+        : '正在上传图书 ${next.uploadPercentage ?? 0}%';
+    notifyListeners();
   }
 
   String _formatFileSize(int bytes) {
@@ -841,6 +951,7 @@ class AdminCenterController extends ChangeNotifier {
     _selectedBookGroup = allBookGroupsLabel;
     _error = null;
     _notice = null;
+    _bookImportProgress = null;
     _isLoading = false;
     _isWorking = false;
     _selectedSection = AdminSection.books;

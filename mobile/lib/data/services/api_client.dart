@@ -269,6 +269,7 @@ class ApiClient {
     String? filePath,
     Uint8List? fileBytes,
     String? fileName,
+    ProgressCallback? onSendProgress,
   }) async {
     final resolvedFileName =
         fileName ?? (filePath == null ? 'book.epub' : path.basename(filePath));
@@ -290,6 +291,7 @@ class ApiClient {
           sendTimeout: const Duration(minutes: 30),
           receiveTimeout: const Duration(minutes: 30),
         ),
+        onSendProgress: onSendProgress,
       ),
     );
 

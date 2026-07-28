@@ -2,15 +2,13 @@
 
 The project keeps its local infrastructure definition and database bootstrap files in this directory.
 
-## Middleware
+## Database
 
-Development middleware is provided by the root [docker-compose.yml](../docker-compose.yml):
+The development database is provided by the root [docker-compose.yml](../docker-compose.yml):
 
 - PostgreSQL 16
-- Redis 7
-- RabbitMQ 3 with management UI
 
-For local development, you do not need to install these services separately if you use Docker Compose.
+For local development, you do not need to install PostgreSQL separately if you use Docker Compose.
 
 ## Database scripts
 
@@ -21,9 +19,9 @@ The backend also keeps a runtime copy of the schema in `backend/app/src/main/res
 
 ## PowerShell helpers
 
-- [start-infra.ps1](scripts/start-infra.ps1): starts PostgreSQL, Redis, and RabbitMQ
+- [start-infra.ps1](scripts/start-infra.ps1): starts PostgreSQL
 - [init-db.ps1](scripts/init-db.ps1): prints commands for applying SQL scripts to PostgreSQL
-- [backfill-book-covers.ps1](backfill-book-covers.ps1): builds the backend, starts the required Docker middleware, and uses a temporary Docker backend process to extract missing covers into PostgreSQL.
+- [backfill-book-covers.ps1](backfill-book-covers.ps1): builds the backend, starts PostgreSQL, and uses a temporary Docker backend process to extract missing covers into PostgreSQL.
 - [backfill-book-resources.ps1](backfill-book-resources.ps1): extracts EPUB body images referenced by structured content and stores them in PostgreSQL.
 
 Run the cover backfill from the repository root:

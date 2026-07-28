@@ -18,7 +18,7 @@ Private Reader turns ebooks scattered across computers, NAS storage, and family 
 - Upload and NAS/directory scanning workflows
 - Responsive reader with themes, typography controls, and bundled Chinese fonts
 - Administration for books, users, grants, library sources, and scan jobs
-- Self-hosted Kotlin/Spring Boot backend backed by PostgreSQL, Redis, and RabbitMQ
+- Self-hosted Kotlin/Spring Boot backend backed by PostgreSQL
 
 ## Screenshots
 
@@ -54,12 +54,8 @@ Flutter Web / Windows / Android
                 │
                 ▼
        Kotlin + Spring Boot
-         │      │       │
-         ▼      ▼       ▼
-   PostgreSQL  Redis  RabbitMQ
-                │
-                ▼
-        Local storage / NAS
+          ├── PostgreSQL
+          └── Local storage / NAS
 ```
 
 The backend is a Kotlin 2.1 and Spring Boot 3.5 multi-module project. EPUB, TXT, PDF, CBZ, FB2, and MOBI support is integrated through compile-time plugins. The frontend is a shared Flutter application using Riverpod, GoRouter, and Dio.
@@ -70,7 +66,7 @@ Requirements: JDK 21, Flutter, Docker Compose, and the Windows C++ desktop toolc
 
 ```powershell
 # Infrastructure
-docker compose up -d postgres redis rabbitmq
+docker compose up -d postgres
 
 # Backend
 cd backend

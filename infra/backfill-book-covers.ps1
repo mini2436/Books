@@ -31,7 +31,7 @@ if (-not $SkipBuild) {
 
 Push-Location $repoRoot
 try {
-    & docker compose up -d postgres redis rabbitmq
+    & docker compose up -d postgres
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to start Docker dependencies with exit code $LASTEXITCODE"
     }

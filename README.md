@@ -75,15 +75,13 @@ flowchart LR
     Android --> API
 
     API["Kotlin + Spring Boot API"] --> PG[("PostgreSQL")]
-    API --> Redis[("Redis")]
-    API --> MQ[("RabbitMQ")]
     API --> Storage["本地磁盘 / NAS"]
     API --> Plugins["EPUB / TXT / PDF / CBZ / FB2 / MOBI 插件"]
 ```
 
 - 后端：Kotlin 2.1、Spring Boot 3.5、JDK 21
 - 客户端：Flutter / Dart、Riverpod、GoRouter、Dio
-- 数据与中间件：PostgreSQL 16、Redis 7、RabbitMQ 3
+- 数据库：PostgreSQL 16
 - 书籍解析：编译期集成的 EPUB、TXT、PDF、CBZ、FB2、MOBI 格式插件
 - 构建路线：后端支持 JVM，并保留 GraalVM Native Image 配置
 
@@ -107,13 +105,13 @@ reader/
 - Docker Desktop 或兼容的 Docker Compose 环境
 - Windows 桌面构建需要 Visual Studio 的 Desktop development with C++ 工作负载
 
-### 2. 启动中间件
+### 2. 启动数据库
 
 ```powershell
-docker compose up -d postgres redis rabbitmq
+docker compose up -d postgres
 ```
 
-默认使用 PostgreSQL `5432`、Redis `6379`、RabbitMQ `5672`，RabbitMQ 管理界面位于 `15672`。
+PostgreSQL 默认使用 `5432` 端口。
 
 ### 3. 启动后端
 
@@ -180,7 +178,7 @@ Web 发布产物位于 `mobile/build/web/`。浏览器页面和 API 不同源时
 
 轻阅当前更适合个人或家庭内网使用：
 
-1. 将 PostgreSQL、Redis、RabbitMQ 和后端部署在家庭服务器。
+1. 将 PostgreSQL 和后端部署在家庭服务器。
 2. 把书籍存储目录挂载到后端容器或配置 NAS 扫描目录。
 3. 使用 Nginx、Caddy 等反向代理统一提供 HTTPS Web 与 API 地址。
 4. 修改默认管理员密码，并按家庭成员逐一创建账号和授权书籍。

@@ -17,27 +17,6 @@ services:
       timeout: 3s
       retries: 12
 
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 12
-
-  rabbitmq:
-    image: rabbitmq:3.13-management-alpine
-    ports:
-      - "5672:5672"
-      - "15672:15672"
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
-      interval: 8s
-      timeout: 5s
-      retries: 12
-
   backend:
     image: private-reader-backend:local
     build:
@@ -46,7 +25,7 @@ services:
       args:
         HTTP_PROXY: ${HTTP_PROXY:-http://host.docker.internal:10808}
         HTTPS_PROXY: ${HTTPS_PROXY:-http://host.docker.internal:10808}
-        NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,::1,host.docker.internal,postgres,redis,rabbitmq}
+        NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,::1,host.docker.internal,postgres}
         GRADLE_PROXY_HOST: ${GRADLE_PROXY_HOST:-host.docker.internal}
         GRADLE_PROXY_PORT: ${GRADLE_PROXY_PORT:-10808}
     environment:
@@ -56,20 +35,14 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/private_reader
       SPRING_DATASOURCE_USERNAME: reader
       SPRING_DATASOURCE_PASSWORD: reader
-      SPRING_DATA_REDIS_HOST: redis
-      SPRING_RABBITMQ_HOST: rabbitmq
       SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE: 1GB
       SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE: 1100MB
       APP_EAGER_RESOURCE_CACHE_MAX_FILE_SIZE_BYTES: 104857600
       HTTP_PROXY: ${HTTP_PROXY:-http://host.docker.internal:10808}
       HTTPS_PROXY: ${HTTPS_PROXY:-http://host.docker.internal:10808}
-      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,::1,host.docker.internal,postgres,redis,rabbitmq}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,::1,host.docker.internal,postgres}
     depends_on:
       postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      rabbitmq:
         condition: service_healthy
     volumes:
       - ./storage:/app/storage
@@ -86,7 +59,7 @@ services:
       NEXT_PUBLIC_API_BASE_URL: http://localhost:8080
       HTTP_PROXY: ${HTTP_PROXY:-http://host.docker.internal:10808}
       HTTPS_PROXY: ${HTTPS_PROXY:-http://host.docker.internal:10808}
-      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,::1,host.docker.internal,backend,postgres,redis,rabbitmq}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,::1,host.docker.internal,backend,postgres}
     depends_on:
       - backend
     ports:

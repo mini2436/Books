@@ -66,6 +66,7 @@ class BookshelfController extends ChangeNotifier {
   List<ReadingProgressView> _readingProgresses = const [];
   String _selectedFilterKey = bookshelfFilterAll;
   String? _activeScopeKey;
+  int _pendingCountRequestId = 0;
 
   List<BookSummary> get books => _books;
   String get selectedFilterKey => _selectedFilterKey;
@@ -255,6 +256,7 @@ class BookshelfController extends ChangeNotifier {
     final userId = _authController.activeUserId;
     final serverKey = _authController.activeServerKey;
     if (userId == null || serverKey == null) {
+      _pendingCountRequestId++;
       _books = const [];
       _readingProgresses = const [];
       _selectedFilterKey = bookshelfFilterAll;
@@ -290,10 +292,7 @@ class BookshelfController extends ChangeNotifier {
         _readingProgresses,
         localProgresses,
       );
-      _pendingCount = await _offlineQueueService.pendingCount(
-        serverKey: serverKey,
-        userId: userId,
-      );
+      await _refreshPendingCount(serverKey, userId);
     } catch (error, stackTrace) {
       developer.log(
         'Failed to load offline bookshelf',
@@ -337,20 +336,6 @@ class BookshelfController extends ChangeNotifier {
           stackTrace: stackTrace,
         );
       }
-      var count = _pendingCount;
-      try {
-        count = await _offlineQueueService.pendingCount(
-          serverKey: serverKey,
-          userId: userId,
-        );
-      } catch (error, stackTrace) {
-        developer.log(
-          'Failed to read offline queue count',
-          name: 'BookshelfController',
-          error: error,
-          stackTrace: stackTrace,
-        );
-      }
       _books = nextBooks;
       _cachedBookIds = await _offlineBookCacheService.cachedBookIds(
         serverKey,
@@ -365,7 +350,7 @@ class BookshelfController extends ChangeNotifier {
       if (!filterOptions.any((option) => option.key == _selectedFilterKey)) {
         _selectedFilterKey = bookshelfFilterAll;
       }
-      _pendingCount = count;
+      await _refreshPendingCount(serverKey, userId);
     } catch (error, stackTrace) {
       if (error is ApiException && error.isNetworkFailure) {
         _authController.markServerUnavailable();
@@ -588,15 +573,18 @@ class BookshelfController extends ChangeNotifier {
   }
 
   Future<void> _refreshPendingCount(String serverKey, int userId) async {
+    final requestId = ++_pendingCountRequestId;
     try {
       final count = await _offlineQueueService.pendingCount(
         serverKey: serverKey,
         userId: userId,
       );
-      if (_authController.activeServerKey != serverKey ||
+      if (requestId != _pendingCountRequestId ||
+          _authController.activeServerKey != serverKey ||
           _authController.activeUserId != userId) {
         return;
       }
+      if (_pendingCount == count) return;
       _pendingCount = count;
       notifyListeners();
     } catch (_) {
@@ -615,6 +603,7 @@ class BookshelfController extends ChangeNotifier {
     if (scopeKey != null) {
       refresh();
     } else {
+      _pendingCountRequestId++;
       _books = const [];
       _readingProgresses = const [];
       _selectedFilterKey = bookshelfFilterAll;

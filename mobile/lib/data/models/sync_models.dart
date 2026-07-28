@@ -2,6 +2,9 @@ import 'dart:convert';
 
 enum PendingEntityType { annotation, bookmark, progress }
 
+String annotationClientTempIdForLocalId(int annotationId) =>
+    'annotation-local-${annotationId.abs()}';
+
 class AnnotationView {
   const AnnotationView({
     required this.id,
@@ -340,18 +343,24 @@ class SyncPullResponse {
 class PendingOperation {
   const PendingOperation({
     required this.id,
+    required this.serverKey,
+    required this.userId,
     required this.entityType,
     required this.payload,
     required this.createdAt,
   });
 
   final String id;
+  final String serverKey;
+  final int userId;
   final PendingEntityType entityType;
   final Map<String, dynamic> payload;
   final String createdAt;
 
   Map<String, dynamic> toDatabaseRow() => {
     'id': id,
+    'server_key': serverKey,
+    'user_id': userId,
     'entity_type': entityType.name,
     'payload': jsonEncode(payload),
     'created_at': createdAt,
@@ -360,6 +369,8 @@ class PendingOperation {
   factory PendingOperation.fromDatabaseRow(Map<String, Object?> row) {
     return PendingOperation(
       id: row['id'] as String,
+      serverKey: row['server_key'] as String? ?? '',
+      userId: (row['user_id'] as num?)?.toInt() ?? -1,
       entityType: PendingEntityType.values.byName(row['entity_type'] as String),
       payload: jsonDecode(row['payload'] as String) as Map<String, dynamic>,
       createdAt: row['created_at'] as String,

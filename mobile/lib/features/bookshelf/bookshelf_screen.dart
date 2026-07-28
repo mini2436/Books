@@ -863,7 +863,7 @@ class _ShelfHeader extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 isOfflineGuest
-                    ? '$bookCount 本离线藏书 · 只读模式'
+                    ? '$bookCount 本离线藏书 · $pendingCount 项待同步'
                     : isOfflineMode
                     ? '$bookCount 本藏书 · 离线模式 · $offlineBookCount 本可离线'
                     : pendingCount == 0
@@ -915,7 +915,7 @@ class _OfflineGuestBanner extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              '离线使用中：仅可阅读和搜索本机缓存书籍。',
+              '离线使用中：可阅读、搜索并暂存批注，登录原账户后同步。',
               style: Theme.of(
                 context,
               ).textTheme.bodySmall?.copyWith(color: palette.inkSecondary),

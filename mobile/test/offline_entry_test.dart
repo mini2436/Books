@@ -21,6 +21,7 @@ void main() {
       expect(controller.isOfflineGuest, isTrue);
       expect(controller.isOfflineMode, isTrue);
       expect(controller.activeUserId, 42);
+      expect(controller.activeServerKey, 'http://localhost:8080');
 
       controller.exitOfflineMode();
       expect(controller.canAccessApp, isFalse);
@@ -39,6 +40,27 @@ void main() {
     expect(controller.canAccessApp, isFalse);
     expect(controller.errorMessage, contains('还没有离线缓存'));
   });
+
+  test(
+    'offline entry honors the explicitly selected server identity',
+    () async {
+      final controller = _controller(cachedUserId: null);
+      addTearDown(controller.dispose);
+      await _waitForBootstrap(controller);
+
+      const selected = OfflineCacheIdentity(
+        serverKey: 'http://server-2:8080',
+        userId: 42,
+        bookCount: 3,
+        lastDownloadedAt: '2026-07-28T01:00:00Z',
+      );
+      final entered = await controller.enterOfflineMode(selected);
+
+      expect(entered, isTrue);
+      expect(controller.activeServerKey, selected.serverKey);
+      expect(controller.activeUserId, selected.userId);
+    },
+  );
 }
 
 AuthController _controller({required int? cachedUserId}) => AuthController(
@@ -70,5 +92,23 @@ class _FakeOfflineBookCacheService extends OfflineBookCacheService {
   final int? cachedUserId;
 
   @override
-  Future<int?> latestCachedUserId() async => cachedUserId;
+  Future<OfflineCacheIdentity?> latestCachedIdentity(
+    String legacyServerKey,
+  ) async => cachedUserId == null
+      ? null
+      : OfflineCacheIdentity(serverKey: legacyServerKey, userId: cachedUserId!);
+
+  @override
+  Future<List<OfflineCacheIdentity>> listCachedIdentities(
+    String legacyServerKey,
+  ) async => cachedUserId == null
+      ? const []
+      : [
+          OfflineCacheIdentity(
+            serverKey: legacyServerKey,
+            userId: cachedUserId!,
+            bookCount: 1,
+            lastDownloadedAt: '2026-07-28T00:00:00Z',
+          ),
+        ];
 }

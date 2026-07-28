@@ -34,8 +34,11 @@ final syncCoordinatorProvider = Provider<SyncCoordinator>((ref) {
   final coordinator = SyncCoordinator(
     apiClient: ref.watch(apiClientProvider),
     offlineQueueService: ref.watch(offlineQueueServiceProvider),
+    offlineBookCacheService: ref.watch(offlineBookCacheServiceProvider),
     runAuthorized: authController.runAuthorized,
     isAuthenticated: () => authController.isAuthenticated,
+    currentServerKey: () => authController.activeServerKey,
+    currentUserId: () => authController.activeUserId,
     authListenable: authController,
   );
   ref.onDispose(coordinator.dispose);
@@ -59,6 +62,7 @@ class AuthController extends ChangeNotifier {
 
   Session? _session;
   int? _offlineUserId;
+  String? _offlineServerKey;
   bool _isBootstrapping = true;
   bool _isWorking = false;
   bool _isOfflineMode = false;
@@ -72,6 +76,9 @@ class AuthController extends ChangeNotifier {
   bool get isAuthenticated => _session != null;
   bool get canAccessApp => isAuthenticated || _isOfflineGuest;
   int? get activeUserId => user?.id ?? _offlineUserId;
+  String? get activeServerKey => _isOfflineGuest
+      ? _offlineServerKey
+      : (_session == null ? null : _apiClient.baseUrl);
   bool get isBootstrapping => _isBootstrapping;
   bool get isWorking => _isWorking;
   bool get isOfflineMode => _isOfflineMode;
@@ -102,6 +109,7 @@ class AuthController extends ChangeNotifier {
       );
       _session = session;
       _offlineUserId = null;
+      _offlineServerKey = null;
       _isOfflineGuest = false;
       _isOfflineMode = false;
       _errorMessage = null;
@@ -118,6 +126,7 @@ class AuthController extends ChangeNotifier {
     final current = _session;
     _session = null;
     _offlineUserId = null;
+    _offlineServerKey = null;
     _isOfflineGuest = false;
     _isOfflineMode = false;
     _errorMessage = null;
@@ -133,18 +142,47 @@ class AuthController extends ChangeNotifier {
     await _sessionStorage.clear();
   }
 
-  Future<bool> enterOfflineMode() async {
+  Future<List<OfflineCacheIdentity>> loadOfflineIdentities() async {
     _setWorking(true);
     try {
-      final userId = await _offlineBookCacheService.latestCachedUserId();
-      if (userId == null) {
+      final identities = await _offlineBookCacheService.listCachedIdentities(
+        _apiClient.baseUrl,
+      );
+      if (identities.isEmpty) {
+        _errorMessage = kIsWeb
+            ? 'Web 端暂不支持离线书库，请在 Windows 或移动端使用离线阅读。'
+            : '当前设备还没有离线缓存，请先登录并下载书籍。';
+        return const [];
+      }
+      _errorMessage = null;
+      return identities;
+    } catch (_) {
+      _errorMessage = '无法读取本地离线书库，请稍后重试。';
+      return const [];
+    } finally {
+      _setWorking(false);
+    }
+  }
+
+  Future<bool> enterOfflineMode([
+    OfflineCacheIdentity? selectedIdentity,
+  ]) async {
+    _setWorking(true);
+    try {
+      final identity =
+          selectedIdentity ??
+          await _offlineBookCacheService.latestCachedIdentity(
+            _apiClient.baseUrl,
+          );
+      if (identity == null) {
         _errorMessage = kIsWeb
             ? 'Web 端暂不支持离线书库，请在 Windows 或移动端使用离线阅读。'
             : '当前设备还没有离线缓存，请先登录并下载书籍。';
         return false;
       }
       _session = null;
-      _offlineUserId = userId;
+      _offlineUserId = identity.userId;
+      _offlineServerKey = identity.serverKey;
       _isOfflineGuest = true;
       _isOfflineMode = true;
       _errorMessage = null;
@@ -160,6 +198,7 @@ class AuthController extends ChangeNotifier {
   void exitOfflineMode() {
     if (!_isOfflineGuest) return;
     _offlineUserId = null;
+    _offlineServerKey = null;
     _isOfflineGuest = false;
     _isOfflineMode = false;
     _errorMessage = null;
@@ -258,6 +297,7 @@ class AuthController extends ChangeNotifier {
 
     _session = stored;
     _offlineUserId = null;
+    _offlineServerKey = null;
     _isOfflineGuest = false;
     _isOfflineMode = stored != null;
     _errorMessage = null;

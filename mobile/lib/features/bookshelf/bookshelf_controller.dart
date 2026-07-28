@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
 
@@ -45,6 +46,7 @@ class BookshelfController extends ChangeNotifier {
        _offlineQueueService = offlineQueueService,
        _offlineBookCacheService = offlineBookCacheService {
     _authController.addListener(_handleAuthChange);
+    _offlineQueueService.addListener(_handleQueueChanged);
     _handleAuthChange();
   }
 
@@ -63,7 +65,7 @@ class BookshelfController extends ChangeNotifier {
   int _offlineLibrarySizeBytes = 0;
   List<ReadingProgressView> _readingProgresses = const [];
   String _selectedFilterKey = bookshelfFilterAll;
-  int? _activeUserId;
+  String? _activeScopeKey;
 
   List<BookSummary> get books => _books;
   String get selectedFilterKey => _selectedFilterKey;
@@ -160,11 +162,18 @@ class BookshelfController extends ChangeNotifier {
       );
     } catch (_) {
       final userId = _authController.activeUserId;
+      final serverKey = _authController.activeServerKey;
       if (userId == null ||
-          !await _offlineBookCacheService.isBookCached(userId, bookId)) {
+          serverKey == null ||
+          !await _offlineBookCacheService.isBookCached(
+            serverKey,
+            userId,
+            bookId,
+          )) {
         rethrow;
       }
       annotations = await _offlineBookCacheService.loadAnnotations(
+        serverKey,
         userId,
         bookId,
       );
@@ -244,7 +253,8 @@ class BookshelfController extends ChangeNotifier {
 
   Future<void> refresh() async {
     final userId = _authController.activeUserId;
-    if (userId == null) {
+    final serverKey = _authController.activeServerKey;
+    if (userId == null || serverKey == null) {
       _books = const [];
       _readingProgresses = const [];
       _selectedFilterKey = bookshelfFilterAll;
@@ -257,24 +267,33 @@ class BookshelfController extends ChangeNotifier {
     var localProgresses = <ReadingProgressView>[];
     try {
       final cachedBooks = await _offlineBookCacheService.loadCachedBooks(
+        serverKey,
         userId,
       );
       if (_books.isEmpty) _books = cachedBooks;
-      _cachedBookIds = await _offlineBookCacheService.cachedBookIds(userId);
-      await _loadOfflineCovers(userId);
+      _cachedBookIds = await _offlineBookCacheService.cachedBookIds(
+        serverKey,
+        userId,
+      );
+      await _loadOfflineCovers(serverKey, userId);
       _offlineLibrarySizeBytes = await _offlineBookCacheService.totalSizeBytes(
+        serverKey,
         userId,
       );
       localProgresses = (await Future.wait(
         cachedBooks.map(
-          (book) => _offlineBookCacheService.loadProgress(userId, book.id),
+          (book) =>
+              _offlineBookCacheService.loadProgress(serverKey, userId, book.id),
         ),
       )).whereType<ReadingProgressView>().toList();
       _readingProgresses = _mergeProgresses(
         _readingProgresses,
         localProgresses,
       );
-      _pendingCount = await _offlineQueueService.pendingCount();
+      _pendingCount = await _offlineQueueService.pendingCount(
+        serverKey: serverKey,
+        userId: userId,
+      );
     } catch (error, stackTrace) {
       developer.log(
         'Failed to load offline bookshelf',
@@ -285,8 +304,10 @@ class BookshelfController extends ChangeNotifier {
     }
 
     if (_authController.isOfflineGuest) {
-      _books = await _offlineBookCacheService.loadCachedBooks(userId);
-      _pendingCount = 0;
+      _books = await _offlineBookCacheService.loadCachedBooks(
+        serverKey,
+        userId,
+      );
       _error = null;
       _isLoading = false;
       notifyListeners();
@@ -318,7 +339,10 @@ class BookshelfController extends ChangeNotifier {
       }
       var count = _pendingCount;
       try {
-        count = await _offlineQueueService.pendingCount();
+        count = await _offlineQueueService.pendingCount(
+          serverKey: serverKey,
+          userId: userId,
+        );
       } catch (error, stackTrace) {
         developer.log(
           'Failed to read offline queue count',
@@ -328,9 +352,13 @@ class BookshelfController extends ChangeNotifier {
         );
       }
       _books = nextBooks;
-      _cachedBookIds = await _offlineBookCacheService.cachedBookIds(userId);
-      await _loadOfflineCovers(userId);
+      _cachedBookIds = await _offlineBookCacheService.cachedBookIds(
+        serverKey,
+        userId,
+      );
+      await _loadOfflineCovers(serverKey, userId);
       _offlineLibrarySizeBytes = await _offlineBookCacheService.totalSizeBytes(
+        serverKey,
         userId,
       );
       _readingProgresses = nextProgresses;
@@ -359,13 +387,18 @@ class BookshelfController extends ChangeNotifier {
 
   Future<void> downloadForOffline(BookSummary summary) async {
     final user = _authController.user;
-    if (user == null || _downloadingBookIds.contains(summary.id)) return;
+    final serverKey = _authController.activeServerKey;
+    if (user == null ||
+        serverKey == null ||
+        _downloadingBookIds.contains(summary.id)) {
+      return;
+    }
     _downloadingBookIds.add(summary.id);
     _error = null;
     notifyListeners();
 
     try {
-      await _offlineBookCacheService.deleteBook(user.id, summary.id);
+      await _offlineBookCacheService.deleteBook(serverKey, user.id, summary.id);
       final detail = await _authController.runAuthorized(
         (token) => _apiClient.getMyBook(token, summary.id),
       );
@@ -407,6 +440,7 @@ class BookshelfController extends ChangeNotifier {
             ),
           );
           await _offlineBookCacheService.saveChapter(
+            serverKey,
             user.id,
             summary.id,
             chapter,
@@ -426,6 +460,7 @@ class BookshelfController extends ChangeNotifier {
                 _apiClient.downloadBookResource(token, summary.id, resourceId),
           );
           await _offlineBookCacheService.saveResource(
+            serverKey,
             user.id,
             summary.id,
             resourceId,
@@ -450,6 +485,7 @@ class BookshelfController extends ChangeNotifier {
         }
       }
       await _offlineBookCacheService.saveDownloadedBook(
+        serverKey: serverKey,
         userId: user.id,
         summary: summary,
         detail: detail,
@@ -464,10 +500,11 @@ class BookshelfController extends ChangeNotifier {
       _cachedBookIds.add(summary.id);
       if (coverBytes != null) _offlineCoverBytes[summary.id] = coverBytes;
       _offlineLibrarySizeBytes = await _offlineBookCacheService.totalSizeBytes(
+        serverKey,
         user.id,
       );
     } catch (error, stackTrace) {
-      await _offlineBookCacheService.deleteBook(user.id, summary.id);
+      await _offlineBookCacheService.deleteBook(serverKey, user.id, summary.id);
       _cachedBookIds.remove(summary.id);
       _error = '“${summary.title}”下载失败：$error';
       developer.log(
@@ -485,11 +522,13 @@ class BookshelfController extends ChangeNotifier {
 
   Future<void> removeOfflineDownload(int bookId) async {
     final user = _authController.user;
-    if (user == null) return;
-    await _offlineBookCacheService.deleteBook(user.id, bookId);
+    final serverKey = _authController.activeServerKey;
+    if (user == null || serverKey == null) return;
+    await _offlineBookCacheService.deleteBook(serverKey, user.id, bookId);
     _cachedBookIds.remove(bookId);
     _offlineCoverBytes.remove(bookId);
     _offlineLibrarySizeBytes = await _offlineBookCacheService.totalSizeBytes(
+      serverKey,
       user.id,
     );
     notifyListeners();
@@ -505,9 +544,13 @@ class BookshelfController extends ChangeNotifier {
     }
   }
 
-  Future<void> _loadOfflineCovers(int userId) async {
+  Future<void> _loadOfflineCovers(String serverKey, int userId) async {
     for (final bookId in _cachedBookIds) {
-      final bytes = await _offlineBookCacheService.loadCover(userId, bookId);
+      final bytes = await _offlineBookCacheService.loadCover(
+        serverKey,
+        userId,
+        bookId,
+      );
       if (bytes != null) _offlineCoverBytes[bookId] = bytes;
     }
     _offlineCoverBytes.removeWhere(
@@ -533,14 +576,43 @@ class BookshelfController extends ChangeNotifier {
   @override
   void dispose() {
     _authController.removeListener(_handleAuthChange);
+    _offlineQueueService.removeListener(_handleQueueChanged);
     super.dispose();
+  }
+
+  void _handleQueueChanged() {
+    final serverKey = _authController.activeServerKey;
+    final userId = _authController.activeUserId;
+    if (serverKey == null || userId == null) return;
+    unawaited(_refreshPendingCount(serverKey, userId));
+  }
+
+  Future<void> _refreshPendingCount(String serverKey, int userId) async {
+    try {
+      final count = await _offlineQueueService.pendingCount(
+        serverKey: serverKey,
+        userId: userId,
+      );
+      if (_authController.activeServerKey != serverKey ||
+          _authController.activeUserId != userId) {
+        return;
+      }
+      _pendingCount = count;
+      notifyListeners();
+    } catch (_) {
+      // The next bookshelf refresh will retry the count.
+    }
   }
 
   void _handleAuthChange() {
     final userId = _authController.activeUserId;
-    if (_activeUserId == userId) return;
-    _activeUserId = userId;
-    if (userId != null) {
+    final serverKey = _authController.activeServerKey;
+    final scopeKey = userId == null || serverKey == null
+        ? null
+        : '$serverKey\u0000$userId';
+    if (_activeScopeKey == scopeKey) return;
+    _activeScopeKey = scopeKey;
+    if (scopeKey != null) {
       refresh();
     } else {
       _books = const [];

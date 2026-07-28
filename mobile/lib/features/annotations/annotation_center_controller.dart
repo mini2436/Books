@@ -160,6 +160,8 @@ class AnnotationCenterController extends ChangeNotifier {
       await _offlineQueueService.enqueue(
         PendingOperation(
           id: 'annotation-${DateTime.now().microsecondsSinceEpoch}',
+          serverKey: _authController.activeServerKey!,
+          userId: _authController.activeUserId!,
           entityType: PendingEntityType.annotation,
           payload: mutation.toJson(),
           createdAt: mutation.updatedAt,

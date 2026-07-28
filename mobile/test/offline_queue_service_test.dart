@@ -9,12 +9,16 @@ void main() {
     test('decodes and sorts stored pending operations', () {
       const later = PendingOperation(
         id: 'progress-2',
+        serverKey: 'http://server-1:8080/',
+        userId: 7,
         entityType: PendingEntityType.progress,
         payload: {'bookId': 2, 'location': 'chapter-2'},
         createdAt: '2026-07-12T10:01:00Z',
       );
       const earlier = PendingOperation(
         id: 'bookmark-1',
+        serverKey: 'http://server-1:8080/',
+        userId: 7,
         entityType: PendingEntityType.bookmark,
         payload: {'bookId': 1, 'location': 'chapter-1'},
         createdAt: '2026-07-12T10:00:00Z',

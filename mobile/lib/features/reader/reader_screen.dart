@@ -53,12 +53,6 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     });
   }
 
-  void _showOfflineReadOnlyNotice() {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('离线使用模式仅支持阅读，登录后可编辑批注和书签。')));
-  }
-
   @override
   Widget build(BuildContext context) {
     if (widget.bookId == null) {
@@ -195,10 +189,6 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
             focusedAnchor: controller.focusedAnchor,
             anchorJumpVersion: controller.anchorJumpVersion,
             onHighlight: (selection, existingAnnotation) async {
-              if (controller.isReadOnlyOffline) {
-                _showOfflineReadOnlyNotice();
-                return;
-              }
               if (existingAnnotation != null) {
                 final existingAnchor = AnnotationAnchor.parse(
                   existingAnnotation.anchor,
@@ -220,10 +210,6 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
               );
             },
             onAnnotate: (selection, existingAnnotation) async {
-              if (controller.isReadOnlyOffline) {
-                _showOfflineReadOnlyNotice();
-                return;
-              }
               await _openAnnotationComposer(
                 controller,
                 selection: selection,
@@ -238,10 +224,6 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                   required color,
                   required underlineStyle,
                 }) async {
-                  if (controller.isReadOnlyOffline) {
-                    _showOfflineReadOnlyNotice();
-                    return;
-                  }
                   if (existingAnnotation == null) {
                     await controller.addAnnotation(
                       selection: selection,
@@ -372,10 +354,6 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                     controller: controller,
                     onClose: () => setState(() => _tabletPanel = null),
                     onEditAnnotation: (annotation) {
-                      if (controller.isReadOnlyOffline) {
-                        _showOfflineReadOnlyNotice();
-                        return;
-                      }
                       _openAnnotationComposer(
                         controller,
                         annotation: annotation,
@@ -592,10 +570,6 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
     AnnotationSelection? selection,
     AnnotationView? annotation,
   }) async {
-    if (controller.isReadOnlyOffline) {
-      _showOfflineReadOnlyNotice();
-      return;
-    }
     final existingAnchor = annotation == null
         ? null
         : AnnotationAnchor.parse(annotation.anchor);

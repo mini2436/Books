@@ -168,9 +168,15 @@ class ReaderController extends ChangeNotifier {
 
     try {
       final userId = _authController.activeUserId;
+      final serverKey = _authController.activeServerKey;
       if (_authController.isOfflineMode &&
           userId != null &&
-          await _offlineBookCacheService.isBookCached(userId, bookId)) {
+          serverKey != null &&
+          await _offlineBookCacheService.isBookCached(
+            serverKey,
+            userId,
+            bookId,
+          )) {
         await _loadOffline();
         return;
       }
@@ -289,29 +295,43 @@ class ReaderController extends ChangeNotifier {
 
   Future<void> _loadOffline() async {
     final userId = _authController.activeUserId;
-    if (userId == null) throw StateError('没有可用的本地用户');
+    final serverKey = _authController.activeServerKey;
+    if (userId == null || serverKey == null) {
+      throw StateError('没有可用的本地用户');
+    }
     final loadedDetail = await _offlineBookCacheService.loadDetail(
+      serverKey,
       userId,
       bookId,
     );
     if (loadedDetail == null) throw StateError('书籍未下载');
     detail = loadedDetail;
     annotations = await _offlineBookCacheService.loadAnnotations(
+      serverKey,
       userId,
       bookId,
     );
     annotations = [...annotations]
       ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-    bookmarks = await _offlineBookCacheService.loadBookmarks(userId, bookId);
+    bookmarks = await _offlineBookCacheService.loadBookmarks(
+      serverKey,
+      userId,
+      bookId,
+    );
     bookmarks = [...bookmarks]
       ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     final progress = await _offlineBookCacheService.loadProgress(
+      serverKey,
       userId,
       bookId,
     );
 
     if (loadedDetail.isPdf) {
-      pdfBytes = await _offlineBookCacheService.loadFile(userId, bookId);
+      pdfBytes = await _offlineBookCacheService.loadFile(
+        serverKey,
+        userId,
+        bookId,
+      );
       if (pdfBytes == null) throw StateError('离线 PDF 文件不完整');
       pdfPageCount = loadedDetail.pdfPageCount ?? 0;
       final initialLocation =
@@ -322,7 +342,11 @@ class ReaderController extends ChangeNotifier {
       return;
     }
 
-    content = await _offlineBookCacheService.loadContent(userId, bookId);
+    content = await _offlineBookCacheService.loadContent(
+      serverKey,
+      userId,
+      bookId,
+    );
     if (content == null || !loadedDetail.supportsStructuredReader) {
       throw StateError('离线章节数据不完整');
     }
@@ -484,7 +508,7 @@ class ReaderController extends ChangeNotifier {
       ];
     } catch (_) {
       await _offlineQueueService.enqueue(
-        PendingOperation(
+        _pendingOperation(
           id: _localId('bookmark'),
           entityType: PendingEntityType.bookmark,
           payload: mutation.toJson(),
@@ -533,7 +557,7 @@ class ReaderController extends ChangeNotifier {
       await _refreshBookmarks();
     } catch (_) {
       await _offlineQueueService.enqueue(
-        PendingOperation(
+        _pendingOperation(
           id: _localId('bookmark'),
           entityType: PendingEntityType.bookmark,
           payload: mutation.toJson(),
@@ -549,7 +573,6 @@ class ReaderController extends ChangeNotifier {
     String color = '#C3924A',
     AnnotationUnderlineStyle underlineStyle = AnnotationUnderlineStyle.none,
   }) async {
-    if (isReadOnlyOffline) return;
     await _saveAnnotation(
       quoteText: selection.selectedText,
       noteText: null,
@@ -564,7 +587,6 @@ class ReaderController extends ChangeNotifier {
     required String color,
     required AnnotationUnderlineStyle underlineStyle,
   }) async {
-    if (isReadOnlyOffline) return;
     await _saveAnnotation(
       quoteText: selection.selectedText,
       noteText: noteText,
@@ -580,7 +602,6 @@ class ReaderController extends ChangeNotifier {
     AnnotationSelection? selection,
     AnnotationUnderlineStyle? underlineStyle,
   }) async {
-    if (isReadOnlyOffline) return;
     final currentAnchor = AnnotationAnchor.parse(annotation.anchor);
     final nextUnderlineStyle = underlineStyle ?? currentAnchor.underlineStyle;
     final nextQuoteText = selection?.selectedText ?? annotation.quoteText;
@@ -606,12 +627,12 @@ class ReaderController extends ChangeNotifier {
         noteText: noteText,
         color: color,
         anchor: nextAnchor,
+        updatedAt: mutation.updatedAt,
       ),
     );
   }
 
   Future<void> deleteAnnotation(AnnotationView annotation) async {
-    if (isReadOnlyOffline) return;
     final mutation = AnnotationMutation(
       annotationId: annotation.id,
       bookId: bookId,
@@ -630,6 +651,12 @@ class ReaderController extends ChangeNotifier {
     await _persistReaderState();
     notifyListeners();
 
+    if (_authController.isOfflineGuest) {
+      await _enqueueAnnotationMutation(mutation);
+      _annotationChangeNotifier.markChanged();
+      return;
+    }
+
     try {
       await _authController.runAuthorized(
         (accessToken) => _apiClient.pushSync(
@@ -644,14 +671,7 @@ class ReaderController extends ChangeNotifier {
         ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
       _annotationChangeNotifier.markChanged();
     } catch (_) {
-      await _offlineQueueService.enqueue(
-        PendingOperation(
-          id: _localId('annotation'),
-          entityType: PendingEntityType.annotation,
-          payload: mutation.toJson(),
-          createdAt: mutation.updatedAt,
-        ),
-      );
+      await _enqueueAnnotationMutation(mutation);
     }
     await _persistReaderState();
   }
@@ -711,8 +731,9 @@ class ReaderController extends ChangeNotifier {
     required String anchor,
     required String color,
   }) async {
+    final localAnnotationId = -DateTime.now().microsecondsSinceEpoch;
     final mutation = AnnotationMutation(
-      clientTempId: _localId('annotation'),
+      clientTempId: annotationClientTempIdForLocalId(localAnnotationId),
       bookId: bookId,
       action: 'CREATE',
       quoteText: quoteText,
@@ -725,7 +746,7 @@ class ReaderController extends ChangeNotifier {
     await _pushAnnotationMutation(
       mutation: mutation,
       optimistic: AnnotationView(
-        id: -DateTime.now().millisecondsSinceEpoch,
+        id: localAnnotationId,
         bookId: bookId,
         quoteText: quoteText,
         noteText: noteText,
@@ -749,6 +770,14 @@ class ReaderController extends ChangeNotifier {
     await _persistReaderState();
     notifyListeners();
 
+    if (_authController.isOfflineGuest) {
+      await _enqueueAnnotationMutation(mutation);
+      _annotationChangeNotifier.markChanged();
+      await _persistReaderState();
+      notifyListeners();
+      return;
+    }
+
     try {
       await _authController.runAuthorized(
         (accessToken) => _apiClient.pushSync(
@@ -763,17 +792,49 @@ class ReaderController extends ChangeNotifier {
         ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
       _annotationChangeNotifier.markChanged();
     } catch (_) {
-      await _offlineQueueService.enqueue(
-        PendingOperation(
-          id: mutation.clientTempId ?? _localId('annotation'),
-          entityType: PendingEntityType.annotation,
-          payload: mutation.toJson(),
-          createdAt: mutation.updatedAt,
-        ),
-      );
+      await _enqueueAnnotationMutation(mutation);
     }
     await _persistReaderState();
     notifyListeners();
+  }
+
+  Future<void> _enqueueAnnotationMutation(AnnotationMutation mutation) async {
+    final annotationId = mutation.annotationId;
+    if (annotationId != null && annotationId < 0) {
+      final clientTempId = annotationClientTempIdForLocalId(annotationId);
+      if (mutation.action.toUpperCase() == 'DELETE') {
+        await _offlineQueueService.deleteByIds([clientTempId]);
+        return;
+      }
+      final createMutation = AnnotationMutation(
+        clientTempId: clientTempId,
+        bookId: mutation.bookId,
+        action: 'CREATE',
+        quoteText: mutation.quoteText,
+        noteText: mutation.noteText,
+        color: mutation.color,
+        anchor: mutation.anchor,
+        updatedAt: mutation.updatedAt,
+      );
+      await _offlineQueueService.enqueue(
+        _pendingOperation(
+          id: clientTempId,
+          entityType: PendingEntityType.annotation,
+          payload: createMutation.toJson(),
+          createdAt: createMutation.updatedAt,
+        ),
+      );
+      return;
+    }
+
+    await _offlineQueueService.enqueue(
+      _pendingOperation(
+        id: mutation.clientTempId ?? _localId('annotation'),
+        entityType: PendingEntityType.annotation,
+        payload: mutation.toJson(),
+        createdAt: mutation.updatedAt,
+      ),
+    );
   }
 
   Future<BookContentChapter> _fetchChapter(int index) async {
@@ -787,8 +848,10 @@ class ReaderController extends ChangeNotifier {
     notifyListeners();
     try {
       final userId = _authController.activeUserId;
-      if (userId != null) {
+      final serverKey = _authController.activeServerKey;
+      if (userId != null && serverKey != null) {
         final local = await _offlineBookCacheService.loadChapter(
+          serverKey,
           userId,
           bookId,
           index,
@@ -805,8 +868,18 @@ class ReaderController extends ChangeNotifier {
       );
       _chapterCache[index] = chapter;
       if (userId != null &&
-          await _offlineBookCacheService.isBookCached(userId, bookId)) {
-        await _offlineBookCacheService.saveChapter(userId, bookId, chapter);
+          serverKey != null &&
+          await _offlineBookCacheService.isBookCached(
+            serverKey,
+            userId,
+            bookId,
+          )) {
+        await _offlineBookCacheService.saveChapter(
+          serverKey,
+          userId,
+          bookId,
+          chapter,
+        );
       }
       unawaited(_prefetchImageResources(chapter));
       return chapter;
@@ -885,8 +958,10 @@ class ReaderController extends ChangeNotifier {
       notifyListeners();
       try {
         final userId = _authController.activeUserId;
-        if (userId != null) {
+        final serverKey = _authController.activeServerKey;
+        if (userId != null && serverKey != null) {
           final local = await _offlineBookCacheService.loadResource(
+            serverKey,
             userId,
             bookId,
             resourceId,
@@ -903,8 +978,14 @@ class ReaderController extends ChangeNotifier {
         );
         imageResourceBytes[resourceId] = bytes;
         if (userId != null &&
-            await _offlineBookCacheService.isBookCached(userId, bookId)) {
+            serverKey != null &&
+            await _offlineBookCacheService.isBookCached(
+              serverKey,
+              userId,
+              bookId,
+            )) {
           await _offlineBookCacheService.saveResource(
+            serverKey,
             userId,
             bookId,
             resourceId,
@@ -981,7 +1062,17 @@ class ReaderController extends ChangeNotifier {
         ),
       );
 
-      if (_authController.isOfflineGuest) return;
+      if (_authController.isOfflineGuest) {
+        await _offlineQueueService.enqueue(
+          _pendingOperation(
+            id: _localId('progress'),
+            entityType: PendingEntityType.progress,
+            payload: mutation.toJson(),
+            createdAt: mutation.updatedAt,
+          ),
+        );
+        return;
+      }
 
       try {
         await _authController.runAuthorized(
@@ -990,7 +1081,7 @@ class ReaderController extends ChangeNotifier {
         );
       } catch (_) {
         await _offlineQueueService.enqueue(
-          PendingOperation(
+          _pendingOperation(
             id: _localId('progress'),
             entityType: PendingEntityType.progress,
             payload: mutation.toJson(),
@@ -1003,8 +1094,10 @@ class ReaderController extends ChangeNotifier {
 
   Future<void> _persistReaderState({ReadingProgressView? progress}) async {
     final userId = _authController.activeUserId;
-    if (userId == null) return;
+    final serverKey = _authController.activeServerKey;
+    if (userId == null || serverKey == null) return;
     await _offlineBookCacheService.saveReaderState(
+      serverKey: serverKey,
       userId: userId,
       bookId: bookId,
       annotations: annotations,
@@ -1015,6 +1108,27 @@ class ReaderController extends ChangeNotifier {
 
   String _localId(String prefix) =>
       '$prefix-${DateTime.now().microsecondsSinceEpoch}';
+
+  PendingOperation _pendingOperation({
+    required String id,
+    required PendingEntityType entityType,
+    required Map<String, dynamic> payload,
+    required String createdAt,
+  }) {
+    final serverKey = _authController.activeServerKey;
+    final userId = _authController.activeUserId;
+    if (serverKey == null || userId == null) {
+      throw StateError('无法确定离线操作所属的服务器和用户');
+    }
+    return PendingOperation(
+      id: id,
+      serverKey: serverKey,
+      userId: userId,
+      entityType: entityType,
+      payload: payload,
+      createdAt: createdAt,
+    );
+  }
 
   int _boundPdfPage(int pageNumber, int pageCount) {
     final minimum = pageNumber < 1 ? 1 : pageNumber;
@@ -1099,6 +1213,7 @@ extension on AnnotationView {
     String? noteText,
     String? color,
     String? anchor,
+    String? updatedAt,
   }) {
     return AnnotationView(
       id: id,
@@ -1109,7 +1224,7 @@ extension on AnnotationView {
       anchor: anchor ?? this.anchor,
       version: version,
       deleted: deleted,
-      updatedAt: updatedAt,
+      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 }

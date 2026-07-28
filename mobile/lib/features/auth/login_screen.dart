@@ -3,9 +3,11 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../data/services/offline_book_cache_service.dart';
 import '../../shared/theme/reader_theme_extension.dart';
 import '../../shared/theme/glass_theme.dart';
 import '../../shared/utils/responsive.dart';
+import '../../shared/widgets/glass_dialog.dart';
 import '../../shared/widgets/glass_surface.dart';
 import 'auth_controller.dart';
 import '../settings/server_config_controller.dart';
@@ -170,7 +172,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
           ),
           const SizedBox(height: 10),
           Text(
-            '离线使用仅显示本机已缓存书籍，不会连接服务器或同步数据。',
+            '离线使用仅显示本机已缓存书籍；阅读进度保存在本机，重新登录原服务器和账户后同步。',
             textAlign: TextAlign.center,
             style: Theme.of(
               context,
@@ -246,8 +248,204 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   }
 
   Future<void> _enterOfflineMode() async {
-    await ref.read(authControllerProvider).enterOfflineMode();
+    final auth = ref.read(authControllerProvider);
+    final identities = await auth.loadOfflineIdentities();
+    if (!mounted || identities.isEmpty) return;
+
+    final selected = await showDialog<OfflineCacheIdentity>(
+      context: context,
+      builder: (context) => _OfflineIdentityPicker(identities: identities),
+    );
+    if (selected == null || !mounted) return;
+    await auth.enterOfflineMode(selected);
   }
+}
+
+class _OfflineIdentityPicker extends StatefulWidget {
+  const _OfflineIdentityPicker({required this.identities});
+
+  final List<OfflineCacheIdentity> identities;
+
+  @override
+  State<_OfflineIdentityPicker> createState() => _OfflineIdentityPickerState();
+}
+
+class _OfflineIdentityPickerState extends State<_OfflineIdentityPicker> {
+  OfflineCacheIdentity? _selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppReaderPalette.of(context);
+    return GlassAlertDialog(
+      title: const Text('选择离线书库'),
+      scrollable: true,
+      content: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            '请选择要进入的服务器和账户。离线产生的阅读进度只会同步回所选身份。',
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: palette.inkSecondary),
+          ),
+          const SizedBox(height: 16),
+          for (final identity in widget.identities) ...[
+            _OfflineIdentityOption(
+              identity: identity,
+              selected: identical(_selected, identity),
+              onTap: () => setState(() => _selected = identity),
+            ),
+            if (identity != widget.identities.last) const SizedBox(height: 10),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: _selected == null
+              ? null
+              : () => Navigator.of(context).pop(_selected),
+          child: const Text('进入离线阅读'),
+        ),
+      ],
+    );
+  }
+}
+
+class _OfflineIdentityOption extends StatelessWidget {
+  const _OfflineIdentityOption({
+    required this.identity,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final OfflineCacheIdentity identity;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppReaderPalette.of(context);
+    final accent = palette.accent;
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    return Semantics(
+      button: true,
+      selected: selected,
+      label:
+          '${_serverLabel(identity.serverKey)}，用户 ${identity.userId}，'
+          '${identity.bookCount} 本离线书籍',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          key: ValueKey(
+            'offline-identity-${identity.serverKey}-${identity.userId}',
+          ),
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: AnimatedContainer(
+            duration: reduceMotion
+                ? Duration.zero
+                : const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: selected
+                  ? accent.withValues(alpha: 0.1)
+                  : palette.panel.withValues(alpha: 0.32),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: selected
+                    ? accent.withValues(alpha: 0.72)
+                    : palette.ink.withValues(alpha: 0.1),
+                width: selected ? 1.5 : 1,
+              ),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? accent.withValues(alpha: 0.15)
+                        : palette.ink.withValues(alpha: 0.06),
+                    borderRadius: BorderRadius.circular(11),
+                  ),
+                  child: Icon(
+                    Icons.dns_outlined,
+                    color: selected ? accent : palette.inkSecondary,
+                    size: 21,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _serverLabel(identity.serverKey),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          color: palette.ink,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        '用户 #${identity.userId} · ${identity.bookCount} 本书',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: palette.inkSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        '最近缓存 ${_formatDownloadedAt(identity.lastDownloadedAt)}',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: palette.inkTertiary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Icon(
+                    selected
+                        ? Icons.check_circle
+                        : Icons.radio_button_unchecked,
+                    color: selected ? accent : palette.inkTertiary,
+                    size: 22,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+String _serverLabel(String serverKey) {
+  final uri = Uri.tryParse(serverKey);
+  if (uri == null || uri.host.isEmpty) return serverKey;
+  final port = uri.hasPort ? ':${uri.port}' : '';
+  final path = uri.path == '/' ? '' : uri.path;
+  return '${uri.host}$port$path';
+}
+
+String _formatDownloadedAt(String value) {
+  final parsed = DateTime.tryParse(value)?.toLocal();
+  if (parsed == null) return '时间未知';
+  String twoDigits(int number) => number.toString().padLeft(2, '0');
+  return '${parsed.year}-${twoDigits(parsed.month)}-${twoDigits(parsed.day)} '
+      '${twoDigits(parsed.hour)}:${twoDigits(parsed.minute)}';
 }
 
 class _LoginBackgroundPainter extends CustomPainter {

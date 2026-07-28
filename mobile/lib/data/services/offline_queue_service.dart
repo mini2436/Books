@@ -10,8 +10,13 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../models/sync_models.dart';
 
-class OfflineQueueService {
+class OfflineQueueService extends ChangeNotifier {
+  OfflineQueueService({String? databasePathOverride})
+    : _databasePathOverride = databasePathOverride;
+
   static const String _webStorageKey = 'private_reader_pending_operations';
+
+  final String? _databasePathOverride;
 
   Future<Database> get _database async {
     _databaseFuture ??= _open();
@@ -20,6 +25,13 @@ class OfflineQueueService {
 
   Future<Database>? _databaseFuture;
   Future<void> _webOperation = Future<void>.value();
+
+  @visibleForTesting
+  Future<void> close() async {
+    final database = await _databaseFuture;
+    await database?.close();
+    _databaseFuture = null;
+  }
 
   Future<void> enqueue(PendingOperation operation) async {
     if (kIsWeb) {
@@ -31,6 +43,7 @@ class OfflineQueueService {
         );
         return operations;
       });
+      notifyListeners();
       return;
     }
     final db = await _database;
@@ -39,27 +52,64 @@ class OfflineQueueService {
       operation.toDatabaseRow(),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+    notifyListeners();
   }
 
-  Future<List<PendingOperation>> loadPending() async {
+  Future<List<PendingOperation>> loadPending({
+    required String serverKey,
+    required int userId,
+  }) async {
     if (kIsWeb) {
-      return _readWebOperations();
+      return (await _readWebOperations())
+          .where((operation) {
+            final belongsToScope =
+                operation.serverKey == serverKey && operation.userId == userId;
+            final isLegacy =
+                operation.serverKey.isEmpty && operation.userId < 0;
+            return belongsToScope || isLegacy;
+          })
+          .map((operation) {
+            if (operation.serverKey.isNotEmpty || operation.userId >= 0) {
+              return operation;
+            }
+            return PendingOperation(
+              id: operation.id,
+              serverKey: serverKey,
+              userId: userId,
+              entityType: operation.entityType,
+              payload: operation.payload,
+              createdAt: operation.createdAt,
+            );
+          })
+          .toList();
     }
     final db = await _database;
+    await db.update('pending_operations', {
+      'server_key': serverKey,
+      'user_id': userId,
+    }, where: "server_key = '' AND user_id < 0");
     final rows = await db.query(
       'pending_operations',
+      where: 'server_key = ? AND user_id = ?',
+      whereArgs: [serverKey, userId],
       orderBy: 'created_at ASC',
     );
     return rows.map(PendingOperation.fromDatabaseRow).toList();
   }
 
-  Future<int> pendingCount() async {
+  Future<int> pendingCount({
+    required String serverKey,
+    required int userId,
+  }) async {
     if (kIsWeb) {
-      return (await _readWebOperations()).length;
+      return (await loadPending(serverKey: serverKey, userId: userId)).length;
     }
     final db = await _database;
     return Sqflite.firstIntValue(
-          await db.rawQuery('SELECT COUNT(*) FROM pending_operations'),
+          await db.rawQuery(
+            'SELECT COUNT(*) FROM pending_operations WHERE server_key = ? AND user_id = ?',
+            [serverKey, userId],
+          ),
         ) ??
         0;
   }
@@ -75,6 +125,7 @@ class OfflineQueueService {
         operations.removeWhere((item) => deletedIds.contains(item.id));
         return operations;
       });
+      notifyListeners();
       return;
     }
 
@@ -85,27 +136,45 @@ class OfflineQueueService {
       where: 'id IN ($placeholders)',
       whereArgs: ids,
     );
+    notifyListeners();
   }
 
   Future<Database> _open() async {
     final path = await _databasePath();
     return openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE pending_operations (
             id TEXT PRIMARY KEY,
+            server_key TEXT NOT NULL,
+            user_id INTEGER NOT NULL,
             entity_type TEXT NOT NULL,
             payload TEXT NOT NULL,
             created_at TEXT NOT NULL
           )
         ''');
       },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await db.execute(
+            "ALTER TABLE pending_operations ADD COLUMN server_key TEXT NOT NULL DEFAULT ''",
+          );
+          await db.execute(
+            'ALTER TABLE pending_operations ADD COLUMN user_id INTEGER NOT NULL DEFAULT -1',
+          );
+        }
+      },
     );
   }
 
   Future<String> _databasePath() async {
+    if (_databasePathOverride != null) {
+      sqfliteFfiInit();
+      databaseFactory = databaseFactoryFfi;
+      return _databasePathOverride;
+    }
     if (_usesFfiDatabase) {
       sqfliteFfiInit();
       databaseFactory = databaseFactoryFfi;

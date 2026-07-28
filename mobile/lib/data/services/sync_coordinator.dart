@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../models/sync_models.dart';
 import 'api_client.dart';
+import 'offline_book_cache_service.dart';
 import 'offline_queue_service.dart';
 
 typedef AuthorizedRunner =
@@ -14,8 +15,11 @@ class SyncCoordinator {
   SyncCoordinator({
     required this.apiClient,
     required this.offlineQueueService,
+    required this.offlineBookCacheService,
     required this.runAuthorized,
     required this.isAuthenticated,
+    required this.currentServerKey,
+    required this.currentUserId,
     required Listenable authListenable,
   }) : _authListenable = authListenable {
     _authListenable.addListener(_handleAuthChanged);
@@ -26,8 +30,11 @@ class SyncCoordinator {
 
   final ApiClient apiClient;
   final OfflineQueueService offlineQueueService;
+  final OfflineBookCacheService offlineBookCacheService;
   final AuthorizedRunner runAuthorized;
   final bool Function() isAuthenticated;
+  final String? Function() currentServerKey;
+  final int? Function() currentUserId;
   final Listenable _authListenable;
 
   StreamSubscription<List<ConnectivityResult>>? _subscription;
@@ -56,7 +63,16 @@ class SyncCoordinator {
       return 0;
     }
 
-    final operations = await offlineQueueService.loadPending();
+    final serverKey = currentServerKey();
+    final userId = currentUserId();
+    if (serverKey == null || userId == null) {
+      return 0;
+    }
+
+    final operations = await offlineQueueService.loadPending(
+      serverKey: serverKey,
+      userId: userId,
+    );
     if (operations.isEmpty) {
       return 0;
     }
@@ -74,13 +90,32 @@ class SyncCoordinator {
       return 0;
     }
 
-    await runAuthorized(
+    final response = await runAuthorized(
       (accessToken) => apiClient.pushSync(accessToken, request),
     );
-    await offlineQueueService.deleteByIds(
-      operations.map((item) => item.id).toList(),
+    await offlineBookCacheService.applyAnnotationMappings(
+      serverKey: serverKey,
+      userId: userId,
+      mappings: response.annotationMappings,
     );
-    return operations.length;
+    final conflictedAnnotationIds = response.conflicts
+        .where((conflict) => conflict.entityType == 'annotation')
+        .map((conflict) => conflict.entityId)
+        .toSet();
+    final completedOperationIds = operations
+        .where((operation) {
+          if (operation.entityType != PendingEntityType.annotation ||
+              conflictedAnnotationIds.isEmpty) {
+            return true;
+          }
+          final mutation = AnnotationMutation.fromJson(operation.payload);
+          return mutation.annotationId == null ||
+              !conflictedAnnotationIds.contains(mutation.annotationId);
+        })
+        .map((operation) => operation.id)
+        .toList();
+    await offlineQueueService.deleteByIds(completedOperationIds);
+    return completedOperationIds.length;
   }
 
   SyncPushRequest _compact(List<PendingOperation> operations) {

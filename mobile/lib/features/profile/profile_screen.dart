@@ -174,8 +174,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: _ProfileStat(
-                    label: isOfflineGuest ? '当前模式' : '待同步',
-                    value: isOfflineGuest ? '只读' : '${shelf.pendingCount}',
+                    label: isOfflineGuest ? '本地暂存' : '待同步',
+                    value: isOfflineGuest
+                        ? '${shelf.pendingCount} 项'
+                        : '${shelf.pendingCount}',
                   ),
                 ),
               ],

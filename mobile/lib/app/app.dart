@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/auth/auth_controller.dart';
 import '../features/settings/reader_preferences_controller.dart';
+import '../features/settings/server_config_controller.dart';
 import '../shared/theme/app_theme.dart';
 import 'router.dart';
 
@@ -11,6 +12,7 @@ class ReaderApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(serverConfigControllerProvider);
     ref.watch(syncCoordinatorProvider);
     final router = ref.watch(routerProvider);
     final preferences = ref.watch(readerPreferencesControllerProvider).value;

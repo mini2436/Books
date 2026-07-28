@@ -1913,9 +1913,10 @@ Future<void> _showGroupFolder(
                                             Navigator.of(dialogContext).pop();
                                           }
                                           if (context.mounted) {
-                                            context.push(
+                                            await context.push(
                                               _readerLocation(book, anchor),
                                             );
+                                            await controller.refresh();
                                           }
                                         },
                                       ),
@@ -2066,7 +2067,10 @@ Future<void> _showBookDetails(
     await onReadRequested(anchor);
     return;
   }
-  context.push(_readerLocation(book, anchor));
+  await context.push(_readerLocation(book, anchor));
+  if (context.mounted) {
+    await controller.refresh();
+  }
 }
 
 class _BookDetailsDialog extends StatefulWidget {

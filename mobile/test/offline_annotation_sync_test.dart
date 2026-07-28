@@ -16,7 +16,7 @@ import 'package:private_reader_mobile/features/reader/reader_controller.dart';
 
 void main() {
   test(
-    'offline annotations are staged, updated, and cancelled locally',
+    'offline annotations and flushed reading progress persist locally',
     () async {
       final directory = await Directory.systemTemp.createTemp(
         'private-reader-offline-annotation-',
@@ -118,6 +118,15 @@ void main() {
         await cache.loadAnnotations(_serverKey, _userId, _bookId),
         isEmpty,
       );
+
+      controller.updateVisibleAnchor('chapter-0-block-0');
+      await controller.flushProgress();
+
+      final progress = await cache.loadProgress(_serverKey, _userId, _bookId);
+      expect(progress?.location, 'chapter-0-block-0');
+      pending = await queue.loadPending(serverKey: _serverKey, userId: _userId);
+      expect(pending, hasLength(1));
+      expect(pending.single.entityType, PendingEntityType.progress);
     },
   );
 }

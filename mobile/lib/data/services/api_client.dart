@@ -288,8 +288,9 @@ class ApiClient {
         options: Options(
           headers: _headers(accessToken),
           contentType: 'multipart/form-data',
+          connectTimeout: Duration.zero,
           sendTimeout: const Duration(minutes: 30),
-          receiveTimeout: const Duration(minutes: 30),
+          receiveTimeout: Duration.zero,
         ),
         onSendProgress: onSendProgress,
       ),
@@ -545,7 +546,11 @@ class ApiClient {
     return _request<Map<String, dynamic>>(
       () => _dio.post<Map<String, dynamic>>(
         '/api/admin/library-sources/$sourceId/rescan',
-        options: Options(headers: _headers(accessToken)),
+        options: Options(
+          headers: _headers(accessToken),
+          connectTimeout: Duration.zero,
+          receiveTimeout: Duration.zero,
+        ),
       ),
     );
   }
@@ -590,8 +595,9 @@ class ApiClient {
         options: Options(
           headers: _headers(accessToken),
           contentType: 'multipart/form-data',
+          connectTimeout: Duration.zero,
           sendTimeout: const Duration(minutes: 5),
-          receiveTimeout: const Duration(minutes: 30),
+          receiveTimeout: Duration.zero,
         ),
         onSendProgress: onSendProgress,
       ),

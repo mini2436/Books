@@ -60,7 +60,11 @@ class LibrarySourceServiceTest {
                 source_id, relative_path, file_size, last_modified_millis, client_signature, updated_at
             ) values
                 (1, 'unchanged.epub', 100, 200, '100:200', current_timestamp),
-                (1, 'removed.pdf', 300, 400, '300:400', current_timestamp)
+                (1, 'removed.pdf', 300, 400, '300:400', current_timestamp);
+            insert into book_files (id, source_id, source_type, source_path, updated_at)
+            values
+                (10, 1, 'CLIENT_FOLDER', 'unchanged.epub', current_timestamp),
+                (11, 1, 'CLIENT_FOLDER', 'removed.pdf', current_timestamp)
             """.trimIndent(),
         ).update()
 
@@ -82,6 +86,37 @@ class LibrarySourceServiceTest {
             0,
             fixture.jdbc.sql(
                 "select count(*) from library_source_files where source_id = 1 and relative_path = 'removed.pdf'",
+            ).query(Int::class.java).single(),
+        )
+    }
+
+    @Test
+    fun `client scan reuploads unchanged file after imported book was deleted`() {
+        val fixture = fixture()
+        fixture.jdbc.sql(
+            """
+            insert into library_sources (
+                id, name, root_path, enabled, source_type, scan_interval_minutes, created_at, updated_at
+            ) values (4, '重新导入目录', 'Books', false, 'CLIENT_FOLDER', 60, current_timestamp, current_timestamp);
+            insert into library_source_files (
+                source_id, relative_path, file_size, last_modified_millis, client_signature, updated_at
+            ) values (4, 'deleted.epub', 100, 200, '100:200', current_timestamp)
+            """.trimIndent(),
+        ).update()
+
+        val plan = fixture.service.planClientScan(
+            4,
+            ClientLibraryScanPlanRequest(
+                files = listOf(ClientLibraryFileSummaryRequest("deleted.epub", 100, 200)),
+            ),
+        )
+
+        assertEquals(listOf("deleted.epub"), plan.uploadPaths)
+        assertEquals(0, plan.unchanged)
+        assertEquals(
+            0,
+            fixture.jdbc.sql(
+                "select count(*) from library_source_files where source_id = 4 and relative_path = 'deleted.epub'",
             ).query(Int::class.java).single(),
         )
     }

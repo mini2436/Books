@@ -721,7 +721,12 @@ class ReaderController extends ChangeNotifier {
 
   @override
   void dispose() {
+    final hasPendingProgress = _progressTimer?.isActive ?? false;
     _progressTimer?.cancel();
+    _progressTimer = null;
+    if (hasPendingProgress) {
+      unawaited(_writeCurrentProgress());
+    }
     super.dispose();
   }
 
@@ -1039,57 +1044,78 @@ class ReaderController extends ChangeNotifier {
   }
 
   void _scheduleProgressWrite() {
-    final location = currentReadingLocation;
-    if (location.isEmpty) {
+    if (currentReadingLocation.isEmpty) {
       return;
     }
 
     _progressTimer?.cancel();
-    _progressTimer = Timer(const Duration(milliseconds: 900), () async {
-      final mutation = ReadingProgressMutation(
-        bookId: bookId,
-        location: location,
-        progressPercent: progressPercent,
-        updatedAt: DateTime.now().toUtc().toIso8601String(),
-      );
+    _progressTimer = Timer(const Duration(milliseconds: 900), () {
+      _progressTimer = null;
+      unawaited(_writeCurrentProgress());
+    });
+  }
 
-      await _persistReaderState(
-        progress: ReadingProgressView(
-          bookId: bookId,
-          location: mutation.location,
-          progressPercent: mutation.progressPercent,
-          updatedAt: mutation.updatedAt,
+  Future<void> flushProgress() async {
+    _progressTimer?.cancel();
+    _progressTimer = null;
+    await _writeCurrentProgress(waitForRemote: false);
+  }
+
+  Future<void> _writeCurrentProgress({bool waitForRemote = true}) async {
+    final location = currentReadingLocation;
+    if (location.isEmpty) return;
+
+    final mutation = ReadingProgressMutation(
+      bookId: bookId,
+      location: location,
+      progressPercent: progressPercent,
+      updatedAt: DateTime.now().toUtc().toIso8601String(),
+    );
+
+    await _persistReaderState(
+      progress: ReadingProgressView(
+        bookId: bookId,
+        location: mutation.location,
+        progressPercent: mutation.progressPercent,
+        updatedAt: mutation.updatedAt,
+      ),
+    );
+
+    if (_authController.isOfflineGuest) {
+      await _offlineQueueService.enqueue(
+        _pendingOperation(
+          id: _localId('progress'),
+          entityType: PendingEntityType.progress,
+          payload: mutation.toJson(),
+          createdAt: mutation.updatedAt,
         ),
       );
+      return;
+    }
 
-      if (_authController.isOfflineGuest) {
-        await _offlineQueueService.enqueue(
-          _pendingOperation(
-            id: _localId('progress'),
-            entityType: PendingEntityType.progress,
-            payload: mutation.toJson(),
-            createdAt: mutation.updatedAt,
-          ),
-        );
-        return;
-      }
+    final remoteWrite = _writeProgressToServer(mutation);
+    if (waitForRemote) {
+      await remoteWrite;
+    } else {
+      unawaited(remoteWrite);
+    }
+  }
 
-      try {
-        await _authController.runAuthorized(
-          (accessToken) =>
-              _apiClient.putProgress(accessToken, bookId, mutation),
-        );
-      } catch (_) {
-        await _offlineQueueService.enqueue(
-          _pendingOperation(
-            id: _localId('progress'),
-            entityType: PendingEntityType.progress,
-            payload: mutation.toJson(),
-            createdAt: mutation.updatedAt,
-          ),
-        );
-      }
-    });
+  Future<void> _writeProgressToServer(ReadingProgressMutation mutation) async {
+    try {
+      await _authController.runAuthorized(
+        (accessToken) => _apiClient.putProgress(accessToken, bookId, mutation),
+      );
+    } catch (_) {
+      await _offlineQueueService.enqueue(
+        _pendingOperation(
+          id: _localId('progress'),
+          entityType: PendingEntityType.progress,
+          payload: mutation.toJson(),
+          createdAt: mutation.updatedAt,
+        ),
+      );
+    }
   }
 
   Future<void> _persistReaderState({ReadingProgressView? progress}) async {

@@ -198,6 +198,9 @@ class LibrarySourceService(
         }
         require(summaries.size == request.files.size) { "Duplicate relative file paths are not allowed" }
 
+        // 图书删除会级联移除 book_files，但历史客户端摘要没有直接外键关联图书。
+        // 先清除这些孤立摘要，确保同一本地文件能够在下次扫描时重新上传导入。
+        deleteOrphanedClientFileSignatures(sourceId)
         val tracked = listClientFileSignatures(sourceId)
         val uploadPaths = summaries.values
             .filter { tracked[it.relativePath] != it.signature }
@@ -446,6 +449,22 @@ class LibrarySourceService(
             .query { rs, _ -> rs.getString("relative_path") to rs.getString("client_signature") }
             .list()
             .toMap()
+
+    private fun deleteOrphanedClientFileSignatures(sourceId: Long): Int =
+        jdbcClient.sql(
+            """
+            delete from library_source_files tracked
+            where tracked.source_id = :sourceId
+              and not exists (
+                  select 1
+                  from book_files imported
+                  where imported.source_id = tracked.source_id
+                    and imported.source_path = tracked.relative_path
+              )
+            """.trimIndent(),
+        )
+            .param("sourceId", sourceId)
+            .update()
 
     private fun upsertClientFileSummary(sourceId: Long, summary: ClientFileSummary) {
         val now = Instant.now()

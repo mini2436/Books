@@ -1,7 +1,9 @@
 'use strict';
 
 const CACHE_PREFIX = 'qingyue-app-shell-';
-const CACHE_NAME = `${CACHE_PREFIX}v2`;
+const CACHE_NAME = `${CACHE_PREFIX}v4`;
+const NAVIGATION_TIMEOUT_MS = 10000;
+const APP_SHELL_ASSET_TIMEOUT_MS = 60000;
 const APP_ROOT_URL = new URL('./', self.registration.scope).toString();
 
 const REQUIRED_APP_SHELL = [
@@ -54,14 +56,23 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     (async () => {
       const cacheNames = await caches.keys();
+      const staleCacheNames = cacheNames.filter(
+        (name) => name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME,
+      );
       await Promise.all(
-        cacheNames
-          .filter(
-            (name) => name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME,
-          )
-          .map((name) => caches.delete(name)),
+        staleCacheNames.map((name) => caches.delete(name)),
       );
       await self.clients.claim();
+      if (staleCacheNames.length > 0) {
+        const clients = await self.clients.matchAll({type: 'window'});
+        await Promise.all(
+          clients.map((client) =>
+            client.url && 'navigate' in client
+              ? client.navigate(client.url)
+              : Promise.resolve(),
+          ),
+        );
+      }
     })(),
   );
 });
@@ -95,7 +106,7 @@ async function cacheAsset(cache, relativePath) {
 async function networkFirstNavigation(request) {
   const cache = await caches.open(CACHE_NAME);
   try {
-    const response = await fetchWithTimeout(request);
+    const response = await fetchWithTimeout(request, NAVIGATION_TIMEOUT_MS);
     if (response.ok) {
       await cache.put(APP_ROOT_URL, response.clone());
     }
@@ -112,7 +123,10 @@ async function networkFirstNavigation(request) {
 async function networkFirstAsset(request) {
   const cache = await caches.open(CACHE_NAME);
   try {
-    const response = await fetchWithTimeout(request);
+    const response = await fetchWithTimeout(
+      request,
+      APP_SHELL_ASSET_TIMEOUT_MS,
+    );
     if (response.ok) await cache.put(request, response.clone());
     return response;
   } catch (_) {
@@ -120,9 +134,9 @@ async function networkFirstAsset(request) {
   }
 }
 
-async function fetchWithTimeout(request) {
+async function fetchWithTimeout(request, timeoutMs) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 3500);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(request, {signal: controller.signal});
   } finally {

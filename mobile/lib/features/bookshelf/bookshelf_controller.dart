@@ -282,10 +282,14 @@ class BookshelfController extends ChangeNotifier {
         serverKey,
         userId,
       );
+      final localProgressBookIds = <int>{
+        ...cachedBooks.map((book) => book.id),
+        ..._books.map((book) => book.id),
+      };
       localProgresses = (await Future.wait(
-        cachedBooks.map(
-          (book) =>
-              _offlineBookCacheService.loadProgress(serverKey, userId, book.id),
+        localProgressBookIds.map(
+          (bookId) =>
+              _offlineBookCacheService.loadProgress(serverKey, userId, bookId),
         ),
       )).whereType<ReadingProgressView>().toList();
       _readingProgresses = _mergeProgresses(

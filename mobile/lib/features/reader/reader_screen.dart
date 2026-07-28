@@ -47,6 +47,42 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   String? _viewportTapZone;
   bool _autoScrollEnabled = false;
   double _autoScrollSpeed = 32;
+  bool _isClosingReader = false;
+  bool _allowReaderPop = false;
+
+  Future<void> _closeReader(
+    ReaderController controller, [
+    Object? result,
+  ]) async {
+    if (_isClosingReader) return;
+    _isClosingReader = true;
+    try {
+      await controller.flushProgress();
+    } finally {
+      if (mounted) {
+        setState(() => _allowReaderPop = true);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          if (Navigator.of(context).canPop()) {
+            Navigator.of(context).pop(result);
+          } else {
+            context.go('/shelf');
+          }
+        });
+      }
+    }
+  }
+
+  Widget _flushProgressOnPop(ReaderController controller, Widget child) =>
+      PopScope<Object?>(
+        canPop: _allowReaderPop,
+        onPopInvokedWithResult: (didPop, result) async {
+          if (!didPop) {
+            await _closeReader(controller, result);
+          }
+        },
+        child: child,
+      );
 
   void _dispatchViewportTapZone(String zone) {
     setState(() {
@@ -260,110 +296,116 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
           );
 
     if (wideReader) {
-      return CallbackShortcuts(
-        bindings: <ShortcutActivator, VoidCallback>{
-          const SingleActivator(LogicalKeyboardKey.arrowLeft): () =>
-              _dispatchViewportTapZone('left'),
-          const SingleActivator(LogicalKeyboardKey.arrowRight): () =>
-              _dispatchViewportTapZone('right'),
-          const SingleActivator(LogicalKeyboardKey.space): () =>
-              _dispatchViewportTapZone('center'),
-          const SingleActivator(LogicalKeyboardKey.keyM):
-              handleTabletMenuRequest,
-          const SingleActivator(LogicalKeyboardKey.escape): () {
-            if (_tabletPanel != null) {
-              setState(() => _tabletPanel = null);
-              return;
-            }
-            if (!controller.uiVisible) {
-              controller.setUiVisible(true);
-            }
+      return _flushProgressOnPop(
+        controller,
+        CallbackShortcuts(
+          bindings: <ShortcutActivator, VoidCallback>{
+            const SingleActivator(LogicalKeyboardKey.arrowLeft): () =>
+                _dispatchViewportTapZone('left'),
+            const SingleActivator(LogicalKeyboardKey.arrowRight): () =>
+                _dispatchViewportTapZone('right'),
+            const SingleActivator(LogicalKeyboardKey.space): () =>
+                _dispatchViewportTapZone('center'),
+            const SingleActivator(LogicalKeyboardKey.keyM):
+                handleTabletMenuRequest,
+            const SingleActivator(LogicalKeyboardKey.escape): () {
+              if (_tabletPanel != null) {
+                setState(() => _tabletPanel = null);
+                return;
+              }
+              if (!controller.uiVisible) {
+                controller.setUiVisible(true);
+              }
+            },
           },
-        },
-        child: Focus(
-          autofocus: true,
-          child: Scaffold(
-            body: SafeArea(
-              child: Stack(
-                children: [
-                  Positioned.fill(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(28, 20, 28, 20),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(28),
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(color: palette.background),
-                          child: Stack(
+          child: Focus(
+            autofocus: true,
+            child: Scaffold(
+              body: SafeArea(
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(28, 20, 28, 20),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(28),
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: palette.background,
+                            ),
+                            child: Stack(
+                              children: [
+                                Positioned.fill(child: body),
+                                if (controller.hasPendingChapterLoad)
+                                  const Positioned(
+                                    top: 0,
+                                    left: 0,
+                                    right: 0,
+                                    child: LinearProgressIndicator(),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      top: 18,
+                      left: 24,
+                      right: 28,
+                      child: _TabletChromeVisibility(
+                        visible: controller.uiVisible,
+                        offset: const Offset(0, -0.06),
+                        child: _TabletReaderHeader(
+                          detail: detail,
+                          controller: controller,
+                          onBack: () => _closeReader(controller),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      right: 20,
+                      top: 0,
+                      bottom: 0,
+                      child: Center(
+                        child: _TabletChromeVisibility(
+                          visible: controller.uiVisible,
+                          offset: const Offset(0.08, 0),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              Positioned.fill(child: body),
-                              if (controller.hasPendingChapterLoad)
-                                const Positioned(
-                                  top: 0,
-                                  left: 0,
-                                  right: 0,
-                                  child: LinearProgressIndicator(),
-                                ),
+                              _TabletReaderDock(
+                                activePanel: _tabletPanel,
+                                onSelectPanel: _toggleTabletPanel,
+                                onAddBookmark: controller.addBookmark,
+                                bookmarkDisabled:
+                                    controller.hasCurrentLocationBookmark ||
+                                    controller.isReadOnlyOffline,
+                              ),
+                              const SizedBox(height: 14),
+                              _TabletReaderProgressRing(controller: controller),
                             ],
                           ),
                         ),
                       ),
                     ),
-                  ),
-                  Positioned(
-                    top: 18,
-                    left: 24,
-                    right: 28,
-                    child: _TabletChromeVisibility(
-                      visible: controller.uiVisible,
-                      offset: const Offset(0, -0.06),
-                      child: _TabletReaderHeader(
-                        detail: detail,
-                        controller: controller,
-                      ),
+                    _TabletReaderPanelScrim(
+                      visible: _tabletPanel != null,
+                      onTap: () => setState(() => _tabletPanel = null),
                     ),
-                  ),
-                  Positioned(
-                    right: 20,
-                    top: 0,
-                    bottom: 0,
-                    child: Center(
-                      child: _TabletChromeVisibility(
-                        visible: controller.uiVisible,
-                        offset: const Offset(0.08, 0),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _TabletReaderDock(
-                              activePanel: _tabletPanel,
-                              onSelectPanel: _toggleTabletPanel,
-                              onAddBookmark: controller.addBookmark,
-                              bookmarkDisabled:
-                                  controller.hasCurrentLocationBookmark ||
-                                  controller.isReadOnlyOffline,
-                            ),
-                            const SizedBox(height: 14),
-                            _TabletReaderProgressRing(controller: controller),
-                          ],
-                        ),
-                      ),
+                    _TabletReaderPanelHost(
+                      panel: _tabletPanel,
+                      controller: controller,
+                      onClose: () => setState(() => _tabletPanel = null),
+                      onEditAnnotation: (annotation) {
+                        _openAnnotationComposer(
+                          controller,
+                          annotation: annotation,
+                        );
+                      },
                     ),
-                  ),
-                  _TabletReaderPanelScrim(
-                    visible: _tabletPanel != null,
-                    onTap: () => setState(() => _tabletPanel = null),
-                  ),
-                  _TabletReaderPanelHost(
-                    panel: _tabletPanel,
-                    controller: controller,
-                    onClose: () => setState(() => _tabletPanel = null),
-                    onEditAnnotation: (annotation) {
-                      _openAnnotationComposer(
-                        controller,
-                        annotation: annotation,
-                      );
-                    },
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -371,72 +413,75 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       );
     }
 
-    return Scaffold(
-      key: _scaffoldKey,
-      drawer: Drawer(
-        child: SafeArea(child: _ReaderLeftPanel(controller: controller)),
-      ),
-      body: SafeArea(
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 24, 16, 40),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (controller.isCurrentChapterLoading)
-                      const Padding(
-                        padding: EdgeInsets.only(bottom: 16),
-                        child: LinearProgressIndicator(),
-                      ),
-                    Expanded(child: body),
-                  ],
-                ),
-              ),
-            ),
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: _TabletChromeVisibility(
-                visible: controller.uiVisible,
-                offset: const Offset(0, -0.08),
-                child: _MobileReaderTopBar(
-                  title: detail.title,
-                  onOpenMenu: () => _scaffoldKey.currentState?.openDrawer(),
-                  onOpenBookmarks: () => _openBookmarksSheet(controller),
-                  onOpenNotes: () => _openNotesSheet(controller),
-                  autoScrollEnabled: _autoScrollEnabled,
-                  onAutoScroll: () => _toggleAutoScroll(controller),
-                  onOpenSettings: () => showModalBottomSheet<void>(
-                    context: context,
-                    isScrollControlled: true,
-                    builder: (context) => const ReaderSettingsSheet(),
+    return _flushProgressOnPop(
+      controller,
+      Scaffold(
+        key: _scaffoldKey,
+        drawer: Drawer(
+          child: SafeArea(child: _ReaderLeftPanel(controller: controller)),
+        ),
+        body: SafeArea(
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 24, 16, 40),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (controller.isCurrentChapterLoading)
+                        const Padding(
+                          padding: EdgeInsets.only(bottom: 16),
+                          child: LinearProgressIndicator(),
+                        ),
+                      Expanded(child: body),
+                    ],
                   ),
                 ),
               ),
-            ),
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: _TabletChromeVisibility(
-                visible: controller.uiVisible,
-                offset: const Offset(0, 0.12),
-                child: _MobileReaderBottomBar(controller: controller),
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: _TabletChromeVisibility(
+                  visible: controller.uiVisible,
+                  offset: const Offset(0, -0.08),
+                  child: _MobileReaderTopBar(
+                    title: detail.title,
+                    onOpenMenu: () => _scaffoldKey.currentState?.openDrawer(),
+                    onOpenBookmarks: () => _openBookmarksSheet(controller),
+                    onOpenNotes: () => _openNotesSheet(controller),
+                    autoScrollEnabled: _autoScrollEnabled,
+                    onAutoScroll: () => _toggleAutoScroll(controller),
+                    onOpenSettings: () => showModalBottomSheet<void>(
+                      context: context,
+                      isScrollControlled: true,
+                      builder: (context) => const ReaderSettingsSheet(),
+                    ),
+                  ),
+                ),
               ),
-            ),
-            Positioned(
-              right: 16,
-              bottom: controller.uiVisible ? 132 : 16,
-              child: _AutoScrollStatus(
-                visible: _autoScrollEnabled,
-                speedLabel: _autoScrollSpeedLabel,
-                onStop: _stopAutoScroll,
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: _TabletChromeVisibility(
+                  visible: controller.uiVisible,
+                  offset: const Offset(0, 0.12),
+                  child: _MobileReaderBottomBar(controller: controller),
+                ),
               ),
-            ),
-          ],
+              Positioned(
+                right: 16,
+                bottom: controller.uiVisible ? 132 : 16,
+                child: _AutoScrollStatus(
+                  visible: _autoScrollEnabled,
+                  speedLabel: _autoScrollSpeedLabel,
+                  onStop: _stopAutoScroll,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1009,10 +1054,15 @@ class _UnsupportedReaderView extends StatelessWidget {
 }
 
 class _TabletReaderHeader extends StatelessWidget {
-  const _TabletReaderHeader({required this.detail, required this.controller});
+  const _TabletReaderHeader({
+    required this.detail,
+    required this.controller,
+    required this.onBack,
+  });
 
   final BookDetail detail;
   final ReaderController controller;
+  final Future<void> Function() onBack;
 
   @override
   Widget build(BuildContext context) {
@@ -1028,13 +1078,7 @@ class _TabletReaderHeader extends StatelessWidget {
       child: Row(
         children: [
           IconButton(
-            onPressed: () {
-              if (Navigator.of(context).canPop()) {
-                Navigator.of(context).pop();
-                return;
-              }
-              context.go('/shelf');
-            },
+            onPressed: onBack,
             icon: const Icon(Icons.arrow_back_ios_new),
             iconSize: 20,
             visualDensity: VisualDensity.compact,

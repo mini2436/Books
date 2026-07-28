@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -7,6 +8,8 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../models/book_models.dart';
 import '../models/sync_models.dart';
+import 'offline_web_book_store_stub.dart'
+    if (dart.library.js_interop) 'offline_web_book_store_web.dart';
 
 class OfflineCacheIdentity {
   const OfflineCacheIdentity({
@@ -27,6 +30,7 @@ class OfflineBookCacheService {
     : _databasePathOverride = databasePathOverride;
 
   final String? _databasePathOverride;
+  final WebOfflineBookStore _webStore = WebOfflineBookStore();
 
   Future<Database> get _database async {
     if (kIsWeb) {
@@ -40,6 +44,10 @@ class OfflineBookCacheService {
 
   @visibleForTesting
   Future<void> close() async {
+    if (kIsWeb) {
+      await _webStore.close();
+      return;
+    }
     final database = await _databaseFuture;
     await database?.close();
     _databaseFuture = null;
@@ -55,7 +63,33 @@ class OfflineBookCacheService {
   Future<List<OfflineCacheIdentity>> listCachedIdentities(
     String legacyServerKey,
   ) async {
-    if (kIsWeb) return const [];
+    if (kIsWeb) {
+      final rows = await _webStore.listBooks();
+      final grouped = <String, OfflineCacheIdentity>{};
+      for (final row in rows) {
+        final serverKey = row['server_key']! as String;
+        final userId = row['user_id']! as int;
+        final downloadedAt = row['downloaded_at']! as String;
+        final key = '$serverKey\u0000$userId';
+        final current = grouped[key];
+        grouped[key] = OfflineCacheIdentity(
+          serverKey: serverKey,
+          userId: userId,
+          bookCount: (current?.bookCount ?? 0) + 1,
+          lastDownloadedAt:
+              current == null ||
+                  downloadedAt.compareTo(current.lastDownloadedAt) > 0
+              ? downloadedAt
+              : current.lastDownloadedAt,
+        );
+      }
+      final identities = grouped.values.toList()
+        ..sort(
+          (left, right) =>
+              right.lastDownloadedAt.compareTo(left.lastDownloadedAt),
+        );
+      return identities;
+    }
     final db = await _database;
     await _claimLegacyRows(db, legacyServerKey);
     final rows = await db.rawQuery('''
@@ -84,7 +118,25 @@ class OfflineBookCacheService {
     String serverKey,
     int userId,
   ) async {
-    if (kIsWeb) return const [];
+    if (kIsWeb) {
+      final rows = await _webStore.listBooks(
+        serverKey: serverKey,
+        userId: userId,
+      );
+      rows.sort(
+        (left, right) => (right['downloaded_at']! as String).compareTo(
+          left['downloaded_at']! as String,
+        ),
+      );
+      return rows
+          .map(
+            (row) => BookSummary.fromJson(
+              jsonDecode(row['summary_json']! as String)
+                  as Map<String, dynamic>,
+            ),
+          )
+          .toList();
+    }
     final db = await _database;
     await _claimLegacyRows(db, serverKey);
     final rows = await db.query(
@@ -104,7 +156,12 @@ class OfflineBookCacheService {
   }
 
   Future<Set<int>> cachedBookIds(String serverKey, int userId) async {
-    if (kIsWeb) return <int>{};
+    if (kIsWeb) {
+      return (await _webStore.listBooks(
+        serverKey: serverKey,
+        userId: userId,
+      )).map((row) => row['book_id']! as int).toSet();
+    }
     final rows = await (await _database).query(
       'offline_books',
       columns: ['book_id'],
@@ -115,7 +172,9 @@ class OfflineBookCacheService {
   }
 
   Future<bool> isBookCached(String serverKey, int userId, int bookId) async {
-    if (kIsWeb) return false;
+    if (kIsWeb) {
+      return await _webStore.getBook(serverKey, userId, bookId) != null;
+    }
     final rows = await (await _database).query(
       'offline_books',
       columns: ['book_id'],
@@ -127,7 +186,10 @@ class OfflineBookCacheService {
   }
 
   Future<void> deleteBook(String serverKey, int userId, int bookId) async {
-    if (kIsWeb) return;
+    if (kIsWeb) {
+      await _webStore.deleteBook(serverKey, userId, bookId);
+      return;
+    }
     final db = await _database;
     await db.transaction((txn) async {
       final args = [serverKey, userId, bookId];
@@ -155,7 +217,16 @@ class OfflineBookCacheService {
     int bookId,
     BookContentChapter chapter,
   ) async {
-    if (kIsWeb) return;
+    if (kIsWeb) {
+      await _webStore.putChapter({
+        'server_key': serverKey,
+        'user_id': userId,
+        'book_id': bookId,
+        'chapter_index': chapter.chapterIndex,
+        'chapter_json': jsonEncode(chapter.toJson()),
+      });
+      return;
+    }
     await (await _database).insert('offline_chapters', {
       'server_key': serverKey,
       'user_id': userId,
@@ -172,7 +243,16 @@ class OfflineBookCacheService {
     String resourceId,
     Uint8List bytes,
   ) async {
-    if (kIsWeb) return;
+    if (kIsWeb) {
+      await _webStore.putResource({
+        'server_key': serverKey,
+        'user_id': userId,
+        'book_id': bookId,
+        'resource_id': resourceId,
+        'bytes': bytes,
+      });
+      return;
+    }
     await (await _database).insert('offline_resources', {
       'server_key': serverKey,
       'user_id': userId,
@@ -195,8 +275,7 @@ class OfflineBookCacheService {
     Uint8List? coverBytes,
     required int sizeBytes,
   }) async {
-    if (kIsWeb) return;
-    await (await _database).insert('offline_books', {
+    final row = <String, Object?>{
       'server_key': serverKey,
       'user_id': userId,
       'book_id': summary.id,
@@ -214,7 +293,16 @@ class OfflineBookCacheService {
       'cover_bytes': coverBytes,
       'downloaded_at': DateTime.now().toUtc().toIso8601String(),
       'size_bytes': sizeBytes,
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    };
+    if (kIsWeb) {
+      await _webStore.putBook(row);
+      return;
+    }
+    await (await _database).insert(
+      'offline_books',
+      row,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
   }
 
   Future<BookDetail?> loadDetail(
@@ -249,7 +337,18 @@ class OfflineBookCacheService {
     int bookId,
     int chapterIndex,
   ) async {
-    if (kIsWeb) return null;
+    if (kIsWeb) {
+      final row = await _webStore.getChapter(
+        serverKey,
+        userId,
+        bookId,
+        chapterIndex,
+      );
+      if (row == null) return null;
+      return BookContentChapter.fromJson(
+        jsonDecode(row['chapter_json']! as String) as Map<String, dynamic>,
+      );
+    }
     final rows = await (await _database).query(
       'offline_chapters',
       columns: ['chapter_json'],
@@ -270,7 +369,16 @@ class OfflineBookCacheService {
     int bookId,
     String resourceId,
   ) async {
-    if (kIsWeb) return null;
+    if (kIsWeb) {
+      return _asBytes(
+        (await _webStore.getResource(
+          serverKey,
+          userId,
+          bookId,
+          resourceId,
+        ))?['bytes'],
+      );
+    }
     final rows = await (await _database).query(
       'offline_resources',
       columns: ['bytes'],
@@ -283,15 +391,14 @@ class OfflineBookCacheService {
   }
 
   Future<Uint8List?> loadFile(String serverKey, int userId, int bookId) async =>
-      (await _bookValue(serverKey, userId, bookId, 'file_bytes')) as Uint8List?;
+      _asBytes(await _bookValue(serverKey, userId, bookId, 'file_bytes'));
 
   Future<Uint8List?> loadCover(
     String serverKey,
     int userId,
     int bookId,
   ) async =>
-      (await _bookValue(serverKey, userId, bookId, 'cover_bytes'))
-          as Uint8List?;
+      _asBytes(await _bookValue(serverKey, userId, bookId, 'cover_bytes'));
 
   Future<List<AnnotationView>> loadAnnotations(
     String serverKey,
@@ -345,7 +452,7 @@ class OfflineBookCacheService {
     List<BookmarkView>? bookmarks,
     ReadingProgressView? progress,
   }) async {
-    if (kIsWeb || !await isBookCached(serverKey, userId, bookId)) return;
+    if (!await isBookCached(serverKey, userId, bookId)) return;
     final values = <String, Object?>{};
     if (annotations != null) {
       values['annotations_json'] = jsonEncode(
@@ -361,6 +468,10 @@ class OfflineBookCacheService {
       values['progress_json'] = jsonEncode(progress.toJson());
     }
     if (values.isEmpty) return;
+    if (kIsWeb) {
+      await _webStore.updateBook(serverKey, userId, bookId, values);
+      return;
+    }
     await (await _database).update(
       'offline_books',
       values,
@@ -374,7 +485,24 @@ class OfflineBookCacheService {
     required int userId,
     required Map<String, int> mappings,
   }) async {
-    if (kIsWeb || mappings.isEmpty) return;
+    if (mappings.isEmpty) return;
+    if (kIsWeb) {
+      final rows = await _webStore.listBooks(
+        serverKey: serverKey,
+        userId: userId,
+      );
+      for (final row in rows) {
+        final mapped = _mapAnnotationIds(
+          row['annotations_json']! as String,
+          mappings,
+        );
+        if (mapped == null) continue;
+        await _webStore.updateBook(serverKey, userId, row['book_id']! as int, {
+          'annotations_json': mapped,
+        });
+      }
+      return;
+    }
     final db = await _database;
     await db.transaction((txn) async {
       final rows = await txn.query(
@@ -426,7 +554,15 @@ class OfflineBookCacheService {
   }
 
   Future<int> totalSizeBytes(String serverKey, int userId) async {
-    if (kIsWeb) return 0;
+    if (kIsWeb) {
+      return (await _webStore.listBooks(
+        serverKey: serverKey,
+        userId: userId,
+      )).fold<int>(
+        0,
+        (total, row) => total + ((row['size_bytes'] as num?)?.toInt() ?? 0),
+      );
+    }
     return Sqflite.firstIntValue(
           await (await _database).rawQuery(
             'SELECT COALESCE(SUM(size_bytes), 0) FROM offline_books WHERE server_key = ? AND user_id = ?',
@@ -442,7 +578,9 @@ class OfflineBookCacheService {
     int bookId,
     String column,
   ) async {
-    if (kIsWeb) return null;
+    if (kIsWeb) {
+      return (await _webStore.getBook(serverKey, userId, bookId))?[column];
+    }
     final rows = await (await _database).query(
       'offline_books',
       columns: [column],
@@ -612,4 +750,39 @@ class OfflineBookCacheService {
       !kIsWeb &&
       (defaultTargetPlatform == TargetPlatform.windows ||
           defaultTargetPlatform == TargetPlatform.linux);
+
+  Uint8List? _asBytes(Object? value) {
+    if (value is Uint8List) return value;
+    if (value is ByteBuffer) return value.asUint8List();
+    if (value is List) return Uint8List.fromList(value.cast<int>());
+    return null;
+  }
+
+  String? _mapAnnotationIds(String annotationsJson, Map<String, int> mappings) {
+    final annotations = (jsonDecode(annotationsJson) as List<dynamic>)
+        .map((item) => AnnotationView.fromJson(item as Map<String, dynamic>))
+        .toList();
+    var changed = false;
+    final mapped = annotations.map((annotation) {
+      if (annotation.id >= 0) return annotation;
+      final serverId =
+          mappings[annotationClientTempIdForLocalId(annotation.id)];
+      if (serverId == null) return annotation;
+      changed = true;
+      return AnnotationView(
+        id: serverId,
+        bookId: annotation.bookId,
+        quoteText: annotation.quoteText,
+        noteText: annotation.noteText,
+        color: annotation.color,
+        anchor: annotation.anchor,
+        version: 1,
+        deleted: annotation.deleted,
+        updatedAt: annotation.updatedAt,
+      );
+    }).toList();
+    return changed
+        ? jsonEncode(mapped.map((item) => item.toJson()).toList())
+        : null;
+  }
 }

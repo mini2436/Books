@@ -149,9 +149,7 @@ class AuthController extends ChangeNotifier {
         _apiClient.baseUrl,
       );
       if (identities.isEmpty) {
-        _errorMessage = kIsWeb
-            ? 'Web 端暂不支持离线书库，请在 Windows 或移动端使用离线阅读。'
-            : '当前设备还没有离线缓存，请先登录并下载书籍。';
+        _errorMessage = '当前设备还没有离线缓存，请先登录并下载书籍。';
         return const [];
       }
       _errorMessage = null;
@@ -175,9 +173,7 @@ class AuthController extends ChangeNotifier {
             _apiClient.baseUrl,
           );
       if (identity == null) {
-        _errorMessage = kIsWeb
-            ? 'Web 端暂不支持离线书库，请在 Windows 或移动端使用离线阅读。'
-            : '当前设备还没有离线缓存，请先登录并下载书籍。';
+        _errorMessage = '当前设备还没有离线缓存，请先登录并下载书籍。';
         return false;
       }
       _session = null;

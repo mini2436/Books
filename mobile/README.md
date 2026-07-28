@@ -89,4 +89,6 @@ flutter build web --release --dart-define=API_BASE_URL=http://reader-server:8080
 
 产物位于 `build/web/`，可由任意静态 Web 服务器托管。浏览器访问地址与 API 地址不同时，后端需要允许对应来源；HTTPS 页面必须使用 HTTPS API。
 
+Web 构建包含自定义 PWA Service Worker。用户成功打开一次页面后，首页、Flutter 运行时、字体和图标会保存为应用壳缓存；服务器不可访问时，刷新或重新打开页面仍可进入离线书库。API 响应和图书数据不会进入应用壳缓存，图书、进度和批注仍由 IndexedDB 按服务器与用户隔离保存。Service Worker 仅能在 HTTPS 或 `localhost`/`127.0.0.1` 安全上下文中启用，局域网 IP 的 HTTP 地址需要先配置 HTTPS。
+
 Web 端离线同步队列存放在浏览器本地存储中。图书和头像上传会在浏览器中读取文件内容，因此上传大文件时会占用相应的浏览器内存。

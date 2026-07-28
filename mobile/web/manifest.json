@@ -5,7 +5,7 @@
     "display": "standalone",
     "background_color": "#FBF3E5",
     "theme_color": "#FBF3E5",
-    "description": "A new Flutter project.",
+    "description": "支持离线阅读与批注同步的私人书架。",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

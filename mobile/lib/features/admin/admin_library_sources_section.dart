@@ -1,5 +1,7 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:private_reader_mobile/shared/localization/localized_text.dart';
+import 'package:private_reader_mobile/shared/localization/app_localizations.dart';
 
 import '../../data/models/admin_models.dart';
 import '../../data/services/local_library_folder_picker.dart';
@@ -460,17 +462,18 @@ class _LibrarySourceDialogState extends ConsumerState<_LibrarySourceDialog> {
           children: [
             TextFormField(
               controller: _nameController,
-              decoration: const InputDecoration(labelText: '名称'),
-              validator: (value) =>
-                  (value == null || value.trim().isEmpty) ? '请输入名称' : null,
+              decoration: InputDecoration(labelText: context.tr('名称')),
+              validator: (value) => (value == null || value.trim().isEmpty)
+                  ? context.tr('请输入名称')
+                  : null,
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
               initialValue: _sourceType,
               borderRadius: BorderRadius.circular(16),
-              decoration: const InputDecoration(
-                labelText: '资源类型',
-                border: OutlineInputBorder(
+              decoration: InputDecoration(
+                labelText: context.tr('资源类型'),
+                border: const OutlineInputBorder(
                   borderRadius: BorderRadius.all(Radius.circular(16)),
                 ),
               ),
@@ -494,25 +497,25 @@ class _LibrarySourceDialogState extends ConsumerState<_LibrarySourceDialog> {
             if (isWebDav) ...[
               TextFormField(
                 controller: _baseUrlController,
-                decoration: const InputDecoration(labelText: 'WebDAV 地址'),
+                decoration: InputDecoration(labelText: context.tr('WebDAV 地址')),
                 validator: (value) => (value == null || value.trim().isEmpty)
-                    ? '请输入 WebDAV 地址'
+                    ? context.tr('请输入 WebDAV 地址')
                     : null,
               ),
               const SizedBox(height: 12),
               TextFormField(
                 controller: _remotePathController,
-                decoration: const InputDecoration(labelText: '远程目录'),
+                decoration: InputDecoration(labelText: context.tr('远程目录')),
               ),
               const SizedBox(height: 12),
               TextFormField(
                 controller: _usernameController,
-                decoration: const InputDecoration(labelText: '账号'),
+                decoration: InputDecoration(labelText: context.tr('账号')),
               ),
               const SizedBox(height: 12),
               TextFormField(
                 controller: _passwordController,
-                decoration: const InputDecoration(labelText: '密码'),
+                decoration: InputDecoration(labelText: context.tr('密码')),
                 obscureText: true,
               ),
             ] else ...[
@@ -531,12 +534,12 @@ class _LibrarySourceDialogState extends ConsumerState<_LibrarySourceDialog> {
               const SizedBox(height: 12),
               TextFormField(
                 controller: _intervalController,
-                decoration: const InputDecoration(labelText: '扫描周期（分钟）'),
+                decoration: InputDecoration(labelText: context.tr('扫描周期（分钟）')),
                 keyboardType: TextInputType.number,
                 validator: (value) {
                   final minutes = int.tryParse(value ?? '');
                   if (minutes == null || minutes <= 0) {
-                    return '请输入大于 0 的分钟数';
+                    return context.tr('请输入大于 0 的分钟数');
                   }
                   return null;
                 },

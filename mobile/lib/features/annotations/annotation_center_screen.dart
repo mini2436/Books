@@ -1,5 +1,7 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:private_reader_mobile/shared/localization/localized_text.dart';
+import 'package:private_reader_mobile/shared/localization/app_localizations.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/models/book_models.dart';
@@ -114,7 +116,7 @@ class _AnnotationCenterScreenState
                         controller: _searchController,
                         textInputAction: TextInputAction.search,
                         decoration: InputDecoration(
-                          hintText: '搜索书名、作者或格式',
+                          hintText: context.tr('搜索书名、作者或格式'),
                           prefixIcon: const Icon(Icons.search),
                           suffixIcon: _query.isEmpty
                               ? null
@@ -361,7 +363,7 @@ class _AnnotationBookDetailScreenState
                       controller: _searchController,
                       textInputAction: TextInputAction.search,
                       decoration: InputDecoration(
-                        hintText: '搜索批注内容、笔记或日期',
+                        hintText: context.tr('搜索批注内容、笔记或日期'),
                         prefixIcon: const Icon(Icons.search),
                         suffixIcon: _query.isEmpty
                             ? null

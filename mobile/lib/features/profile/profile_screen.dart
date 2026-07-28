@@ -1,13 +1,17 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:private_reader_mobile/shared/localization/app_locale.dart';
+import 'package:private_reader_mobile/shared/localization/app_localizations.dart';
+import 'package:private_reader_mobile/shared/localization/localized_text.dart';
 
 import '../../data/models/user_role.dart';
 import '../../shared/theme/reader_theme_extension.dart';
 import '../../shared/utils/responsive.dart';
 import '../../shared/widgets/glass_dialog.dart';
 import '../../shared/widgets/glass_surface.dart';
+import '../../shared/widgets/language_selector.dart';
 import '../../shared/widgets/centered_scale_dialog.dart';
 import '../../shared/widgets/change_password_dialog.dart';
 import '../auth/auth_controller.dart';
@@ -32,6 +36,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final user = auth.user;
     final isOfflineGuest = auth.isOfflineGuest;
     final isNightMode = preferences.themeMode == ReaderThemeMode.night;
+    final appLanguage = ref
+        .watch(appLocaleControllerProvider)
+        .effectiveLanguage(context);
 
     return Scaffold(
       body: SafeArea(
@@ -137,7 +144,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                 ? null
                                 : _editDisplayName,
                             visualDensity: VisualDensity.compact,
-                            tooltip: '编辑个人名称',
+                            tooltip: context.tr('编辑个人名称'),
                             icon: const Icon(Icons.edit_rounded, size: 19),
                           ),
                         ],
@@ -192,6 +199,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 isScrollControlled: true,
                 builder: (context) => const ReaderSettingsSheet(),
               ),
+            ),
+            _ActionTile(
+              icon: Icons.language_rounded,
+              title: '语言',
+              subtitle: appLanguage == AppLanguage.chinese ? '简体中文' : 'English',
+              onTap: () => showLanguagePicker(context, ref),
             ),
             if (!isOfflineGuest)
               _ActionTile(
@@ -302,9 +315,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           autofocus: true,
           maxLength: 120,
           textInputAction: TextInputAction.done,
-          decoration: const InputDecoration(
-            labelText: '个人名称',
-            hintText: '留空将恢复显示登录账号',
+          decoration: InputDecoration(
+            labelText: context.tr('个人名称'),
+            hintText: context.tr('留空将恢复显示登录账号'),
           ),
           onSubmitted: (value) => Navigator.of(context).pop(value),
         ),

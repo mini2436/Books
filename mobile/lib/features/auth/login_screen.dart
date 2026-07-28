@@ -1,7 +1,9 @@
 import 'dart:math' as math;
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:private_reader_mobile/shared/localization/app_localizations.dart';
+import 'package:private_reader_mobile/shared/localization/localized_text.dart';
 
 import '../../data/services/offline_book_cache_service.dart';
 import '../../shared/theme/reader_theme_extension.dart';
@@ -9,6 +11,7 @@ import '../../shared/theme/glass_theme.dart';
 import '../../shared/utils/responsive.dart';
 import '../../shared/widgets/glass_dialog.dart';
 import '../../shared/widgets/glass_surface.dart';
+import '../../shared/widgets/language_selector.dart';
 import 'auth_controller.dart';
 import '../settings/server_config_controller.dart';
 
@@ -78,12 +81,27 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            '轻阅',
-            textAlign: tablet ? TextAlign.left : TextAlign.center,
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-              letterSpacing: -0.6,
+          SizedBox(
+            height: 42,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Align(
+                  alignment: tablet ? Alignment.centerLeft : Alignment.center,
+                  child: Text(
+                    '轻阅',
+                    textAlign: tablet ? TextAlign.left : TextAlign.center,
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.6,
+                    ),
+                  ),
+                ),
+                const Align(
+                  alignment: Alignment.centerRight,
+                  child: LanguageIconButton(),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 6),
@@ -98,7 +116,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
           TextFormField(
             controller: _serverAddressController,
             decoration: InputDecoration(
-              labelText: '服务地址',
+              labelText: context.tr('服务地址'),
               suffixIcon: serverConfig.isSaving
                   ? const Padding(
                       padding: EdgeInsets.all(12),
@@ -111,23 +129,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                   : const Icon(Icons.settings_ethernet),
             ),
             keyboardType: TextInputType.url,
-            validator: (value) =>
-                (value == null || value.trim().isEmpty) ? '请输入服务地址' : null,
+            validator: (value) => (value == null || value.trim().isEmpty)
+                ? context.tr('请输入服务地址')
+                : null,
           ),
           const SizedBox(height: 14),
           TextFormField(
             controller: _usernameController,
-            decoration: const InputDecoration(labelText: '用户名'),
-            validator: (value) =>
-                (value == null || value.trim().isEmpty) ? '请输入用户名' : null,
+            decoration: InputDecoration(labelText: context.tr('用户名')),
+            validator: (value) => (value == null || value.trim().isEmpty)
+                ? context.tr('请输入用户名')
+                : null,
           ),
           const SizedBox(height: 14),
           TextFormField(
             controller: _passwordController,
-            decoration: const InputDecoration(labelText: '密码'),
+            decoration: InputDecoration(labelText: context.tr('密码')),
             obscureText: true,
             validator: (value) =>
-                (value == null || value.isEmpty) ? '请输入密码' : null,
+                (value == null || value.isEmpty) ? context.tr('请输入密码') : null,
           ),
           const SizedBox(height: 20),
           if (serverConfig.errorMessage != null)
@@ -334,9 +354,10 @@ class _OfflineIdentityOption extends StatelessWidget {
     return Semantics(
       button: true,
       selected: selected,
-      label:
-          '${_serverLabel(identity.serverKey)}，用户 ${identity.userId}，'
-          '${identity.bookCount} 本离线书籍',
+      label: context.tr(
+        '${_serverLabel(identity.serverKey)}，用户 ${identity.userId}，'
+        '${identity.bookCount} 本离线书籍',
+      ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(

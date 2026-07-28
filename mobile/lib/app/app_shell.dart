@@ -1,6 +1,8 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:private_reader_mobile/shared/localization/localized_text.dart';
+import 'package:private_reader_mobile/shared/localization/app_localizations.dart';
 
 import '../features/auth/auth_controller.dart';
 import '../shared/theme/glass_theme.dart';
@@ -242,7 +244,7 @@ class _FloatingNavigationItem extends StatelessWidget {
     return Semantics(
       button: true,
       selected: selected,
-      label: destination.label,
+      label: context.tr(destination.label),
       child: Material(
         type: MaterialType.transparency,
         child: InkWell(

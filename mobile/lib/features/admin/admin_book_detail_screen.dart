@@ -1,5 +1,7 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:private_reader_mobile/shared/localization/localized_text.dart';
+import 'package:private_reader_mobile/shared/localization/app_localizations.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/models/admin_models.dart';
@@ -296,18 +298,18 @@ class _BookDetailOperations extends StatelessWidget {
               TextField(
                 controller: titleController,
                 maxLength: 255,
-                decoration: const InputDecoration(
-                  labelText: '书名',
-                  hintText: '请输入书名',
+                decoration: InputDecoration(
+                  labelText: context.tr('书名'),
+                  hintText: context.tr('请输入书名'),
                 ),
               ),
               const SizedBox(height: 10),
               TextField(
                 controller: authorController,
                 maxLength: 255,
-                decoration: const InputDecoration(
-                  labelText: '作者（可选）',
-                  hintText: '留空可清除作者',
+                decoration: InputDecoration(
+                  labelText: context.tr('作者（可选）'),
+                  hintText: context.tr('留空可清除作者'),
                 ),
               ),
               const SizedBox(height: 4),
@@ -461,9 +463,9 @@ class _BookDetailOperations extends StatelessWidget {
                         flex: compact ? 0 : 1,
                         child: TextField(
                           controller: groupController,
-                          decoration: const InputDecoration(
-                            labelText: '分组名称',
-                            hintText: '例如：经典文学 / 待整理 / 管理样书',
+                          decoration: InputDecoration(
+                            labelText: context.tr('分组名称'),
+                            hintText: context.tr('例如：经典文学 / 待整理 / 管理样书'),
                           ),
                         ),
                       ),

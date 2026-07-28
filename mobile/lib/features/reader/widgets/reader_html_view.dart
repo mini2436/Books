@@ -13,6 +13,7 @@ import 'package:webview_windows/webview_windows.dart' as windows_webview;
 import '../../../data/models/book_models.dart';
 import '../../../data/models/sync_models.dart';
 import '../../../features/settings/reader_preferences_controller.dart';
+import '../../../shared/localization/app_localizations.dart';
 import '../../../shared/theme/reader_theme_extension.dart';
 import '../../../shared/utils/responsive.dart';
 import '../reader_controller.dart';
@@ -81,6 +82,7 @@ class ReaderHtmlView extends StatefulWidget {
     required this.failedImageResourceIds,
     required this.annotations,
     required this.preferences,
+    this.locale = const Locale('zh', 'CN'),
     required this.palette,
     required this.uiVisible,
     required this.autoScrollEnabled,
@@ -110,6 +112,7 @@ class ReaderHtmlView extends StatefulWidget {
   final Set<String> failedImageResourceIds;
   final List<AnnotationView> annotations;
   final ReaderPreferences preferences;
+  final Locale locale;
   final AppReaderPalette palette;
   final bool uiVisible;
   final bool autoScrollEnabled;
@@ -207,6 +210,8 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
 
   bool get _allowFlutterFallback =>
       _forceFlutterReader || _useWindowsWebView || !widget.pagedMode;
+
+  String _tr(String source) => AppLocalizations(widget.locale).tr(source);
 
   @override
   void initState() {
@@ -1637,6 +1642,18 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
   }
 
   String _buildHtml({String? rootHtml}) {
+    final highlightLabel = _escapeHtml(_tr('高亮'));
+    final annotationLabel = _escapeHtml(_tr('批注'));
+    final notePlaceholder = _escapeHtml(_tr('写下批注'));
+    final colorLabel = _escapeHtml(_tr('颜色'));
+    final underlineLabel = _escapeHtml(_tr('下划线'));
+    final cancelLabel = _escapeHtml(_tr('取消'));
+    final saveLabel = _escapeHtml(_tr('保存'));
+    final noUnderlineLabel = _escapeHtml(_tr('无线条'));
+    final solidUnderlineLabel = _escapeHtml(_tr('直线'));
+    final dottedUnderlineLabel = _escapeHtml(_tr('点线'));
+    final wavyUnderlineLabel = _escapeHtml(_tr('波浪线'));
+    final chooseColorLabel = _escapeHtml(_tr('选择颜色 '));
     final bodyClasses = <String>[
       if (widget.pagedMode) 'reader-paged',
       if (widget.dualColumn) 'reader-dual-column',
@@ -2053,19 +2070,19 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
   <div id="reader-selection-overlay" class="reader-selection-overlay"></div>
   <div id="reader-toolbar" class="reader-toolbar">
     <div class="reader-quickbar">
-      <button type="button" data-action="highlight">高亮</button>
-      <button type="button" class="primary" data-action="compose">批注</button>
+      <button type="button" data-action="highlight">$highlightLabel</button>
+      <button type="button" class="primary" data-action="compose">$annotationLabel</button>
     </div>
     <div class="reader-composer">
       <div id="reader-composer-quote" class="reader-composer-quote"></div>
-      <textarea id="reader-composer-note" placeholder="写下批注"></textarea>
-      <p class="reader-composer-label">颜色</p>
+      <textarea id="reader-composer-note" placeholder="$notePlaceholder"></textarea>
+      <p class="reader-composer-label">$colorLabel</p>
       <div id="reader-color-row" class="reader-color-row"></div>
-      <p class="reader-composer-label">下划线</p>
+      <p class="reader-composer-label">$underlineLabel</p>
       <div id="reader-underline-row" class="reader-underline-row"></div>
       <div class="reader-action-row">
-        <button type="button" data-action="cancelCompose">取消</button>
-        <button type="button" class="primary" data-action="saveAnnotation">保存</button>
+        <button type="button" data-action="cancelCompose">$cancelLabel</button>
+        <button type="button" class="primary" data-action="saveAnnotation">$saveLabel</button>
       </div>
     </div>
   </div>
@@ -2097,10 +2114,10 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
       const annotationColors = ${jsonEncode(_webAnnotationColors)};
       const defaultAnnotationColor = ${jsonEncode(_defaultAnnotationColor(widget.preferences.themeMode))};
       const underlineOptions = [
-        { value: 'none', label: '无线条' },
-        { value: 'solid', label: '直线' },
-        { value: 'dotted', label: '点线' },
-        { value: 'wavy', label: '波浪线' }
+        { value: 'none', label: '$noUnderlineLabel' },
+        { value: 'solid', label: '$solidUnderlineLabel' },
+        { value: 'dotted', label: '$dottedUnderlineLabel' },
+        { value: 'wavy', label: '$wavyUnderlineLabel' }
       ];
       let currentSelection = null;
       let composerOpen = false;
@@ -2733,7 +2750,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
             button.className = 'reader-color-button';
             button.dataset.color = color;
             button.style.background = color;
-            button.setAttribute('aria-label', '选择颜色 ' + color);
+            button.setAttribute('aria-label', '$chooseColorLabel' + color);
             colorRow.appendChild(button);
           });
         }
@@ -3405,9 +3422,11 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
     final imageSource = _useWindowsWebView
         ? _windowsImageServer?.urlFor(windowsReaderImageFileName(block)) ?? ''
         : 'data:${_escapeHtml(mediaType)};base64,${bytes == null ? '' : base64Encode(bytes)}';
+    final failedLabel = _escapeHtml(_tr('图片无法加载'));
+    final loadingLabel = _escapeHtml(_tr('图片加载中'));
     final imageHtml = bytes == null
-        ? '<div class="reader-image-placeholder">${failed ? '图片无法加载' : '图片加载中'}</div>'
-        : '<img class="reader-image" src="$imageSource" alt="${_escapeHtml(block.imageAlt ?? caption)}" onload="window.readerApplyLayout && window.readerApplyLayout()" onerror="this.outerHTML=\'<div class=&quot;reader-image-placeholder&quot;>图片无法加载</div>\'; window.readerApplyLayout && window.readerApplyLayout()"/>';
+        ? '<div class="reader-image-placeholder">${failed ? failedLabel : loadingLabel}</div>'
+        : '<img class="reader-image" src="$imageSource" alt="${_escapeHtml(block.imageAlt ?? caption)}" onload="window.readerApplyLayout && window.readerApplyLayout()" onerror="this.outerHTML=\'<div class=&quot;reader-image-placeholder&quot;>$failedLabel</div>\'; window.readerApplyLayout && window.readerApplyLayout()"/>';
     return '<figure class="reader-block" data-type="image" data-block-anchor="${_escapeHtml(block.anchor)}" data-anchor="${_escapeHtml(block.anchor)}">$imageHtml$captionHtml</figure>';
   }
 

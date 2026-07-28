@@ -1,5 +1,7 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:private_reader_mobile/shared/localization/localized_text.dart';
+import 'package:private_reader_mobile/shared/localization/app_localizations.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
@@ -180,6 +182,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
             failedImageResourceIds: controller.failedImageResourceIds,
             annotations: controller.annotations,
             preferences: preferences,
+            locale: Localizations.localeOf(context),
             palette: palette,
             uiVisible: controller.uiVisible,
             autoScrollEnabled: mobileAutoScroll,
@@ -808,8 +811,8 @@ class _AnnotationComposerSheetState extends State<_AnnotationComposerSheet> {
                           controller: _noteController,
                           minLines: 3,
                           maxLines: 6,
-                          decoration: const InputDecoration(
-                            labelText: '批注内容',
+                          decoration: InputDecoration(
+                            labelText: context.tr('批注内容'),
                             alignLabelWithHint: true,
                           ),
                         ),
@@ -1092,30 +1095,30 @@ class _TabletReaderDock extends StatelessWidget {
         children: [
           _TabletDockButton(
             icon: Icons.menu_book_outlined,
-            tooltip: '目录',
+            tooltip: context.tr('目录'),
             selected: activePanel == _TabletReaderPanel.toc,
             onPressed: () => onSelectPanel(_TabletReaderPanel.toc),
           ),
           _TabletDockButton(
             icon: Icons.sticky_note_2_outlined,
-            tooltip: '批注',
+            tooltip: context.tr('批注'),
             selected: activePanel == _TabletReaderPanel.notes,
             onPressed: () => onSelectPanel(_TabletReaderPanel.notes),
           ),
           _TabletDockButton(
             icon: Icons.bookmarks_outlined,
-            tooltip: '书签',
+            tooltip: context.tr('书签'),
             selected: activePanel == _TabletReaderPanel.bookmarks,
             onPressed: () => onSelectPanel(_TabletReaderPanel.bookmarks),
           ),
           _TabletDockButton(
             icon: Icons.bookmark_add_outlined,
-            tooltip: bookmarkDisabled ? '当前位置已加书签' : '添加当前位置书签',
+            tooltip: context.tr(bookmarkDisabled ? '当前位置已加书签' : '添加当前位置书签'),
             onPressed: bookmarkDisabled ? null : () => onAddBookmark(),
           ),
           _TabletDockButton(
             icon: Icons.tune,
-            tooltip: '阅读设置',
+            tooltip: context.tr('阅读设置'),
             selected: activePanel == _TabletReaderPanel.settings,
             onPressed: () => onSelectPanel(_TabletReaderPanel.settings),
           ),
@@ -1275,7 +1278,7 @@ class _MobileReaderTopBar extends StatelessWidget {
             IconButton(
               onPressed: onOpenMenu,
               icon: const Icon(Icons.menu_rounded),
-              tooltip: '目录',
+              tooltip: context.tr('目录'),
             ),
             Expanded(
               child: Text(
@@ -1290,12 +1293,12 @@ class _MobileReaderTopBar extends StatelessWidget {
             IconButton(
               onPressed: onOpenBookmarks,
               icon: const Icon(Icons.bookmarks_outlined),
-              tooltip: '书签',
+              tooltip: context.tr('书签'),
             ),
             IconButton(
               onPressed: onOpenNotes,
               icon: const Icon(Icons.edit_note_rounded),
-              tooltip: '批注',
+              tooltip: context.tr('批注'),
             ),
             IconButton(
               onPressed: onAutoScroll,
@@ -1305,12 +1308,12 @@ class _MobileReaderTopBar extends StatelessWidget {
                     : Icons.slow_motion_video_rounded,
               ),
               color: autoScrollEnabled ? palette.accent : null,
-              tooltip: autoScrollEnabled ? '暂停自动滚动' : '自动滚动',
+              tooltip: context.tr(autoScrollEnabled ? '暂停自动滚动' : '自动滚动'),
             ),
             IconButton(
               onPressed: onOpenSettings,
               icon: const Icon(Icons.tune_rounded),
-              tooltip: '设置',
+              tooltip: context.tr('设置'),
             ),
           ],
         ),

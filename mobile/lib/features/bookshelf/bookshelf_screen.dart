@@ -1,7 +1,9 @@
 import 'dart:typed_data';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:private_reader_mobile/shared/localization/localized_text.dart';
+import 'package:private_reader_mobile/shared/localization/app_localizations.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/models/book_models.dart';
@@ -636,12 +638,12 @@ class _BookshelfSearchScreenState extends ConsumerState<BookshelfSearchScreen> {
                 textInputAction: TextInputAction.search,
                 onChanged: (value) => setState(() => _query = value),
                 decoration: InputDecoration(
-                  hintText: '输入书名、作者、简介或分组',
+                  hintText: context.tr('输入书名、作者、简介或分组'),
                   prefixIcon: const Icon(Icons.search_rounded),
                   suffixIcon: _query.isEmpty
                       ? null
                       : IconButton(
-                          tooltip: '清空',
+                          tooltip: context.tr('清空'),
                           onPressed: () {
                             _searchController.clear();
                             setState(() => _query = '');
@@ -877,13 +879,13 @@ class _ShelfHeader extends StatelessWidget {
           ),
         ),
         IconButton(
-          tooltip: '搜索藏书',
+          tooltip: context.tr('搜索藏书'),
           onPressed: onSearch,
           icon: const Icon(Icons.search_rounded),
         ),
         const SizedBox(width: 4),
         IconButton.filledTonal(
-          tooltip: '刷新书架',
+          tooltip: context.tr('刷新书架'),
           onPressed: isLoading ? null : onRefresh,
           icon: isLoading
               ? const SizedBox.square(
@@ -1476,7 +1478,7 @@ class _GroupFolderTile extends StatelessWidget {
                 ),
                 if (onEdit != null)
                   IconButton(
-                    tooltip: '修改分组名称',
+                    tooltip: context.tr('修改分组名称'),
                     onPressed: onEdit,
                     visualDensity: VisualDensity.compact,
                     constraints: const BoxConstraints.tightFor(
@@ -1705,17 +1707,17 @@ Future<void> _showRenameGroupDialog(
                 autofocus: true,
                 maxLength: 120,
                 textInputAction: TextInputAction.done,
-                decoration: const InputDecoration(
-                  labelText: '分组名称',
-                  helperText: '使用已有名称会将两个分组合并',
+                decoration: InputDecoration(
+                  labelText: context.tr('分组名称'),
+                  helperText: context.tr('使用已有名称会将两个分组合并'),
                 ),
                 validator: (value) {
                   final normalized = value?.trim() ?? '';
                   if (normalized.isEmpty) {
-                    return '请输入分组名称';
+                    return context.tr('请输入分组名称');
                   }
                   if (normalized == '未分组') {
-                    return '“未分组”是系统保留名称';
+                    return context.tr('“未分组”是系统保留名称');
                   }
                   return null;
                 },
@@ -1845,7 +1847,7 @@ Future<void> _showGroupFolder(
                               Text('${visibleBooks.length} 本'),
                               const SizedBox(width: 8),
                               IconButton(
-                                tooltip: '关闭',
+                                tooltip: context.tr('关闭'),
                                 onPressed: () =>
                                     Navigator.of(dialogContext).pop(),
                                 icon: const Icon(Icons.close_rounded),
@@ -2307,7 +2309,7 @@ class _BookDetailsDialogStateV2 extends State<_BookDetailsDialog> {
                     ),
                   ),
                   IconButton(
-                    tooltip: '关闭',
+                    tooltip: context.tr('关闭'),
                     onPressed: () => Navigator.of(context).pop(),
                     icon: const Icon(Icons.close_rounded),
                   ),
@@ -2366,7 +2368,7 @@ class _BookDetailsDialogStateV2 extends State<_BookDetailsDialog> {
             const Spacer(),
             if (MediaQuery.sizeOf(context).width >= 780)
               IconButton(
-                tooltip: '关闭',
+                tooltip: context.tr('关闭'),
                 onPressed: () => Navigator.of(context).pop(),
                 icon: const Icon(Icons.close_rounded),
               ),
@@ -2553,8 +2555,8 @@ class _BookDetailsDialogStateV2 extends State<_BookDetailsDialog> {
                           controller: _newGroupController,
                           autofocus: true,
                           textInputAction: TextInputAction.done,
-                          decoration: const InputDecoration(
-                            hintText: '输入新分组名称',
+                          decoration: InputDecoration(
+                            hintText: context.tr('输入新分组名称'),
                             isDense: true,
                           ),
                           onSubmitted: (_) => _createGroup(),

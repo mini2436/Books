@@ -1,7 +1,9 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:private_reader_mobile/shared/localization/localized_text.dart';
+import 'package:private_reader_mobile/shared/localization/app_localizations.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/models/admin_models.dart';
@@ -422,7 +424,7 @@ class _UserManagementSection extends ConsumerWidget {
                           const SizedBox(width: 8),
                           if (compactActions)
                             IconButton(
-                              tooltip: '修改密码',
+                              tooltip: context.tr('修改密码'),
                               onPressed: controller.isWorking
                                   ? null
                                   : () => promptPasswordReset(user),
@@ -727,10 +729,10 @@ class _BookManagementSection extends ConsumerWidget {
             children: [
               TextField(
                 onChanged: controller.setBookSearchQuery,
-                decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.search),
-                  hintText: '查找书名、作者或分组',
-                  labelText: '书籍查找',
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.search),
+                  hintText: context.tr('查找书名、作者或分组'),
+                  labelText: context.tr('书籍查找'),
                 ),
               ),
               const SizedBox(height: 14),
@@ -1198,7 +1200,7 @@ class _AnnotationManagementSectionState
                 controller: _searchController,
                 textInputAction: TextInputAction.search,
                 decoration: InputDecoration(
-                  hintText: '搜索书名、作者、分组或格式',
+                  hintText: context.tr('搜索书名、作者、分组或格式'),
                   prefixIcon: const Icon(Icons.search),
                   suffixIcon: _query.isEmpty
                       ? null
@@ -1403,7 +1405,7 @@ class _AdminAnnotationBookDetailScreenState
                       controller: _searchController,
                       textInputAction: TextInputAction.search,
                       decoration: InputDecoration(
-                        hintText: '搜索用户、摘录、笔记或日期',
+                        hintText: context.tr('搜索用户、摘录、笔记或日期'),
                         prefixIcon: const Icon(Icons.search),
                         suffixIcon: _query.isEmpty
                             ? null
@@ -1818,17 +1820,18 @@ class _CreateUserDialogState extends State<CreateUserDialog> {
           children: [
             TextFormField(
               controller: _usernameController,
-              decoration: const InputDecoration(labelText: '用户名'),
-              validator: (value) =>
-                  (value == null || value.trim().isEmpty) ? '请输入用户名' : null,
+              decoration: InputDecoration(labelText: context.tr('用户名')),
+              validator: (value) => (value == null || value.trim().isEmpty)
+                  ? context.tr('请输入用户名')
+                  : null,
             ),
             const SizedBox(height: 12),
             TextFormField(
               controller: _passwordController,
-              decoration: const InputDecoration(labelText: '初始密码'),
+              decoration: InputDecoration(labelText: context.tr('初始密码')),
               obscureText: true,
               validator: (value) => (value == null || value.trim().length < 6)
-                  ? '密码至少 6 位'
+                  ? context.tr('密码至少 6 位')
                   : null,
             ),
             const SizedBox(height: 12),
@@ -1850,9 +1853,9 @@ class _CreateUserDialogState extends State<CreateUserDialog> {
                   });
                 }
               },
-              decoration: const InputDecoration(
-                labelText: '角色',
-                border: OutlineInputBorder(
+              decoration: InputDecoration(
+                labelText: context.tr('角色'),
+                border: const OutlineInputBorder(
                   borderRadius: BorderRadius.all(Radius.circular(16)),
                 ),
               ),

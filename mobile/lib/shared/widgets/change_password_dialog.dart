@@ -1,4 +1,6 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
+import 'package:private_reader_mobile/shared/localization/localized_text.dart';
+import 'package:private_reader_mobile/shared/localization/app_localizations.dart';
 
 import 'glass_dialog.dart';
 
@@ -61,9 +63,10 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
                   obscureText: _obscureText,
                   autofillHints: const [AutofillHints.password],
                   textInputAction: TextInputAction.next,
-                  decoration: const InputDecoration(labelText: '当前密码'),
-                  validator: (value) =>
-                      value == null || value.isEmpty ? '请输入当前密码' : null,
+                  decoration: InputDecoration(labelText: context.tr('当前密码')),
+                  validator: (value) => value == null || value.isEmpty
+                      ? context.tr('请输入当前密码')
+                      : null,
                 ),
                 const SizedBox(height: 12),
               ],
@@ -73,10 +76,10 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
                 autofillHints: const [AutofillHints.newPassword],
                 textInputAction: TextInputAction.next,
                 decoration: InputDecoration(
-                  labelText: '新密码',
-                  helperText: '至少 6 位',
+                  labelText: context.tr('新密码'),
+                  helperText: context.tr('至少 6 位'),
                   suffixIcon: IconButton(
-                    tooltip: _obscureText ? '显示密码' : '隐藏密码',
+                    tooltip: context.tr(_obscureText ? '显示密码' : '隐藏密码'),
                     onPressed: () => setState(() {
                       _obscureText = !_obscureText;
                     }),
@@ -88,9 +91,9 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
                   ),
                 ),
                 validator: (value) => value == null || value.length < 6
-                    ? '新密码至少 6 位'
+                    ? context.tr('新密码至少 6 位')
                     : value.length > 128
-                    ? '新密码不能超过 128 位'
+                    ? context.tr('新密码不能超过 128 位')
                     : null,
               ),
               const SizedBox(height: 12),
@@ -99,9 +102,10 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
                 obscureText: _obscureText,
                 autofillHints: const [AutofillHints.newPassword],
                 textInputAction: TextInputAction.done,
-                decoration: const InputDecoration(labelText: '确认新密码'),
-                validator: (value) =>
-                    value != _newPasswordController.text ? '两次输入的密码不一致' : null,
+                decoration: InputDecoration(labelText: context.tr('确认新密码')),
+                validator: (value) => value != _newPasswordController.text
+                    ? context.tr('两次输入的密码不一致')
+                    : null,
                 onFieldSubmitted: (_) => _submit(),
               ),
             ],

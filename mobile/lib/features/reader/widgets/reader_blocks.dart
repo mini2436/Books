@@ -3,7 +3,8 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
+import 'package:private_reader_mobile/shared/localization/localized_text.dart';
 import 'package:flutter/services.dart';
 
 import '../../../data/models/book_models.dart';

@@ -7,6 +7,7 @@ import com.privatereader.config.AppProperties
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.mockito.kotlin.mock
@@ -16,6 +17,7 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.springframework.mock.web.MockMultipartFile
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.charset.StandardCharsets
 
 class LibrarySourceServiceTest {
     @Test
@@ -46,6 +48,37 @@ class LibrarySourceServiceTest {
         }
         assertEquals(1, partialFiles.size)
         assertEquals(4L, Files.size(partialFiles.single()))
+    }
+
+    @Test
+    fun `client file chunks bound oversized unicode storage names`(@TempDir tempDir: Path) {
+        val fixture = fixture(tempDir)
+        fixture.jdbc.sql(
+            """
+            insert into library_sources (
+                id, name, root_path, enabled, source_type, scan_interval_minutes, created_at, updated_at
+            ) values (5, '超长文件名目录', 'Books', false, 'CLIENT_FOLDER', 60, current_timestamp, current_timestamp)
+            """.trimIndent(),
+        ).update()
+        val relativePath = "超长中文书名".repeat(40) + ".epub"
+
+        fixture.service.uploadClientFileChunk(
+            sourceId = 5,
+            relativePath = relativePath,
+            sizeBytes = 10,
+            lastModifiedMillis = 1234,
+            offsetBytes = 0,
+            file = MockMultipartFile("file", relativePath, "application/epub+zip", byteArrayOf(1, 2, 3, 4)),
+            actorId = 7,
+        )
+
+        val partialFile = Files.walk(tempDir).use { paths ->
+            paths.filter { Files.isRegularFile(it) }.findFirst().orElseThrow()
+        }
+        val storedName = partialFile.fileName.toString()
+        assertTrue(storedName.endsWith(".epub.uploading"))
+        assertTrue(storedName.toByteArray(StandardCharsets.UTF_8).size <= 255)
+        assertEquals(4L, Files.size(partialFile))
     }
 
     @Test

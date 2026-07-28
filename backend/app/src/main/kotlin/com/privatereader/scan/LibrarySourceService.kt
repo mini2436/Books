@@ -34,6 +34,7 @@ import javax.xml.parsers.DocumentBuilderFactory
 import org.xml.sax.InputSource
 
 private const val MAX_CLIENT_UPLOAD_CHUNK_BYTES = 16L * 1024 * 1024
+private const val MAX_CLIENT_STORAGE_FILE_NAME_BYTES = 200
 
 @Service
 class LibrarySourceService(
@@ -307,8 +308,9 @@ class LibrarySourceService(
         )
         Files.createDirectories(targetDirectory)
         val originalName = Path.of(normalizedPath).fileName.toString()
-        val partialFile = targetDirectory.resolve(".$originalName.uploading")
-        val targetFile = targetDirectory.resolve(originalName)
+        val storageFileName = boundedClientStorageFileName(originalName)
+        val partialFile = targetDirectory.resolve(".$storageFileName.uploading")
+        val targetFile = targetDirectory.resolve(storageFileName)
 
         if (offsetBytes == 0L) {
             Files.deleteIfExists(partialFile)
@@ -717,6 +719,34 @@ class LibrarySourceService(
     private fun hashString(value: String): String {
         val digest = MessageDigest.getInstance("SHA-256")
         return HexFormat.of().formatHex(digest.digest(value.toByteArray(StandardCharsets.UTF_8)))
+    }
+
+    private fun boundedClientStorageFileName(originalName: String): String {
+        val extensionStart = originalName.lastIndexOf('.')
+        val extension = if (extensionStart > 0) {
+            originalName.substring(extensionStart)
+                .takeIf { candidate ->
+                    candidate.length <= 16 && candidate.drop(1).all(Char::isLetterOrDigit)
+                }
+                .orEmpty()
+        } else {
+            ""
+        }
+        val stem = if (extension.isEmpty()) originalName else originalName.substring(0, extensionStart)
+        val stemByteBudget = MAX_CLIENT_STORAGE_FILE_NAME_BYTES - extension.toByteArray(StandardCharsets.UTF_8).size
+        val boundedStem = StringBuilder()
+        var usedBytes = 0
+        var index = 0
+        while (index < stem.length) {
+            val codePoint = stem.codePointAt(index)
+            val text = String(Character.toChars(codePoint))
+            val byteCount = text.toByteArray(StandardCharsets.UTF_8).size
+            if (usedBytes + byteCount > stemByteBudget) break
+            boundedStem.append(text)
+            usedBytes += byteCount
+            index += Character.charCount(codePoint)
+        }
+        return "${boundedStem.toString().ifBlank { "book" }}$extension"
     }
 
     private fun normalizeRemotePath(value: String?): String {

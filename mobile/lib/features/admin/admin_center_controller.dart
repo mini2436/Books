@@ -571,18 +571,51 @@ class AdminCenterController extends ChangeNotifier {
           _workingMessage =
               '正在上传 ${uploaded + 1}/${plan.uploadPaths.length} · ${file.fileName}';
           notifyListeners();
-          final bytes = await fileReader.readFile(file);
-          await _authController.runAuthorized(
-            (token) => _apiClient.uploadClientLibraryFile(
-              token,
-              source.id,
-              relativePath: file.relativePath,
-              fileName: file.fileName,
-              sizeBytes: file.sizeBytes,
-              lastModifiedMillis: file.lastModifiedMillis,
-              bytes: bytes,
-            ),
-          );
+          if (file.sizeBytes <= 0) {
+            throw StateError('无法上传空文件：${file.relativePath}');
+          }
+          var offsetBytes = 0;
+          while (offsetBytes < file.sizeBytes) {
+            final remainingBytes = file.sizeBytes - offsetBytes;
+            final chunkLength =
+                remainingBytes < localLibraryUploadChunkSizeBytes
+                ? remainingBytes
+                : localLibraryUploadChunkSizeBytes;
+            final chunkEndBytes = offsetBytes + chunkLength;
+            final chunk = await fileReader.readFileChunk(
+              file,
+              offsetBytes: offsetBytes,
+              lengthBytes: chunkLength,
+            );
+            if (chunk.length != chunkLength) {
+              throw StateError('读取文件分块失败：${file.relativePath}');
+            }
+            final chunkOffsetBytes = offsetBytes;
+            await _authController.runAuthorized(
+              (token) => _apiClient.uploadClientLibraryFileChunk(
+                token,
+                source.id,
+                relativePath: file.relativePath,
+                fileName: file.fileName,
+                sizeBytes: file.sizeBytes,
+                lastModifiedMillis: file.lastModifiedMillis,
+                offsetBytes: chunkOffsetBytes,
+                bytes: chunk,
+                onSendProgress: (sent, total) {
+                  final sentForFile = chunkOffsetBytes + sent;
+                  final percentage = (sentForFile * 100 ~/ file.sizeBytes)
+                      .clamp(0, 100);
+                  _workingMessage =
+                      sent >= total && chunkEndBytes == file.sizeBytes
+                      ? '正在解析 ${uploaded + 1}/${plan.uploadPaths.length} · ${file.fileName}'
+                      : '正在上传 ${uploaded + 1}/${plan.uploadPaths.length} · '
+                            '${file.fileName} · $percentage%';
+                  notifyListeners();
+                },
+              ),
+            );
+            offsetBytes = chunkEndBytes;
+          }
           uploaded += 1;
         }
         await refresh();

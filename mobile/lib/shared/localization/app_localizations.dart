@@ -164,6 +164,14 @@ class AppLocalizations {
     if (match != null) {
       return 'The scan plan contains a missing local file: ${match[1]}';
     }
+    match = RegExp(r'^正在上传 (\d+)/(\d+) · (.+) · (\d+)%$').firstMatch(source);
+    if (match != null) {
+      return 'Uploading ${match[1]}/${match[2]} · ${match[3]} · ${match[4]}%';
+    }
+    match = RegExp(r'^正在解析 (\d+)/(\d+) · (.+)$').firstMatch(source);
+    if (match != null) {
+      return 'Processing ${match[1]}/${match[2]} · ${match[3]}';
+    }
     match = RegExp(r'^跳过 (\d+) 本，标记缺失 (\d+) 本$').firstMatch(source);
     if (match != null) return '${match[1]} skipped, ${match[2]} marked missing';
     match = RegExp(r'^已创建用户 (.+)$').firstMatch(source);

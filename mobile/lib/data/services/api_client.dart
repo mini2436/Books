@@ -565,13 +565,14 @@ class ApiClient {
     return AdminClientScanPlan.fromJson(data);
   }
 
-  Future<Map<String, dynamic>> uploadClientLibraryFile(
+  Future<Map<String, dynamic>> uploadClientLibraryFileChunk(
     String accessToken,
     int sourceId, {
     required String relativePath,
     required String fileName,
     required int sizeBytes,
     required int lastModifiedMillis,
+    required int offsetBytes,
     required Uint8List bytes,
     void Function(int sent, int total)? onSendProgress,
   }) async {
@@ -579,15 +580,18 @@ class ApiClient {
       'relativePath': relativePath,
       'sizeBytes': sizeBytes,
       'lastModifiedMillis': lastModifiedMillis,
+      'offsetBytes': offsetBytes,
       'file': MultipartFile.fromBytes(bytes, filename: fileName),
     });
     return _request<Map<String, dynamic>>(
       () => _dio.post<Map<String, dynamic>>(
-        '/api/admin/library-sources/$sourceId/client-files',
+        '/api/admin/library-sources/$sourceId/client-file-chunks',
         data: formData,
         options: Options(
           headers: _headers(accessToken),
           contentType: 'multipart/form-data',
+          sendTimeout: const Duration(minutes: 5),
+          receiveTimeout: const Duration(minutes: 30),
         ),
         onSendProgress: onSendProgress,
       ),

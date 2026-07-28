@@ -8,7 +8,11 @@ class LocalLibraryFolderPicker implements LocalLibraryFileReader {
   }
 
   @override
-  Future<Uint8List> readFile(LocalLibraryFileSummary file) async {
+  Future<Uint8List> readFileChunk(
+    LocalLibraryFileSummary file, {
+    required int offsetBytes,
+    required int lengthBytes,
+  }) async {
     throw const LocalFolderPickerException('当前平台无法读取本地目录文件');
   }
 }

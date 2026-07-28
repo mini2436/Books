@@ -81,12 +81,23 @@ class LocalLibraryFolderPicker implements LocalLibraryFileReader {
   }
 
   @override
-  Future<Uint8List> readFile(LocalLibraryFileSummary file) async {
+  Future<Uint8List> readFileChunk(
+    LocalLibraryFileSummary file, {
+    required int offsetBytes,
+    required int lengthBytes,
+  }) async {
     final browserFile = _selectedFiles[file.handle];
     if (browserFile == null) {
       throw const LocalFolderPickerException('浏览器目录授权已失效，请重新选择目录');
     }
-    final buffer = await browserFile.arrayBuffer().toDart;
+    final endBytes = offsetBytes + lengthBytes;
+    if (offsetBytes < 0 || lengthBytes <= 0 || endBytes > browserFile.size) {
+      throw const LocalFolderPickerException('读取的文件分块范围无效，请重新选择目录');
+    }
+    final buffer = await browserFile
+        .slice(offsetBytes, endBytes)
+        .arrayBuffer()
+        .toDart;
     return buffer.toDart.asUint8List();
   }
 }

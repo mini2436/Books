@@ -52,6 +52,17 @@ class LocalLibraryFolderPicker implements LocalLibraryFileReader {
   }
 
   @override
-  Future<Uint8List> readFile(LocalLibraryFileSummary file) =>
-      File(file.handle).readAsBytes();
+  Future<Uint8List> readFileChunk(
+    LocalLibraryFileSummary file, {
+    required int offsetBytes,
+    required int lengthBytes,
+  }) async {
+    final opened = await File(file.handle).open();
+    try {
+      await opened.setPosition(offsetBytes);
+      return await opened.read(lengthBytes);
+    } finally {
+      await opened.close();
+    }
+  }
 }

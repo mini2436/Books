@@ -9,6 +9,8 @@ const supportedLibraryExtensions = <String>{
   '.mobi',
 };
 
+const localLibraryUploadChunkSizeBytes = 16 * 1024 * 1024;
+
 class LocalLibraryFileSummary {
   const LocalLibraryFileSummary({
     required this.handle,
@@ -46,7 +48,11 @@ class PickedLocalLibraryFolder {
 }
 
 abstract interface class LocalLibraryFileReader {
-  Future<Uint8List> readFile(LocalLibraryFileSummary file);
+  Future<Uint8List> readFileChunk(
+    LocalLibraryFileSummary file, {
+    required int offsetBytes,
+    required int lengthBytes,
+  });
 }
 
 class LocalFolderPickerException implements Exception {

@@ -165,7 +165,7 @@ Android 真机需将 `API_BASE_URL` 换成家庭服务器或开发机的局域�
 cd mobile
 flutter analyze
 flutter test
-flutter build web --release --dart-define=API_BASE_URL=http://localhost:8080
+flutter build web --release --no-web-resources-cdn --dart-define=API_BASE_URL=http://localhost:8080
 flutter build windows --release --dart-define=API_BASE_URL=http://localhost:8080
 
 # Backend

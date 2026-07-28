@@ -23,6 +23,7 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import java.nio.file.StandardOpenOption
 import java.security.MessageDigest
 import java.time.Duration
 import java.time.Instant
@@ -31,6 +32,8 @@ import java.util.HexFormat
 import javax.xml.XMLConstants
 import javax.xml.parsers.DocumentBuilderFactory
 import org.xml.sax.InputSource
+
+private const val MAX_CLIENT_UPLOAD_CHUNK_BYTES = 16L * 1024 * 1024
 
 @Service
 class LibrarySourceService(
@@ -268,6 +271,90 @@ class LibrarySourceService(
         return mapOf(
             "sourceId" to sourceId,
             "relativePath" to normalizedPath,
+            "bookId" to imported.id,
+            "title" to imported.title,
+        )
+    }
+
+    @Transactional
+    fun uploadClientFileChunk(
+        sourceId: Long,
+        relativePath: String,
+        sizeBytes: Long,
+        lastModifiedMillis: Long,
+        offsetBytes: Long,
+        file: MultipartFile,
+        actorId: Long,
+    ): Map<String, Any> {
+        val source = getSourceRecord(sourceId)
+        require(source.sourceType.isClientFolder) { "Only client folder sources accept file uploads" }
+        require(!file.isEmpty) { "Uploaded chunk must not be empty" }
+        require(sizeBytes > 0 && lastModifiedMillis >= 0) { "Invalid client file summary" }
+        require(offsetBytes >= 0) { "Invalid upload chunk offset" }
+        require(file.size <= MAX_CLIENT_UPLOAD_CHUNK_BYTES) { "Upload chunk exceeds the 16 MiB limit" }
+        require(offsetBytes + file.size <= sizeBytes) { "Upload chunk exceeds the declared file size" }
+
+        val normalizedPath = normalizeClientRelativePath(relativePath)
+        val signature = ClientFileSummary(normalizedPath, sizeBytes, lastModifiedMillis).signature
+        val targetDirectory = Path.of(
+            appProperties.storageRoot,
+            "client-library-sources",
+            "source-$sourceId",
+            hashString("$normalizedPath\u0000$signature"),
+        )
+        Files.createDirectories(targetDirectory)
+        val originalName = Path.of(normalizedPath).fileName.toString()
+        val partialFile = targetDirectory.resolve(".$originalName.uploading")
+        val targetFile = targetDirectory.resolve(originalName)
+
+        if (offsetBytes == 0L) {
+            Files.deleteIfExists(partialFile)
+            Files.deleteIfExists(targetFile)
+        }
+        val receivedBefore = if (Files.exists(partialFile)) Files.size(partialFile) else 0L
+        require(receivedBefore == offsetBytes) {
+            "Upload chunk offset mismatch: expected $receivedBefore, received $offsetBytes"
+        }
+        file.inputStream.use { input ->
+            Files.newOutputStream(
+                partialFile,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.WRITE,
+                StandardOpenOption.APPEND,
+            ).use { output -> input.copyTo(output) }
+        }
+
+        val receivedBytes = Files.size(partialFile)
+        require(receivedBytes == offsetBytes + file.size) { "Stored upload chunk size does not match" }
+        if (receivedBytes < sizeBytes) {
+            return mapOf(
+                "sourceId" to sourceId,
+                "relativePath" to normalizedPath,
+                "receivedBytes" to receivedBytes,
+                "complete" to false,
+            )
+        }
+
+        Files.move(partialFile, targetFile, StandardCopyOption.REPLACE_EXISTING)
+        val imported = try {
+            bookService.importDiscoveredFile(
+                filePath = targetFile,
+                sourceType = SourceType.CLIENT_FOLDER.name,
+                sourceId = sourceId,
+                actorId = actorId,
+                sourcePathOverride = normalizedPath,
+            )
+        } catch (exception: Exception) {
+            Files.deleteIfExists(targetFile)
+            Files.deleteIfExists(targetDirectory)
+            throw exception
+        }
+        upsertClientFileSummary(sourceId, ClientFileSummary(normalizedPath, sizeBytes, lastModifiedMillis))
+        return mapOf(
+            "sourceId" to sourceId,
+            "relativePath" to normalizedPath,
+            "receivedBytes" to receivedBytes,
+            "complete" to true,
             "bookId" to imported.id,
             "title" to imported.title,
         )

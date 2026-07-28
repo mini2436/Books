@@ -85,4 +85,25 @@ class LibrarySourceController(
         file = file,
         actorId = actor.id,
     )
+
+    // 大文件按固定大小分块上传，避免浏览器或中间网络设备重置超大的单次请求。
+    @PostMapping("/{sourceId}/client-file-chunks", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
+    @PreAuthorize(RoleExpressions.ADMIN_ACCESS)
+    fun uploadClientFileChunk(
+        @PathVariable sourceId: Long,
+        @RequestParam("relativePath") relativePath: String,
+        @RequestParam("sizeBytes") sizeBytes: Long,
+        @RequestParam("lastModifiedMillis") lastModifiedMillis: Long,
+        @RequestParam("offsetBytes") offsetBytes: Long,
+        @RequestParam("file") file: MultipartFile,
+        @AuthenticationPrincipal actor: UserPrincipal,
+    ): Map<String, Any> = librarySourceService.uploadClientFileChunk(
+        sourceId = sourceId,
+        relativePath = relativePath,
+        sizeBytes = sizeBytes,
+        lastModifiedMillis = lastModifiedMillis,
+        offsetBytes = offsetBytes,
+        file = file,
+        actorId = actor.id,
+    )
 }

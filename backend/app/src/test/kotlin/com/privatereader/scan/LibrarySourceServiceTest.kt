@@ -5,14 +5,49 @@ import com.privatereader.books.ClientLibraryFileSummaryRequest
 import com.privatereader.books.ClientLibraryScanPlanRequest
 import com.privatereader.config.AppProperties
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.jdbc.datasource.DriverManagerDataSource
+import org.springframework.mock.web.MockMultipartFile
+import java.nio.file.Files
+import java.nio.file.Path
 
 class LibrarySourceServiceTest {
+    @Test
+    fun `client file chunks are appended without buffering the full book`(@TempDir tempDir: Path) {
+        val fixture = fixture(tempDir)
+        fixture.jdbc.sql(
+            """
+            insert into library_sources (
+                id, name, root_path, enabled, source_type, scan_interval_minutes, created_at, updated_at
+            ) values (3, '大文件目录', 'Books', false, 'CLIENT_FOLDER', 60, current_timestamp, current_timestamp)
+            """.trimIndent(),
+        ).update()
+
+        val result = fixture.service.uploadClientFileChunk(
+            sourceId = 3,
+            relativePath = "encyclopedia.epub",
+            sizeBytes = 10,
+            lastModifiedMillis = 1234,
+            offsetBytes = 0,
+            file = MockMultipartFile("file", "encyclopedia.epub", "application/epub+zip", byteArrayOf(1, 2, 3, 4)),
+            actorId = 7,
+        )
+
+        assertFalse(result["complete"] as Boolean)
+        assertEquals(4L, result["receivedBytes"])
+        val partialFiles = Files.walk(tempDir).use { paths ->
+            paths.filter { Files.isRegularFile(it) }.toList()
+        }
+        assertEquals(1, partialFiles.size)
+        assertEquals(4L, Files.size(partialFiles.single()))
+    }
+
     @Test
     fun `client scan plans only changed files and marks missing paths`() {
         val fixture = fixture()
@@ -82,7 +117,7 @@ class LibrarySourceServiceTest {
         assertNull(detached.third)
     }
 
-    private fun fixture(): Fixture {
+    private fun fixture(storageRoot: Path? = null): Fixture {
         val dataSource = DriverManagerDataSource(
             "jdbc:h2:mem:${System.nanoTime()};MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
             "sa",
@@ -128,7 +163,11 @@ class LibrarySourceServiceTest {
         return Fixture(
             jdbc = jdbc,
             bookService = bookService,
-            service = LibrarySourceService(jdbc, bookService, AppProperties()),
+            service = LibrarySourceService(
+                jdbc,
+                bookService,
+                AppProperties(storageRoot = storageRoot?.toString() ?: "storage"),
+            ),
         )
     }
 

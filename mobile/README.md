@@ -84,7 +84,7 @@ flutter run -d edge --dart-define=API_BASE_URL=http://localhost:8080
 构建静态产物：
 
 ```powershell
-flutter build web --release --dart-define=API_BASE_URL=http://reader-server:8080
+flutter build web --release --no-web-resources-cdn --dart-define=API_BASE_URL=http://reader-server:8080
 ```
 
 产物位于 `build/web/`，可由任意静态 Web 服务器托管。浏览器访问地址与 API 地址不同时，后端需要允许对应来源；HTTPS 页面必须使用 HTTPS API。

@@ -1,7 +1,7 @@
 'use strict';
 
 const CACHE_PREFIX = 'qingyue-app-shell-';
-const CACHE_NAME = `${CACHE_PREFIX}v1`;
+const CACHE_NAME = `${CACHE_PREFIX}v2`;
 const APP_ROOT_URL = new URL('./', self.registration.scope).toString();
 
 const REQUIRED_APP_SHELL = [

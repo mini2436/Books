@@ -338,6 +338,66 @@ class ApiClient {
     return Uint8List.fromList(data);
   }
 
+  Future<String> createBackupDownloadTicket(
+    String accessToken, {
+    required String scope,
+    List<int> userIds = const [],
+    List<int> bookIds = const [],
+    List<String> dataTypes = const [],
+  }) async {
+    final data = await _request<Map<String, dynamic>>(
+      () => _dio.post<Map<String, dynamic>>(
+        '/api/admin/backups/export-ticket',
+        data: {
+          'scope': scope,
+          'userIds': userIds,
+          'bookIds': bookIds,
+          'dataTypes': dataTypes,
+        },
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+    final downloadPath = data['downloadPath']?.toString().trim();
+    if (downloadPath == null || downloadPath.isEmpty) {
+      throw const ApiException('服务器未返回有效的备份下载地址');
+    }
+    return Uri.parse(baseUrl).resolve(downloadPath).toString();
+  }
+
+  Future<void> downloadBackupToFile(
+    String accessToken, {
+    required String destinationPath,
+    required String scope,
+    List<int> userIds = const [],
+    List<int> bookIds = const [],
+    List<String> dataTypes = const [],
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    try {
+      await _dio.download(
+        '/api/admin/backups/export',
+        destinationPath,
+        queryParameters: {
+          'scope': scope,
+          if (userIds.isNotEmpty) 'userIds': userIds,
+          if (bookIds.isNotEmpty) 'bookIds': bookIds,
+          if (dataTypes.isNotEmpty) 'dataTypes': dataTypes,
+        },
+        options: Options(
+          headers: _headers(accessToken),
+          receiveTimeout: Duration.zero,
+        ),
+        onReceiveProgress: onReceiveProgress,
+        deleteOnError: true,
+      );
+    } on DioException catch (error) {
+      throw ApiException(
+        _extractMessage(error),
+        statusCode: error.response?.statusCode,
+      );
+    }
+  }
+
   Future<AdminBackupPreview> previewSystemBackup(
     String accessToken, {
     required String fileName,

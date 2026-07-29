@@ -1,8 +1,12 @@
 package com.privatereader.backup
 
+import com.fasterxml.jackson.core.JsonGenerator
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.privatereader.config.AppProperties
+import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.jdbc.core.PreparedStatementCreator
+import org.springframework.jdbc.core.ResultSetExtractor
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.jdbc.BadSqlGrammarException
 import org.springframework.stereotype.Service
@@ -31,6 +35,7 @@ private typealias BackupRow = Map<String, Any?>
 @Service
 class BackupService(
     private val jdbcClient: JdbcClient,
+    private val jdbcTemplate: JdbcTemplate,
     private val objectMapper: ObjectMapper,
     private val appProperties: AppProperties,
 ) {
@@ -66,7 +71,7 @@ class BackupService(
                 require(request.userIds.isEmpty() && request.bookIds.isEmpty() && request.dataTypes.isEmpty()) {
                     "A full backup does not accept selection filters"
                 }
-                BackupManifest(request.scope, tables = FULL_TABLES.associateWith(::dumpTable))
+                null
             }
             BackupScope.BOOKS -> bookManifest(request.bookIds)
             BackupScope.USER_DATA -> userDataManifest(request.userIds, request.bookIds, request.dataTypes)
@@ -75,15 +80,70 @@ class BackupService(
             // JSON compresses well; BEST_SPEED avoids spending excessive CPU on a large manifest.
             zip.setLevel(Deflater.BEST_SPEED)
             zip.putNextEntry(ZipEntry(MANIFEST_ENTRY))
-            zip.write(objectMapper.writeValueAsBytes(manifest))
+            if (request.scope == BackupScope.FULL) {
+                writeFullManifest(zip)
+            } else {
+                zip.write(objectMapper.writeValueAsBytes(requireNotNull(manifest)))
+            }
             zip.closeEntry()
             if (request.scope == BackupScope.FULL || request.scope == BackupScope.BOOKS) {
                 // EPUB/PDF/CBZ and most MOBI files are already compressed. Recompressing them
                 // makes full exports much slower without a meaningful size reduction.
                 zip.setLevel(Deflater.NO_COMPRESSION)
-                writeManagedBookFiles(zip, manifest.tables["book_files"].orEmpty())
+                val files = if (request.scope == BackupScope.FULL) {
+                    dumpQuery("select storage_path, file_hash from book_files")
+                } else {
+                    requireNotNull(manifest).tables["book_files"].orEmpty()
+                }
+                writeManagedBookFiles(zip, files)
             }
         }
+    }
+
+    /**
+     * Writes the large full-system manifest one database row at a time. PostgreSQL
+     * honours fetchSize inside this read-only transaction, so neither the driver nor
+     * the application needs to retain an entire table in memory.
+     */
+    private fun writeFullManifest(output: OutputStream) {
+        val generator = objectMapper.factory.createGenerator(output)
+            .disable(JsonGenerator.Feature.AUTO_CLOSE_TARGET)
+        generator.use {
+            it.writeStartObject()
+            it.writeStringField("scope", BackupScope.FULL.name)
+            it.writeNumberField("formatVersion", FORMAT_VERSION)
+            it.writeStringField("createdAt", Instant.now().toString())
+            it.writeObjectFieldStart("tables")
+            FULL_TABLES.forEach { table ->
+                it.writeArrayFieldStart(table)
+                streamTable(table) { row -> it.writeObject(row) }
+                it.writeEndArray()
+            }
+            it.writeEndObject()
+            it.writeArrayFieldStart("sourceUsers")
+            it.writeEndArray()
+            it.writeArrayFieldStart("books")
+            it.writeEndArray()
+            it.writeArrayFieldStart("dataTypes")
+            it.writeEndArray()
+            it.writeEndObject()
+        }
+    }
+
+    private fun streamTable(table: String, consume: (BackupRow) -> Unit) {
+        require(table in FULL_TABLES) { "Unsupported backup table" }
+        jdbcTemplate.query(
+            PreparedStatementCreator { connection ->
+                connection.prepareStatement(
+                    "select * from $table",
+                    ResultSet.TYPE_FORWARD_ONLY,
+                    ResultSet.CONCUR_READ_ONLY,
+                ).apply { fetchSize = EXPORT_FETCH_SIZE }
+            },
+            ResultSetExtractor<Unit> { resultSet ->
+                while (resultSet.next()) consume(resultSet.toRow())
+            },
+        )
     }
 
     fun preview(file: MultipartFile): BackupPreviewView {
@@ -874,6 +934,7 @@ class BackupService(
         private const val MANIFEST_ENTRY = "manifest.json"
         private const val PROGRESS_REPORT_BYTES = 4L * 1024 * 1024
         private const val EXPORT_BUFFER_SIZE = 256 * 1024
+        private const val EXPORT_FETCH_SIZE = 500
         private const val MAX_RESTORE_STATUSES = 100
         private val FULL_TABLES = listOf("users", "books", "library_sources", "book_files", "book_formats", "book_content_versions", "book_content_blocks", "book_resources", "user_book_access", "user_book_groups", "annotations", "bookmarks", "reading_progress", "reading_history", "library_source_files", "import_jobs", "plugin_registry", "plugin_error_logs")
         private val USER_DATA_TYPE_TABLES = mapOf(

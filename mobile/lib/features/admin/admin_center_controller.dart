@@ -345,6 +345,118 @@ class AdminCenterController extends ChangeNotifier {
     }
   }
 
+  Future<String?> createBackupDownloadUrl({
+    required String scope,
+    List<int> userIds = const [],
+    List<int> bookIds = const [],
+    List<String> dataTypes = const [],
+  }) async {
+    if (!canManageBackups || _isWorking) return null;
+    _beginBackupExport();
+    try {
+      final filters = _backupExportFilters(
+        scope: scope,
+        userIds: userIds,
+        bookIds: bookIds,
+        dataTypes: dataTypes,
+      );
+      return await _authController.runAuthorized(
+        (token) => _apiClient.createBackupDownloadTicket(
+          token,
+          scope: scope,
+          userIds: filters.userIds,
+          bookIds: filters.bookIds,
+          dataTypes: filters.dataTypes,
+        ),
+      );
+    } catch (error) {
+      _error = ApiException.userFacingMessage(
+        error,
+        fallback: '系统备份下载准备失败，请稍后重试。',
+      );
+      return null;
+    } finally {
+      _endBackupExport();
+    }
+  }
+
+  Future<bool> exportBackupToFile({
+    required String destinationPath,
+    required String scope,
+    List<int> userIds = const [],
+    List<int> bookIds = const [],
+    List<String> dataTypes = const [],
+  }) async {
+    if (!canManageBackups || _isWorking) return false;
+    _beginBackupExport();
+    var lastPercentage = -1;
+    try {
+      final filters = _backupExportFilters(
+        scope: scope,
+        userIds: userIds,
+        bookIds: bookIds,
+        dataTypes: dataTypes,
+      );
+      await _authController.runAuthorized(
+        (token) => _apiClient.downloadBackupToFile(
+          token,
+          destinationPath: destinationPath,
+          scope: scope,
+          userIds: filters.userIds,
+          bookIds: filters.bookIds,
+          dataTypes: filters.dataTypes,
+          onReceiveProgress: (received, total) {
+            if (total <= 0) return;
+            final percentage = (received * 100 / total).floor().clamp(0, 100);
+            if (percentage == lastPercentage) return;
+            lastPercentage = percentage;
+            _workingMessage = '正在流式保存备份 $percentage%';
+            notifyListeners();
+          },
+        ),
+      );
+      return true;
+    } catch (error) {
+      _error = ApiException.userFacingMessage(
+        error,
+        fallback: '系统备份导出失败，请稍后重试。',
+      );
+      return false;
+    } finally {
+      _endBackupExport();
+    }
+  }
+
+  void _beginBackupExport() {
+    _isWorking = true;
+    _backupOperation = AdminBackupOperation.exporting;
+    _backupOperationStartedAt = DateTime.now();
+    _error = null;
+    _notice = null;
+    _workingMessage = '正在整理数据库与书籍文件，备份较大时可能需要几分钟';
+    notifyListeners();
+  }
+
+  void _endBackupExport() {
+    _isWorking = false;
+    _backupOperation = AdminBackupOperation.idle;
+    _backupOperationStartedAt = null;
+    _workingMessage = null;
+    notifyListeners();
+  }
+
+  ({List<int> userIds, List<int> bookIds, List<String> dataTypes})
+  _backupExportFilters({
+    required String scope,
+    required List<int> userIds,
+    required List<int> bookIds,
+    required List<String> dataTypes,
+  }) => (
+    userIds: scope == 'USER_DATA' ? userIds : const <int>[],
+    bookIds: scope == 'FULL' ? const <int>[] : bookIds,
+    dataTypes: scope == 'USER_DATA' ? dataTypes : const <String>[],
+  );
+
   Future<AdminBackupPreview?> previewSystemBackup({
     required String fileName,
     String? filePath,

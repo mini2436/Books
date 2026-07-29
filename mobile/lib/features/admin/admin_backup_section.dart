@@ -10,6 +10,7 @@ import '../../shared/widgets/centered_scale_dialog.dart';
 import '../../shared/widgets/glass_action_button.dart';
 import '../../shared/widgets/glass_dialog.dart';
 import '../../shared/widgets/glass_surface.dart';
+import '../../data/services/backup_download_launcher.dart';
 import 'admin_center_controller.dart';
 
 const _allBackupUserDataTypes = <String>{
@@ -155,15 +156,6 @@ class _AdminBackupSectionState extends ConsumerState<AdminBackupSection> {
   Future<void> _exportBackup() async {
     setState(() => _saving = true);
     try {
-      final bytes = await ref
-          .read(adminCenterControllerProvider)
-          .exportBackup(
-            scope: _exportScope,
-            userIds: _exportUserIds.toList(),
-            bookIds: _exportBookIds.toList(),
-            dataTypes: _exportDataTypes.toList(),
-          );
-      if (bytes == null || !mounted) return;
       final now = DateTime.now();
       final stamp =
           '${now.year.toString().padLeft(4, '0')}'
@@ -172,16 +164,37 @@ class _AdminBackupSectionState extends ConsumerState<AdminBackupSection> {
           '${now.hour.toString().padLeft(2, '0')}'
           '${now.minute.toString().padLeft(2, '0')}';
       final scopeName = _exportScope.toLowerCase().replaceAll('_', '-');
+      final fileName = 'private-reader-$scopeName-$stamp.zip';
+      final controller = ref.read(adminCenterControllerProvider);
+      if (kIsWeb || defaultTargetPlatform == TargetPlatform.android) {
+        final downloadUrl = await controller.createBackupDownloadUrl(
+          scope: _exportScope,
+          userIds: _exportUserIds.toList(),
+          bookIds: _exportBookIds.toList(),
+          dataTypes: _exportDataTypes.toList(),
+        );
+        if (downloadUrl == null || !mounted) return;
+        await startSystemBackupDownload(downloadUrl, fileName);
+        if (mounted) controller.markBackupSaved();
+        return;
+      }
       final path = await FilePicker.platform.saveFile(
         dialogTitle: '保存轻阅备份',
-        fileName: 'private-reader-$scopeName-$stamp.zip',
+        fileName: fileName,
         type: FileType.custom,
         allowedExtensions: const ['zip'],
-        bytes: bytes,
         lockParentWindow: true,
       );
-      if ((kIsWeb || path != null) && mounted) {
-        ref.read(adminCenterControllerProvider).markBackupSaved();
+      if (path == null || !mounted) return;
+      final saved = await controller.exportBackupToFile(
+        destinationPath: path,
+        scope: _exportScope,
+        userIds: _exportUserIds.toList(),
+        bookIds: _exportBookIds.toList(),
+        dataTypes: _exportDataTypes.toList(),
+      );
+      if (saved && mounted) {
+        controller.markBackupSaved();
       }
     } catch (_) {
       if (!mounted) return;

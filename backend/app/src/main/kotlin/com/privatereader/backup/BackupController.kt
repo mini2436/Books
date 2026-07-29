@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RequestPart
+import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.multipart.MultipartFile
 import java.time.Instant
@@ -24,6 +25,7 @@ import java.nio.file.Files
 @PreAuthorize(RoleExpressions.SUPER_ADMIN_ONLY)
 class BackupController(
     private val backupService: BackupService,
+    private val downloadTickets: BackupDownloadTicketService,
 ) {
     @GetMapping("/export")
     fun export(
@@ -59,6 +61,12 @@ class BackupController(
                 ),
             )
     }
+
+    @PostMapping("/export-ticket")
+    fun createExportTicket(
+        @AuthenticationPrincipal principal: UserPrincipal,
+        @RequestBody request: BackupExportRequest,
+    ): BackupDownloadTicketView = downloadTickets.issue(principal.id, request)
 
     /** Upload first to inspect identities, then submit the selected mappings to /restore. */
     @PostMapping("/preview", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])

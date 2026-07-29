@@ -49,6 +49,19 @@ void main() {
     expect(apiClient.exportBookIds, isEmpty);
     expect(apiClient.exportDataTypes, isEmpty);
 
+    expect(
+      await controller.createBackupDownloadUrl(scope: 'FULL'),
+      'http://server-1:8080/api/admin/backups/download/ticket',
+    );
+    expect(
+      await controller.exportBackupToFile(
+        destinationPath: 'C:/backup.zip',
+        scope: 'FULL',
+      ),
+      isTrue,
+    );
+    expect(apiClient.downloadDestinationPath, 'C:/backup.zip');
+
     final preview = await controller.previewSystemBackup(
       fileName: 'backup.zip',
       fileBytes: Uint8List.fromList([1]),
@@ -150,6 +163,7 @@ class _BackupApiClient extends ApiClient {
 
   bool restoreCalled = false;
   String? exportScope;
+  String? downloadDestinationPath;
   List<int> exportUserIds = const [];
   List<int> exportBookIds = const [];
   List<String> exportDataTypes = const [];
@@ -205,6 +219,29 @@ class _BackupApiClient extends ApiClient {
     exportBookIds = bookIds;
     exportDataTypes = dataTypes;
     return Uint8List.fromList([1, 2, 3]);
+  }
+
+  @override
+  Future<String> createBackupDownloadTicket(
+    String accessToken, {
+    required String scope,
+    List<int> userIds = const [],
+    List<int> bookIds = const [],
+    List<String> dataTypes = const [],
+  }) async => 'http://server-1:8080/api/admin/backups/download/ticket';
+
+  @override
+  Future<void> downloadBackupToFile(
+    String accessToken, {
+    required String destinationPath,
+    required String scope,
+    List<int> userIds = const [],
+    List<int> bookIds = const [],
+    List<String> dataTypes = const [],
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    downloadDestinationPath = destinationPath;
+    onReceiveProgress?.call(3, 3);
   }
 
   @override

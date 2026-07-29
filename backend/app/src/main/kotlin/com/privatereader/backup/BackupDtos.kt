@@ -18,6 +18,11 @@ data class BackupExportRequest(
     val dataTypes: Set<UserDataType> = emptySet(),
 )
 
+data class BackupDownloadTicketView(
+    val downloadPath: String,
+    val expiresAt: String,
+)
+
 enum class UserDataRestoreMode { MERGE, REPLACE }
 
 data class BackupUserView(

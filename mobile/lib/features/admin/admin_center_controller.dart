@@ -658,6 +658,12 @@ class AdminCenterController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void markBackupDownloadStarted() {
+    _notice = '备份下载已启动，请在浏览器或系统下载列表中查看进度';
+    _error = null;
+    notifyListeners();
+  }
+
   void setBookSearchQuery(String value) {
     if (_bookSearchQuery == value) {
       return;

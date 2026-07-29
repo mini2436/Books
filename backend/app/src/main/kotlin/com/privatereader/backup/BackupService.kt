@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.multipart.MultipartFile
 import java.io.ByteArrayOutputStream
+import java.io.FilterOutputStream
 import java.io.InputStream
 import java.io.OutputStream
 import java.nio.file.Files
@@ -65,6 +66,16 @@ class BackupService(
         }
     }
 
+    /**
+     * Writes an export directly to the caller-provided stream. This keeps HTTP
+     * downloads end-to-end streaming instead of waiting for a temporary ZIP to
+     * be completed before the response can start.
+     */
+    @Transactional(readOnly = true)
+    fun exportTo(request: BackupExportRequest, output: OutputStream) {
+        writeExport(request, output)
+    }
+
     private fun writeExport(request: BackupExportRequest, output: OutputStream) {
         val manifest = when (request.scope) {
             BackupScope.FULL -> {
@@ -76,10 +87,19 @@ class BackupService(
             BackupScope.BOOKS -> bookManifest(request.bookIds)
             BackupScope.USER_DATA -> userDataManifest(request.userIds, request.bookIds, request.dataTypes)
         }
-        ZipOutputStream(output).use { zip ->
+        // ZipOutputStream must be closed to release its Deflater, but a streaming
+        // HTTP response stream is owned by the servlet container. Shield the
+        // supplied stream from close while still allowing ZIP finalization.
+        val nonClosingOutput = object : FilterOutputStream(output) {
+            override fun close() = flush()
+        }
+        ZipOutputStream(nonClosingOutput).use { zip ->
             // JSON compresses well; BEST_SPEED avoids spending excessive CPU on a large manifest.
             zip.setLevel(Deflater.BEST_SPEED)
             zip.putNextEntry(ZipEntry(MANIFEST_ENTRY))
+            // Commit HTTP response headers before the potentially long database
+            // export so browsers can display their save dialog immediately.
+            zip.flush()
             if (request.scope == BackupScope.FULL) {
                 writeFullManifest(zip)
             } else {

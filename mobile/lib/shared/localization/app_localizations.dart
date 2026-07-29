@@ -596,6 +596,8 @@ class AppLocalizations {
         'The restore is still running, but detailed progress is temporarily unavailable.',
     '正在校验备份': 'Validating backup',
     '完整系统备份已保存': 'Full system backup saved',
+    '备份下载已启动，请在浏览器或系统下载列表中查看进度':
+        'Backup download started. Check your browser or system downloads for progress.',
     '插件': 'Plugins',
     '添加用户': 'Add user',
     '新建后台用户': 'Create user',

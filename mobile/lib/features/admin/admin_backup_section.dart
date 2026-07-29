@@ -175,7 +175,7 @@ class _AdminBackupSectionState extends ConsumerState<AdminBackupSection> {
         );
         if (downloadUrl == null || !mounted) return;
         await startSystemBackupDownload(downloadUrl, fileName);
-        if (mounted) controller.markBackupSaved();
+        if (mounted) controller.markBackupDownloadStarted();
         return;
       }
       final path = await FilePicker.platform.saveFile(

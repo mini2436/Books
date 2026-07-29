@@ -53,6 +53,11 @@ void main() {
       await controller.createBackupDownloadUrl(scope: 'FULL'),
       'http://server-1:8080/api/admin/backups/download/ticket',
     );
+    controller.markBackupDownloadStarted();
+    expect(
+      controller.notice,
+      '备份下载已启动，请在浏览器或系统下载列表中查看进度',
+    );
     expect(
       await controller.exportBackupToFile(
         destinationPath: 'C:/backup.zip',

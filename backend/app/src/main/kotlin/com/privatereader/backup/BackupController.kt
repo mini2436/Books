@@ -3,7 +3,6 @@ package com.privatereader.backup
 import com.privatereader.auth.RoleExpressions
 import com.privatereader.auth.UserPrincipal
 import jakarta.validation.Valid
-import org.springframework.core.io.InputStreamResource
 import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
 import org.springframework.security.access.prepost.PreAuthorize
@@ -16,9 +15,8 @@ import org.springframework.web.bind.annotation.RequestPart
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.multipart.MultipartFile
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody
 import java.time.Instant
-import java.io.FilterInputStream
-import java.nio.file.Files
 
 @RestController
 @RequestMapping("/api/admin/backups")
@@ -33,33 +31,20 @@ class BackupController(
         @RequestParam(required = false) userIds: Set<Long>?,
         @RequestParam(required = false) bookIds: Set<Long>?,
         @RequestParam(required = false) dataTypes: Set<UserDataType>?,
-    ): org.springframework.http.ResponseEntity<InputStreamResource> {
-        val archive = backupService.exportToFile(
-            BackupExportRequest(
-                scope = scope,
-                userIds = userIds.orEmpty(),
-                bookIds = bookIds.orEmpty(),
-                dataTypes = dataTypes.orEmpty(),
-            ),
+    ): org.springframework.http.ResponseEntity<StreamingResponseBody> {
+        val request = BackupExportRequest(
+            scope = scope,
+            userIds = userIds.orEmpty(),
+            bookIds = bookIds.orEmpty(),
+            dataTypes = dataTypes.orEmpty(),
         )
         val filename = "private-reader-${scope.name.lowercase()}-${Instant.now().toString().replace(':', '-')}.zip"
         return org.springframework.http.ResponseEntity.ok()
             .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"$filename\"")
+            .header(HttpHeaders.CACHE_CONTROL, "no-store")
+            .header("X-Accel-Buffering", "no")
             .contentType(MediaType.parseMediaType("application/zip"))
-            .contentLength(Files.size(archive))
-            .body(
-                InputStreamResource(
-                    object : FilterInputStream(Files.newInputStream(archive)) {
-                        override fun close() {
-                            try {
-                                super.close()
-                            } finally {
-                                Files.deleteIfExists(archive)
-                            }
-                        }
-                    },
-                ),
-            )
+            .body(StreamingResponseBody { output -> backupService.exportTo(request, output) })
     }
 
     @PostMapping("/export-ticket")

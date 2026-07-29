@@ -134,13 +134,13 @@ class _PdfReaderViewState extends State<PdfReaderView> {
         _platformFile = file;
         _isPreparingPlatformFile = false;
       });
-    } catch (error) {
+    } catch (_) {
       if (!mounted) {
         return;
       }
       setState(() {
         _isPreparingPlatformFile = false;
-        _loadError = 'PDF 临时文件准备失败：$error';
+        _loadError = 'PDF 临时文件准备失败，请稍后重试。';
       });
     }
   }

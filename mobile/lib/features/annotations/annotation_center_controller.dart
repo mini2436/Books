@@ -114,7 +114,10 @@ class AnnotationCenterController extends ChangeNotifier {
       _entries = nextEntries;
       _bookGroups = _groupEntries(nextEntries);
     } catch (caught) {
-      _error = caught.toString();
+      _error = ApiException.userFacingMessage(
+        caught,
+        fallback: '加载批注失败，请稍后重试。',
+      );
       _entries = const [];
       _bookGroups = const [];
     } finally {

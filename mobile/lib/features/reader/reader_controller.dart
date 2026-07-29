@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -86,6 +87,8 @@ class ReaderController extends ChangeNotifier {
   List<AnnotationView> annotations = const [];
   List<BookmarkView> bookmarks = const [];
   bool isLoading = true;
+  String? initializationStatus;
+  double? initializationProgress;
   String? error;
   bool uiVisible = true;
   bool tocVisible = true;
@@ -164,6 +167,8 @@ class ReaderController extends ChangeNotifier {
   Future<void> load() async {
     isLoading = true;
     error = null;
+    initializationStatus = null;
+    initializationProgress = null;
     notifyListeners();
 
     try {
@@ -171,6 +176,16 @@ class ReaderController extends ChangeNotifier {
       final serverKey = _authController.activeServerKey;
       if (_authController.isOfflineMode &&
           userId != null &&
+          serverKey != null &&
+          await _offlineBookCacheService.isBookCached(
+            serverKey,
+            userId,
+            bookId,
+          )) {
+        await _loadOffline();
+        return;
+      }
+      if (userId != null &&
           serverKey != null &&
           await _offlineBookCacheService.isBookCached(
             serverKey,
@@ -193,6 +208,7 @@ class ReaderController extends ChangeNotifier {
       );
 
       if (loadedDetail.isPdf) {
+        _setInitialization('正在初始化阅读…', 0);
         final results = await Future.wait([
           loadedAnnotationsFuture,
           loadedBookmarksFuture,
@@ -200,7 +216,11 @@ class ReaderController extends ChangeNotifier {
             (accessToken) => _apiClient.pullSync(accessToken),
           ),
           _authController.runAuthorized(
-            (accessToken) => _apiClient.downloadBookFile(accessToken, bookId),
+            (accessToken) => _apiClient.downloadBookFile(
+              accessToken,
+              bookId,
+              onReceiveProgress: _updatePdfDownloadProgress,
+            ),
           ),
         ]);
 
@@ -226,6 +246,13 @@ class ReaderController extends ChangeNotifier {
         pdfPageCount = loadedDetail.pdfPageCount ?? 0;
         pdfPageNumber = _parsePdfPage(initialLocation) ?? 1;
         pdfBytes = results[3] as Uint8List;
+        await _saveInitialCache(
+          detail: loadedDetail,
+          annotations: annotations,
+          bookmarks: bookmarks,
+          progress: progress,
+          fileBytes: pdfBytes,
+        );
         await _persistReaderState(progress: progress);
         _authController.markServerReachable();
         return;
@@ -237,6 +264,7 @@ class ReaderController extends ChangeNotifier {
         return;
       }
 
+      _setInitialization('正在初始化阅读…', 0);
       final results = await Future.wait([
         _authController.runAuthorized(
           (accessToken) => _apiClient.getStructuredContent(accessToken, bookId),
@@ -267,6 +295,13 @@ class ReaderController extends ChangeNotifier {
       );
 
       final initialLocation = initialAnchor ?? progress?.location;
+      await _cacheStructuredBook(
+        detail: loadedDetail,
+        content: content!,
+        annotations: annotations,
+        bookmarks: bookmarks,
+        progress: progress,
+      );
       currentChapterIndex = await _resolveChapterIndex(initialLocation) ?? 0;
       if (initialLocation != null && initialLocation.isNotEmpty) {
         focusedAnchor = initialLocation;
@@ -285,11 +320,145 @@ class ReaderController extends ChangeNotifier {
       try {
         await _loadOffline();
       } catch (_) {
-        error = '此书尚未下载，连接服务器后请先在书架中下载到本地。\n$caught';
+        error = '无法打开这本书。连接服务器后，请先在书架中下载到本地再重试。';
       }
     } finally {
       isLoading = false;
+      initializationStatus = null;
+      initializationProgress = null;
       notifyListeners();
+    }
+  }
+
+  void _setInitialization(String status, double? progress) {
+    initializationStatus = status;
+    initializationProgress = progress;
+    notifyListeners();
+  }
+
+  void _updatePdfDownloadProgress(int received, int total) {
+    if (total <= 0) {
+      _setInitialization('正在初始化阅读…', null);
+      return;
+    }
+    _setInitialization('正在初始化阅读…', (received / total).clamp(0, 1).toDouble());
+  }
+
+  Future<Uint8List?> _downloadCover(int id) async {
+    try {
+      return await _authController.runAuthorized(
+        (token) => _apiClient.downloadBookCover(token, id),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _saveInitialCache({
+    required BookDetail detail,
+    required List<AnnotationView> annotations,
+    required List<BookmarkView> bookmarks,
+    required ReadingProgressView? progress,
+    Uint8List? fileBytes,
+    BookContent? content,
+    int additionalSizeBytes = 0,
+  }) async {
+    final userId = _authController.activeUserId;
+    final serverKey = _authController.activeServerKey;
+    if (userId == null || serverKey == null) return;
+    final coverBytes = await _downloadCover(bookId);
+    await _offlineBookCacheService.saveDownloadedBook(
+      serverKey: serverKey,
+      userId: userId,
+      summary: detail,
+      detail: detail,
+      content: content,
+      annotations: annotations,
+      bookmarks: bookmarks,
+      progress: progress,
+      fileBytes: fileBytes,
+      coverBytes: coverBytes,
+      sizeBytes:
+          (fileBytes?.length ?? 0) +
+          (coverBytes?.length ?? 0) +
+          additionalSizeBytes,
+    );
+  }
+
+  Future<void> _cacheStructuredBook({
+    required BookDetail detail,
+    required BookContent content,
+    required List<AnnotationView> annotations,
+    required List<BookmarkView> bookmarks,
+    required ReadingProgressView? progress,
+  }) async {
+    final userId = _authController.activeUserId;
+    final serverKey = _authController.activeServerKey;
+    if (userId == null || serverKey == null) return;
+
+    var sizeBytes = utf8.encode(jsonEncode(content.toJson())).length;
+    final resourceIds = <String>{};
+    try {
+      for (var index = 0; index < content.chapters.length; index++) {
+        _setInitialization(
+          '正在初始化阅读（${index + 1}/${content.chapters.length}）',
+          content.chapters.isEmpty ? 1 : index / content.chapters.length,
+        );
+        final summary = content.chapters[index];
+        final chapter = await _authController.runAuthorized(
+          (token) => _apiClient.getStructuredChapter(
+            token,
+            bookId,
+            summary.chapterIndex,
+          ),
+        );
+        _chapterCache[summary.chapterIndex] = chapter;
+        await _offlineBookCacheService.saveChapter(
+          serverKey,
+          userId,
+          bookId,
+          chapter,
+        );
+        sizeBytes += utf8.encode(jsonEncode(chapter.toJson())).length;
+        resourceIds.addAll(
+          chapter.blocks
+              .where((block) => block.isImage)
+              .map((block) => block.resourceId)
+              .whereType<String>()
+              .where((id) => id.isNotEmpty),
+        );
+      }
+      final resources = resourceIds.toList();
+      for (var index = 0; index < resources.length; index++) {
+        _setInitialization(
+          '正在缓存插图（${index + 1}/${resources.length}）',
+          resources.isEmpty ? 1 : index / resources.length,
+        );
+        final resourceId = resources[index];
+        final bytes = await _authController.runAuthorized(
+          (token) => _apiClient.downloadBookResource(token, bookId, resourceId),
+        );
+        await _offlineBookCacheService.saveResource(
+          serverKey,
+          userId,
+          bookId,
+          resourceId,
+          bytes,
+        );
+        sizeBytes += bytes.length;
+      }
+      _setInitialization('正在保存到本地…', 1);
+      await _saveInitialCache(
+        detail: detail,
+        content: content,
+        annotations: annotations,
+        bookmarks: bookmarks,
+        progress: progress,
+        additionalSizeBytes: sizeBytes,
+      );
+    } catch (_) {
+      await _offlineBookCacheService.deleteBook(serverKey, userId, bookId);
+      rethrow;
     }
   }
 

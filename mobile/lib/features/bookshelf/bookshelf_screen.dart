@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/models/book_models.dart';
 import '../../data/models/sync_models.dart';
+import '../../data/services/api_client.dart';
 import '../../shared/theme/reader_theme_extension.dart';
 import '../../shared/utils/responsive.dart';
 import '../../shared/widgets/centered_scale_dialog.dart';
@@ -1751,9 +1752,13 @@ Future<void> _showRenameGroupDialog(
     }
   } catch (error) {
     if (context.mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('分组重命名失败：$error')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '分组重命名失败：${ApiException.userFacingMessage(error, fallback: '请稍后重试。')}',
+          ),
+        ),
+      );
     }
   }
 }
@@ -2637,9 +2642,13 @@ class _BookDetailsDialogStateV2 extends State<_BookDetailsDialog> {
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('分组更新失败：$error')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '分组更新失败：${ApiException.userFacingMessage(error, fallback: '请稍后重试。')}',
+          ),
+        ),
+      );
     } finally {
       if (mounted) setState(() => _savingGroup = false);
     }

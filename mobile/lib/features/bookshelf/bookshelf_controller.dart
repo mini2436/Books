@@ -360,7 +360,7 @@ class BookshelfController extends ChangeNotifier {
         _authController.markServerUnavailable();
       }
       _error = _books.isEmpty
-          ? '书架加载失败。请连接服务器，或先在联网时下载书籍。\n当前服务：${_apiClient.baseUrl}\n$error'
+          ? '书架加载失败。请检查服务器地址和网络，或先在联网时下载书籍。\n当前服务：${_apiClient.baseUrl}'
           : null;
       developer.log(
         'Bookshelf refresh failed',
@@ -380,6 +380,16 @@ class BookshelfController extends ChangeNotifier {
     if (user == null ||
         serverKey == null ||
         _downloadingBookIds.contains(summary.id)) {
+      return;
+    }
+    if (await _offlineBookCacheService.isBookCached(
+      serverKey,
+      user.id,
+      summary.id,
+    )) {
+      // 阅读器首次打开已写入同一份离线缓存，无需重复下载。
+      _cachedBookIds.add(summary.id);
+      notifyListeners();
       return;
     }
     _downloadingBookIds.add(summary.id);
@@ -495,7 +505,8 @@ class BookshelfController extends ChangeNotifier {
     } catch (error, stackTrace) {
       await _offlineBookCacheService.deleteBook(serverKey, user.id, summary.id);
       _cachedBookIds.remove(summary.id);
-      _error = '“${summary.title}”下载失败：$error';
+      _error =
+          '“${summary.title}”下载失败：${ApiException.userFacingMessage(error, fallback: '请检查网络后重试。')}';
       developer.log(
         'Offline book download failed',
         name: 'BookshelfController',

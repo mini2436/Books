@@ -122,7 +122,31 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       return Scaffold(
         body: DecoratedBox(
           decoration: BoxDecoration(color: palette.background),
-          child: const Center(child: CircularProgressIndicator()),
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(controller.initializationStatus ?? '正在打开书籍…'),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: 240,
+                    child: LinearProgressIndicator(
+                      value: controller.initializationProgress,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    controller.initializationProgress == null
+                        ? '请稍候'
+                        : '${(controller.initializationProgress! * 100).round()}%',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       );
     }

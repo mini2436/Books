@@ -7,6 +7,7 @@ import 'package:private_reader_mobile/shared/localization/app_localizations.dart
 import 'package:private_reader_mobile/shared/localization/localized_text.dart';
 
 import '../../data/models/user_role.dart';
+import '../../data/services/api_client.dart';
 import '../../shared/theme/reader_theme_extension.dart';
 import '../../shared/utils/responsive.dart';
 import '../../shared/widgets/glass_dialog.dart';
@@ -376,9 +377,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       }
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('密码修改失败：$error')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '密码修改失败：${ApiException.userFacingMessage(error, fallback: '请稍后重试。')}',
+            ),
+          ),
+        );
       }
     }
   }
@@ -387,9 +392,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     if (!mounted) {
       return;
     }
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('保存失败：$error')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '保存失败：${ApiException.userFacingMessage(error, fallback: '请稍后重试。')}',
+        ),
+      ),
+    );
   }
 }
 

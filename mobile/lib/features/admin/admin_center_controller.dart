@@ -249,7 +249,10 @@ class AdminCenterController extends ChangeNotifier {
       }
       _ensureValidSection();
     } catch (error) {
-      _error = error.toString();
+      _error = ApiException.userFacingMessage(
+        error,
+        fallback: '加载后台数据失败，请稍后重试。',
+      );
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -389,13 +392,17 @@ class AdminCenterController extends ChangeNotifier {
         importedTitle: uploaded.title,
       );
     } catch (error) {
-      _error = error.toString();
+      final message = ApiException.userFacingMessage(
+        error,
+        fallback: '图书导入失败，请稍后重试。',
+      );
+      _error = message;
       _bookImportProgress = AdminBookImportProgress(
         fileName: resolvedFileName,
         phase: AdminBookImportPhase.failed,
         bytesSent: _bookImportProgress?.bytesSent ?? 0,
         totalBytes: _bookImportProgress?.totalBytes ?? fileSize ?? 0,
-        errorMessage: error.toString(),
+        errorMessage: message,
       );
     } finally {
       _isWorking = false;
@@ -689,7 +696,10 @@ class AdminCenterController extends ChangeNotifier {
       );
       _bookViewers = {..._bookViewers, bookId: viewers};
     } catch (error) {
-      _error = error.toString();
+      _error = ApiException.userFacingMessage(
+        error,
+        fallback: '加载可访问用户失败，请稍后重试。',
+      );
     } finally {
       _loadingViewerBookIds = {..._loadingViewerBookIds}..remove(bookId);
       notifyListeners();
@@ -715,7 +725,10 @@ class AdminCenterController extends ChangeNotifier {
       );
       _bookDetails = {..._bookDetails, bookId: detail};
     } catch (error) {
-      _error = error.toString();
+      _error = ApiException.userFacingMessage(
+        error,
+        fallback: '加载图书详情失败，请稍后重试。',
+      );
     } finally {
       _loadingBookDetailIds = {..._loadingBookDetailIds}..remove(bookId);
       notifyListeners();
@@ -895,7 +908,10 @@ class AdminCenterController extends ChangeNotifier {
       _notice = '已更新 ${updated.username} 的角色';
     } catch (error) {
       _users = previousUsers;
-      _error = error.toString();
+      _error = ApiException.userFacingMessage(
+        error,
+        fallback: '更新用户角色失败，请稍后重试。',
+      );
     } finally {
       notifyListeners();
     }
@@ -935,7 +951,10 @@ class AdminCenterController extends ChangeNotifier {
       _notice = enabled ? '已启用 ${updated.username}' : '已停用 ${updated.username}';
     } catch (error) {
       _users = previousUsers;
-      _error = error.toString();
+      _error = ApiException.userFacingMessage(
+        error,
+        fallback: '更新用户状态失败，请稍后重试。',
+      );
     } finally {
       notifyListeners();
     }
@@ -984,7 +1003,10 @@ class AdminCenterController extends ChangeNotifier {
       _notice = deleted ? '已隐藏一条批注' : '已恢复一条批注';
     } catch (error) {
       _annotations = previousAnnotations;
-      _error = error.toString();
+      _error = ApiException.userFacingMessage(
+        error,
+        fallback: '更新批注状态失败，请稍后重试。',
+      );
     } finally {
       notifyListeners();
     }
@@ -1015,7 +1037,10 @@ class AdminCenterController extends ChangeNotifier {
       _notice = deleted ? '已隐藏一条书签' : '已恢复一条书签';
     } catch (error) {
       _bookmarks = previousBookmarks;
-      _error = error.toString();
+      _error = ApiException.userFacingMessage(
+        error,
+        fallback: '更新书签状态失败，请稍后重试。',
+      );
     } finally {
       notifyListeners();
     }
@@ -1083,7 +1108,7 @@ class AdminCenterController extends ChangeNotifier {
     try {
       await action();
     } catch (error) {
-      _error = error.toString();
+      _error = ApiException.userFacingMessage(error);
     } finally {
       _isWorking = false;
       notifyListeners();

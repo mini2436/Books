@@ -19,6 +19,14 @@ class ApiException implements Exception {
   bool get isAuthenticationFailure => statusCode == 401 || statusCode == 403;
   bool get isNetworkFailure => statusCode == null || statusCode! >= 500;
 
+  /// Converts unexpected local errors into a safe message for the UI.
+  /// Network responses are normalized before becoming an [ApiException], so
+  /// callers must never surface `error.toString()` directly.
+  static String userFacingMessage(
+    Object error, {
+    String fallback = '操作未完成，请稍后重试。',
+  }) => error is ApiException ? error.message : fallback;
+
   @override
   String toString() => message;
 }
@@ -697,7 +705,11 @@ class ApiClient {
     return BookContentChapter.fromJson(data);
   }
 
-  Future<Uint8List> downloadBookFile(String accessToken, int bookId) async {
+  Future<Uint8List> downloadBookFile(
+    String accessToken,
+    int bookId, {
+    ProgressCallback? onReceiveProgress,
+  }) async {
     final data = await _request<List<int>>(
       () => _dio.get<List<int>>(
         '/api/me/books/$bookId/file',
@@ -705,6 +717,7 @@ class ApiClient {
           headers: _headers(accessToken),
           responseType: ResponseType.bytes,
         ),
+        onReceiveProgress: onReceiveProgress,
       ),
     );
 
@@ -863,23 +876,13 @@ class ApiClient {
   }
 
   String _extractMessage(DioException error) {
-    if (error.response?.statusCode == 413) {
+    final statusCode = error.response?.statusCode;
+    if (statusCode == 413) {
       return '文件超过服务器上传限制，请联系管理员调整上传配置';
     }
-    final responseData = error.response?.data;
-    if (responseData is Map<String, dynamic>) {
-      final message = (responseData['error'] ?? responseData['message'])
-          ?.toString();
-      if (message != null && message.isNotEmpty) {
-        if (message.toLowerCase().contains('uploaded file is too large')) {
-          return '文件超过服务器上传限制，请联系管理员调整上传配置';
-        }
-        return message;
-      }
-      return '请求失败';
-    }
-    if (responseData is String && responseData.trim().isNotEmpty) {
-      return responseData.trim();
+    if (error.type == DioExceptionType.connectionTimeout ||
+        error.type == DioExceptionType.connectionError) {
+      return '无法连接到服务器，请检查服务地址和网络。';
     }
     if (error.type == DioExceptionType.sendTimeout) {
       return '文件上传超时，请确认服务器仍在运行后重试';
@@ -887,7 +890,76 @@ class ApiClient {
     if (error.type == DioExceptionType.receiveTimeout) {
       return '服务器解析图书超时，请稍后检查导入结果';
     }
-    return error.message ?? '网络请求失败';
+    if (error.type == DioExceptionType.cancel) {
+      return '请求已取消，请重试。';
+    }
+    if (error.type == DioExceptionType.badCertificate) {
+      return '无法验证服务器证书，请检查服务地址。';
+    }
+
+    final serverMessage = _serverMessage(error.response?.data);
+    final mappedMessage = _mapServerMessage(serverMessage);
+    if (mappedMessage != null) return mappedMessage;
+    if (statusCode != null && statusCode >= 500) {
+      return '服务器暂时无法处理请求，请稍后重试。';
+    }
+
+    return switch (statusCode) {
+      400 => '提交的信息有误，请检查后重试。',
+      401 => '登录状态已失效，请重新登录。',
+      403 => '你没有权限执行此操作。',
+      404 => '请求的内容不存在或已被删除。',
+      408 => '请求超时，请检查网络后重试。',
+      409 => '数据已发生变化，请刷新后重试。',
+      429 => '操作过于频繁，请稍后再试。',
+      _ => '网络请求失败，请检查网络后重试。',
+    };
+  }
+
+  String? _serverMessage(Object? responseData) {
+    if (responseData is Map<String, dynamic>) {
+      return (responseData['error'] ?? responseData['message'])
+          ?.toString()
+          .trim();
+    }
+    if (responseData is String) return responseData.trim();
+    return null;
+  }
+
+  String? _mapServerMessage(String? message) {
+    if (message == null || message.isEmpty) return null;
+    final normalized = message.toLowerCase();
+    if (normalized.contains('invalid username or password')) {
+      return '用户名或密码不正确，请重试。';
+    }
+    if (normalized.contains('user is disabled')) {
+      return '该账号已被停用，请联系管理员。';
+    }
+    if (normalized.contains('current password is incorrect')) {
+      return '当前密码不正确，请重试。';
+    }
+    if (normalized.contains('uploaded file is too large')) {
+      return '文件超过服务器上传限制，请联系管理员调整上传配置';
+    }
+    if (normalized.contains('avatar file must not exceed')) {
+      return '头像文件不能超过 5 MB。';
+    }
+    if (normalized.contains('only jpeg, png, webp or gif avatars')) {
+      return '头像仅支持 JPEG、PNG、WebP 或 GIF 格式。';
+    }
+    if (normalized.contains('book access denied')) {
+      return '你没有访问这本书的权限。';
+    }
+    if (normalized.contains('not found')) {
+      return '请求的内容不存在或已被删除。';
+    }
+    if (normalized.contains('no plugin available')) {
+      return '暂不支持导入该文件格式。';
+    }
+    if (normalized.contains('webdav')) {
+      return '无法访问 WebDAV 服务，请检查地址、账号和网络。';
+    }
+    return null;
   }
 
   String _avatarContentType(String filePath) {

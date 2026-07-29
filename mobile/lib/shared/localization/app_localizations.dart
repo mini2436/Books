@@ -44,6 +44,14 @@ class AppLocalizations {
     if (match != null) return '${match[1]} scan sources';
     match = RegExp(r'^(\d+) 条近期记录$').firstMatch(source);
     if (match != null) return '${match[1]} recent records';
+    match = RegExp(r'^已选择 (\d+) 个用户$').firstMatch(source);
+    if (match != null) return '${match[1]} users selected';
+    match = RegExp(r'^已选择 (\d+) 本书$').firstMatch(source);
+    if (match != null) return '${match[1]} books selected';
+    match = RegExp(r'^限定 (\d+) 本$').firstMatch(source);
+    if (match != null) return 'Limit to ${match[1]} books';
+    match = RegExp(r'^导入 (\d+) 本书$').firstMatch(source);
+    if (match != null) return 'Import ${match[1]} books';
     match = RegExp(r'^已读 (\d+)%$').firstMatch(source);
     if (match != null) return '${match[1]}% read';
     match = RegExp(r'^阅读进度 ([\d.]+)%$').firstMatch(source);
@@ -158,6 +166,52 @@ class AppLocalizations {
     if (match != null) return 'Delete ${match[1]} books';
     match = RegExp(r'^修改 (.+) 的密码$').firstMatch(source);
     if (match != null) return 'Change password for ${match[1]}';
+    match = RegExp(r'^格式 v(\d+)$').firstMatch(source);
+    if (match != null) return 'Format v${match[1]}';
+    match = RegExp(r'^创建于 (.+)$').firstMatch(source);
+    if (match != null) return 'Created ${match[1]}';
+    match = RegExp(r'^(用户|书籍|批注|书签|历史|进度) (\d+)$').firstMatch(source);
+    if (match != null) {
+      const labels = {
+        '用户': 'Users',
+        '书籍': 'Books',
+        '批注': 'Annotations',
+        '书签': 'Bookmarks',
+        '历史': 'History',
+        '进度': 'Progress',
+      };
+      return '${labels[match[1]]} ${match[2]}';
+    }
+    match = RegExp(r'^(全量备份|书籍备份|用户数据备份) · 创建于 (.+)$').firstMatch(source);
+    if (match != null) return '${tr(match[1]!)} · Created ${match[2]}';
+    match = RegExp(r'^正在恢复 (\d+)%$').firstMatch(source);
+    if (match != null) return 'Restoring ${match[1]}%';
+    match = RegExp(r'^正在上传备份文件 (\d+)%$').firstMatch(source);
+    if (match != null) return 'Uploading backup ${match[1]}%';
+    match = RegExp(r'^正在恢复数据库 (\d+)/(\d+)$').firstMatch(source);
+    if (match != null) return 'Restoring database ${match[1]}/${match[2]}';
+    match = RegExp(r'^正在恢复书籍文件 (\d+)/(\d+)$').firstMatch(source);
+    if (match != null) return 'Restoring book files ${match[1]}/${match[2]}';
+    match = RegExp(r'^已恢复书籍文件 (\d+)/(\d+)$').firstMatch(source);
+    if (match != null) return 'Restored book files ${match[1]}/${match[2]}';
+    match = RegExp(r'^总进度 (\d+)% · 已用时 (.+)$').firstMatch(source);
+    if (match != null) return 'Overall ${match[1]}% · Elapsed ${match[2]}';
+    match = RegExp(
+      r'^只处理已映射用户和勾选的 (\d+) 类数据；替换模式不会影响其他类型。$',
+    ).firstMatch(source);
+    if (match != null) {
+      return 'Only mapped users and the ${match[1]} selected data types are affected. Replace mode leaves every other type unchanged.';
+    }
+    match = RegExp(r'^将只替换已映射用户的“(.+)”。其他用户和未勾选的数据类型保持不变。$').firstMatch(source);
+    if (match != null) {
+      final types = match[1]!.split('、').map(tr).join(', ');
+      return 'Replace only $types for mapped users. Other users and unselected data types remain unchanged.';
+    }
+    match = RegExp(r'^将把已选择的“(.+)”合并到目标用户；未勾选的数据类型保持不变。$').firstMatch(source);
+    if (match != null) {
+      final types = match[1]!.split('、').map(tr).join(', ');
+      return 'Merge the selected $types into target users. Unselected data types remain unchanged.';
+    }
     match = RegExp(r'^将从书签列表移除“(.+)”。$').firstMatch(source);
     if (match != null) return 'Remove “${match[1]}” from bookmarks.';
     match = RegExp(r'^扫描计划包含本地目录中不存在的文件：(.+)$').firstMatch(source);
@@ -418,6 +472,130 @@ class AppLocalizations {
     '批注管理': 'Annotations',
     '书签管理': 'Bookmarks',
     '资源扫描': 'Library sources',
+    '备份恢复': 'Backup & restore',
+    '仅超级管理员可使用备份恢复': 'Only super admins can use backup and restore',
+    '完整备份包含账号、书籍和阅读数据，馆员账号无法导出或覆盖系统数据。':
+        'Full backups contain accounts, books, and reading data. Librarians cannot export or replace system data.',
+    '系统备份与恢复': 'System backup & restore',
+    '完整保存数据库、封面、正文缓存以及服务器当前可读取的书籍原文件。建议在升级或迁移前生成一份新备份。':
+        'Save the database, covers, content cache, and every book file currently readable by the server. Create a fresh backup before upgrades or migrations.',
+    '导出完整备份': 'Export full backup',
+    '导出备份': 'Export backup',
+    '导入与恢复': 'Import & restore',
+    '全量': 'Full',
+    '全量备份': 'Full backup',
+    '书籍备份': 'Book backup',
+    '用户数据备份': 'User-data backup',
+    '用户数据': 'User data',
+    '生成可完整迁移到另一套轻阅服务的 ZIP 文件。':
+        'Create a ZIP that fully migrates to another Private Reader server.',
+    '仅导出书籍、封面、正文缓存与原文件。':
+        'Export only books, covers, content cache, and original files.',
+    '按用户和数据类型导出阅读数据，恢复时再映射目标用户。':
+        'Export reading data by user and type, then map target users during restore.',
+    '批注、书签、阅读历史与进度': 'Annotations, bookmarks, reading history, and progress',
+    '全部相关书籍': 'All related books',
+    '选择用户（必选）': 'Choose users (required)',
+    '不选择时导出全部书籍；相同文件会在恢复时自动去重。':
+        'With no selection, all books are exported. Identical files are deduplicated on restore.',
+    '书籍权限': 'Book access',
+    '个人分组': 'Personal groups',
+    '阅读历史': 'Reading history',
+    '阅读进度': 'Reading progress',
+    '导出全量备份': 'Export full backup',
+    '导出书籍备份': 'Export book backup',
+    '导出用户数据': 'Export user data',
+    '生成可迁移到另一套轻阅服务的 ZIP 文件。':
+        'Create a ZIP that can be migrated to another Private Reader server.',
+    '账号、权限与系统配置': 'Accounts, permissions, and system settings',
+    '书籍、封面与结构化正文': 'Books, covers, and structured content',
+    '批注、书签与阅读进度': 'Annotations, bookmarks, and reading progress',
+    '正在生成备份': 'Creating backup',
+    '导出系统备份': 'Export system backup',
+    '备份不会暂停阅读服务，但大书库导出期间会增加磁盘读取压力。':
+        'Reading remains available, but exporting a large library increases disk activity.',
+    '恢复系统备份': 'Restore system backup',
+    '先校验备份类型和内容，再按范围恢复到当前系统。':
+        'Validate the backup type and contents, then restore only its scope.',
+    '先校验文件并查看摘要，确认后再覆盖当前系统。':
+        'Validate the file and review its summary before replacing this system.',
+    '移除文件': 'Remove file',
+    '正在处理': 'Working',
+    '开始全量恢复': 'Start full restore',
+    '选择轻阅完整备份文件': 'Choose a full Private Reader backup',
+    '选择轻阅备份文件': 'Choose a Private Reader backup',
+    '仅支持由系统导出的 .zip 文件': 'Only system-exported .zip files are supported',
+    '选择文件': 'Choose file',
+    '备份校验通过': 'Backup validated',
+    '目标用户映射': 'Target user mapping',
+    '选择恢复范围': 'Choose restore scope',
+    '全量备份包含完整数据，但不必全部覆盖；可以只导入书籍，或只恢复指定用户的阅读数据。':
+        'A full backup contains everything, but you can import only books or restore reading data for selected users.',
+    '完整系统': 'Full system',
+    '仅书籍': 'Books only',
+    '选择用户数据': 'Choose user data',
+    '只恢复勾选的类型；选择“替换所选范围”时，也只会清理这些类型对应的数据。':
+        'Restore only selected types. Replace selected scope also clears only those types.',
+    '不恢复此用户': 'Skip this user',
+    '源系统的 ID 不会直接使用。请逐个指定数据要恢复到当前系统的哪个用户。':
+        'Source IDs are never reused. Choose the target account in this system for every source user.',
+    '只为需要恢复的源用户选择目标用户；未选择的用户会保持跳过，源系统 ID 不会直接使用。':
+        'Choose targets only for source users you want to restore. Unselected users are skipped and source IDs are never reused.',
+    '选择当前系统用户': 'Choose a user in this system',
+    '合并数据': 'Merge data',
+    '替换所选范围': 'Replace selected scope',
+    '导入书籍备份': 'Import book backup',
+    '恢复用户数据': 'Restore user data',
+    '全量恢复不可撤销。请先导出当前系统备份，并确认文件来源可信。':
+        'A full restore cannot be undone. Export the current system and use only a trusted file.',
+    '用户数据只会写入手动映射的目标用户；替换模式仅清理备份包含的范围。':
+        'User data is written only to manually mapped accounts. Replace mode clears only the included scope.',
+    '系统会先校验文件；相同原文件的书籍会自动去重。':
+        'The file is validated first. Books with identical originals are deduplicated.',
+    '确认导入书籍？': 'Import these books?',
+    '确认恢复用户数据？': 'Restore this user data?',
+    '确认导入': 'Confirm import',
+    '确认恢复': 'Confirm restore',
+    '请为备份中的每个用户选择当前系统的目标用户。':
+        'Choose a target account in this system for every user in the backup.',
+    '请至少选择一个源用户并指定当前系统的目标用户。':
+        'Choose at least one source user and a target account in this system.',
+    '请至少选择一种要恢复的用户数据。': 'Choose at least one user data type to restore.',
+    '恢复不可撤销。请先导出当前系统备份，并确认所选文件来源可信。':
+        'A restore cannot be undone. Export the current system first and only use a backup from a trusted source.',
+    '正在校验备份内容…': 'Validating backup…',
+    '确认覆盖当前系统？': 'Replace the current system?',
+    '当前系统中的账号、书籍和阅读数据将被备份内容替换。完成后所有设备都需要重新登录。':
+        'Accounts, books, and reading data in this system will be replaced by the backup. Every device must sign in again afterward.',
+    '请输入“恢复系统”继续': 'Enter “恢复系统” to continue',
+    '恢复系统': '恢复系统',
+    '确认全量恢复': 'Confirm full restore',
+    '备份已生成，但未能保存到所选位置。':
+        'The backup was created but could not be saved to the selected location.',
+    '正在整理数据库与书籍文件，备份较大时可能需要几分钟':
+        'Collecting database and book files. Large backups may take several minutes.',
+    '系统备份导出失败，请稍后重试。':
+        'The system backup could not be exported. Try again shortly.',
+    '正在校验备份文件': 'Validating backup file',
+    '请选择完整系统备份文件，用户数据备份不能在此处全量恢复':
+        'Choose a full system backup. A user-data backup cannot be restored here.',
+    '无法读取备份文件，请确认文件完整且来源可信。':
+        'The backup could not be read. Make sure it is complete and from a trusted source.',
+    '正在恢复系统数据，请勿关闭应用或中断服务器':
+        'Restoring system data. Do not close the app or interrupt the server.',
+    '系统恢复失败，服务器已回滚本次数据变更。':
+        'The restore failed and the server rolled back this change.',
+    '备份上传完成，等待服务器开始校验': 'Upload complete. Waiting for server validation.',
+    '正在准备恢复书籍文件': 'Preparing book files for restore',
+    '正在恢复数据库': 'Restoring database',
+    '正在完成数据校验': 'Finalizing data validation',
+    '系统恢复成功': 'System restore completed',
+    '系统恢复成功，即将返回登录页': 'System restore completed. Returning to sign in.',
+    '恢复失败，系统数据已回滚': 'Restore failed. System data was rolled back.',
+    '恢复仍在服务器执行，暂时无法读取详细进度':
+        'The restore is still running, but detailed progress is temporarily unavailable.',
+    '正在校验备份': 'Validating backup',
+    '完整系统备份已保存': 'Full system backup saved',
     '插件': 'Plugins',
     '添加用户': 'Add user',
     '新建后台用户': 'Create user',

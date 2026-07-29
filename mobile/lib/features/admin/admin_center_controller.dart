@@ -17,7 +17,7 @@ final adminCenterControllerProvider =
       );
     });
 
-enum AdminSection { users, roles, books, annotations, librarySources }
+enum AdminSection { users, roles, books, annotations, librarySources, backups }
 
 enum AdminBookImportPhase {
   uploading,
@@ -25,6 +25,27 @@ enum AdminBookImportPhase {
   refreshing,
   completed,
   failed,
+}
+
+enum AdminBackupOperation { idle, exporting, previewing, restoring }
+
+class AdminBackupProgress {
+  const AdminBackupProgress({
+    required this.phase,
+    required this.percent,
+    required this.message,
+    this.current = 0,
+    this.total = 0,
+  });
+
+  final String phase;
+  final int percent;
+  final String message;
+  final int current;
+  final int total;
+
+  bool get isCompleted => phase == 'COMPLETED';
+  bool get isFailed => phase == 'FAILED';
 }
 
 class AdminBookImportProgress {
@@ -96,6 +117,10 @@ class AdminCenterController extends ChangeNotifier {
   String? _notice;
   String? _workingMessage;
   AdminBookImportProgress? _bookImportProgress;
+  AdminBackupOperation _backupOperation = AdminBackupOperation.idle;
+  AdminBackupProgress? _backupProgress;
+  DateTime? _backupOperationStartedAt;
+  bool _isPollingBackupStatus = false;
 
   AdminSection get selectedSection => _selectedSection;
   List<AdminUserView> get users => _users;
@@ -112,11 +137,15 @@ class AdminCenterController extends ChangeNotifier {
   String? get notice => _notice;
   String? get workingMessage => _workingMessage;
   AdminBookImportProgress? get bookImportProgress => _bookImportProgress;
+  AdminBackupOperation get backupOperation => _backupOperation;
+  AdminBackupProgress? get backupProgress => _backupProgress;
+  DateTime? get backupOperationStartedAt => _backupOperationStartedAt;
   String get bookSearchQuery => _bookSearchQuery;
   String get selectedBookGroup => _selectedBookGroup;
   Set<int> get selectedBookIds => _selectedBookIds;
   bool get canAccessAdmin => _authController.user?.canAccessAdmin ?? false;
   bool get canManageUsers => _authController.user?.canManageAdminUsers ?? false;
+  bool get canManageBackups => canManageUsers;
   bool get canAssignBooks => canAccessAdmin;
   bool isCurrentUser(AdminUserView user) => _authController.user?.id == user.id;
 
@@ -125,6 +154,7 @@ class AdminCenterController extends ChangeNotifier {
     AdminSection.books,
     AdminSection.annotations,
     AdminSection.librarySources,
+    if (canManageBackups) AdminSection.backups,
   ];
 
   int get bookCount => _books.length;
@@ -264,6 +294,255 @@ class AdminCenterController extends ChangeNotifier {
       return;
     }
     _selectedSection = section;
+    notifyListeners();
+  }
+
+  Future<Uint8List?> exportFullSystemBackup() async {
+    return exportBackup(scope: 'FULL');
+  }
+
+  Future<Uint8List?> exportBackup({
+    required String scope,
+    List<int> userIds = const [],
+    List<int> bookIds = const [],
+    List<String> dataTypes = const [],
+  }) async {
+    if (!canManageBackups || _isWorking) return null;
+    _isWorking = true;
+    _backupOperation = AdminBackupOperation.exporting;
+    _backupOperationStartedAt = DateTime.now();
+    _error = null;
+    _notice = null;
+    _workingMessage = '正在整理数据库与书籍文件，备份较大时可能需要几分钟';
+    notifyListeners();
+    try {
+      final scopedUserIds = scope == 'USER_DATA' ? userIds : const <int>[];
+      final scopedBookIds = scope == 'FULL' ? const <int>[] : bookIds;
+      final scopedDataTypes = scope == 'USER_DATA'
+          ? dataTypes
+          : const <String>[];
+      return await _authController.runAuthorized(
+        (token) => _apiClient.exportBackup(
+          token,
+          scope: scope,
+          userIds: scopedUserIds,
+          bookIds: scopedBookIds,
+          dataTypes: scopedDataTypes,
+        ),
+      );
+    } catch (error) {
+      _error = ApiException.userFacingMessage(
+        error,
+        fallback: '系统备份导出失败，请稍后重试。',
+      );
+      return null;
+    } finally {
+      _isWorking = false;
+      _backupOperation = AdminBackupOperation.idle;
+      _backupOperationStartedAt = null;
+      _workingMessage = null;
+      notifyListeners();
+    }
+  }
+
+  Future<AdminBackupPreview?> previewSystemBackup({
+    required String fileName,
+    String? filePath,
+    Uint8List? fileBytes,
+  }) async {
+    final preview = await previewBackup(
+      fileName: fileName,
+      filePath: filePath,
+      fileBytes: fileBytes,
+    );
+    if (preview != null && !preview.isFull) {
+      _error = '请选择完整系统备份文件';
+      notifyListeners();
+      return null;
+    }
+    return preview;
+  }
+
+  Future<AdminBackupPreview?> previewBackup({
+    required String fileName,
+    String? filePath,
+    Uint8List? fileBytes,
+  }) async {
+    if (!canManageBackups || _isWorking) return null;
+    _isWorking = true;
+    _backupOperation = AdminBackupOperation.previewing;
+    _backupOperationStartedAt = DateTime.now();
+    _error = null;
+    _notice = null;
+    _workingMessage = '正在校验备份文件';
+    notifyListeners();
+    try {
+      final preview = await _authController.runAuthorized(
+        (token) => _apiClient.previewSystemBackup(
+          token,
+          fileName: fileName,
+          filePath: filePath,
+          fileBytes: fileBytes,
+        ),
+      );
+      return preview;
+    } catch (error) {
+      _error = ApiException.userFacingMessage(
+        error,
+        fallback: '无法读取备份文件，请确认文件完整且来源可信。',
+      );
+      return null;
+    } finally {
+      _isWorking = false;
+      _backupOperation = AdminBackupOperation.idle;
+      _backupOperationStartedAt = null;
+      _workingMessage = null;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> restoreFullSystemBackup({
+    required String fileName,
+    String? filePath,
+    Uint8List? fileBytes,
+  }) async {
+    return restoreBackup(
+      fileName: fileName,
+      filePath: filePath,
+      fileBytes: fileBytes,
+      restoreScope: 'FULL',
+    );
+  }
+
+  Future<bool> restoreBackup({
+    required String fileName,
+    String? filePath,
+    Uint8List? fileBytes,
+    required String restoreScope,
+    Map<int, int>? userMappings,
+    List<String> dataTypes = const [],
+    String mode = 'MERGE',
+  }) async {
+    if (!canManageBackups || _isWorking) return false;
+    final operationId =
+        'restore-${DateTime.now().microsecondsSinceEpoch.toString()}';
+    final isFull = restoreScope == 'FULL';
+    _isWorking = true;
+    _backupOperation = AdminBackupOperation.restoring;
+    _backupOperationStartedAt = DateTime.now();
+    _backupProgress = const AdminBackupProgress(
+      phase: 'UPLOADING',
+      percent: 0,
+      message: '正在上传备份文件 0%',
+    );
+    _error = null;
+    _notice = null;
+    _workingMessage = isFull ? '正在恢复系统数据，请勿关闭应用或中断服务器' : '正在导入备份数据，请勿关闭应用';
+    notifyListeners();
+    Timer? statusTimer;
+    try {
+      statusTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+        unawaited(_pollFullRestoreStatus(operationId));
+      });
+      await _authController.runAuthorized(
+        (token) => _apiClient.restoreBackup(
+          token,
+          operationId: operationId,
+          fileName: fileName,
+          filePath: filePath,
+          fileBytes: fileBytes,
+          restoreScope: restoreScope,
+          userMappings: userMappings,
+          dataTypes: dataTypes,
+          mode: mode,
+          onSendProgress: (sent, total) {
+            if (_backupOperation != AdminBackupOperation.restoring) return;
+            final uploadPercent = total <= 0
+                ? 0
+                : (sent * 100 / total).round().clamp(0, 100);
+            _backupProgress = AdminBackupProgress(
+              phase: uploadPercent >= 100 ? 'WAITING' : 'UPLOADING',
+              percent: (uploadPercent * 35 / 100).round(),
+              message: uploadPercent >= 100
+                  ? '备份上传完成，等待服务器开始校验'
+                  : '正在上传备份文件 $uploadPercent%',
+            );
+            notifyListeners();
+          },
+        ),
+      );
+      statusTimer.cancel();
+      _backupProgress = const AdminBackupProgress(
+        phase: 'COMPLETED',
+        percent: 100,
+        message: '恢复成功',
+      );
+      _workingMessage = isFull ? '系统恢复成功，即将返回登录页' : '数据恢复成功';
+      notifyListeners();
+      if (isFull) {
+        await Future<void>.delayed(const Duration(milliseconds: 1400));
+        await _authController.signOut();
+      } else {
+        await refresh();
+      }
+      return true;
+    } catch (error) {
+      final message = ApiException.userFacingMessage(
+        error,
+        fallback: '系统恢复失败，服务器已回滚本次数据变更。',
+      );
+      _error = message;
+      _backupProgress = AdminBackupProgress(
+        phase: 'FAILED',
+        percent: _backupProgress?.percent ?? 0,
+        message: message,
+      );
+      return false;
+    } finally {
+      statusTimer?.cancel();
+      _isWorking = false;
+      _backupOperation = AdminBackupOperation.idle;
+      _backupOperationStartedAt = null;
+      _workingMessage = null;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _pollFullRestoreStatus(String operationId) async {
+    if (_isPollingBackupStatus ||
+        _backupOperation != AdminBackupOperation.restoring ||
+        _backupProgress?.phase == 'UPLOADING') {
+      return;
+    }
+    _isPollingBackupStatus = true;
+    try {
+      final status = await _authController.runAuthorized(
+        (token) => _apiClient.getFullSystemRestoreStatus(token, operationId),
+      );
+      if (_backupOperation != AdminBackupOperation.restoring) return;
+      _backupProgress = AdminBackupProgress(
+        phase: status.phase,
+        percent: 35 + (status.percent * 65 / 100).round(),
+        message: status.message,
+        current: status.current,
+        total: status.total,
+      );
+      _workingMessage = status.message;
+      notifyListeners();
+    } on ApiException catch (error) {
+      // The status record appears just after multipart upload completes.
+      if (error.statusCode != 400 && error.statusCode != 404) {
+        _workingMessage = '恢复仍在服务器执行，暂时无法读取详细进度';
+        notifyListeners();
+      }
+    } finally {
+      _isPollingBackupStatus = false;
+    }
+  }
+
+  void markBackupSaved() {
+    _notice = '完整系统备份已保存';
+    _error = null;
     notifyListeners();
   }
 
@@ -414,6 +693,10 @@ class AdminCenterController extends ChangeNotifier {
   void dismissBookImportProgress() {
     if (!(_bookImportProgress?.isTerminal ?? false)) return;
     _bookImportProgress = null;
+    _backupOperation = AdminBackupOperation.idle;
+    _backupProgress = null;
+    _backupOperationStartedAt = null;
+    _isPollingBackupStatus = false;
     notifyListeners();
   }
 

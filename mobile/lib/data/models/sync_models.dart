@@ -123,6 +123,20 @@ class ReadingProgressView {
   };
 }
 
+class ReadingHistoryView {
+  const ReadingHistoryView({required this.bookId, required this.lastReadAt});
+
+  final int bookId;
+  final String lastReadAt;
+
+  factory ReadingHistoryView.fromJson(Map<String, dynamic> json) {
+    return ReadingHistoryView(
+      bookId: (json['bookId'] as num).toInt(),
+      lastReadAt: json['lastReadAt'] as String? ?? '',
+    );
+  }
+}
+
 class AnnotationMutation {
   const AnnotationMutation({
     this.clientTempId,
@@ -314,12 +328,14 @@ class SyncPullResponse {
     required this.annotations,
     required this.bookmarks,
     required this.progresses,
+    this.histories = const [],
   });
 
   final int cursor;
   final List<AnnotationView> annotations;
   final List<BookmarkView> bookmarks;
   final List<ReadingProgressView> progresses;
+  final List<ReadingHistoryView> histories;
 
   factory SyncPullResponse.fromJson(Map<String, dynamic> json) {
     return SyncPullResponse(
@@ -334,6 +350,11 @@ class SyncPullResponse {
           .map(
             (item) =>
                 ReadingProgressView.fromJson(item as Map<String, dynamic>),
+          )
+          .toList(),
+      histories: ((json['histories'] as List<dynamic>?) ?? const [])
+          .map(
+            (item) => ReadingHistoryView.fromJson(item as Map<String, dynamic>),
           )
           .toList(),
     );

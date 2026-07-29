@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
@@ -305,6 +306,146 @@ class ApiClient {
     );
 
     return BookDetail.fromJson(data);
+  }
+
+  Future<Uint8List> exportFullSystemBackup(String accessToken) async {
+    return exportBackup(accessToken, scope: 'FULL');
+  }
+
+  Future<Uint8List> exportBackup(
+    String accessToken, {
+    required String scope,
+    List<int> userIds = const [],
+    List<int> bookIds = const [],
+    List<String> dataTypes = const [],
+  }) async {
+    final data = await _request<List<int>>(
+      () => _dio.get<List<int>>(
+        '/api/admin/backups/export',
+        queryParameters: {
+          'scope': scope,
+          if (userIds.isNotEmpty) 'userIds': userIds,
+          if (bookIds.isNotEmpty) 'bookIds': bookIds,
+          if (dataTypes.isNotEmpty) 'dataTypes': dataTypes,
+        },
+        options: Options(
+          headers: _headers(accessToken),
+          responseType: ResponseType.bytes,
+          receiveTimeout: Duration.zero,
+        ),
+      ),
+    );
+    return Uint8List.fromList(data);
+  }
+
+  Future<AdminBackupPreview> previewSystemBackup(
+    String accessToken, {
+    required String fileName,
+    String? filePath,
+    Uint8List? fileBytes,
+  }) async {
+    final formData = FormData.fromMap({
+      'file': await _multipartFile(
+        filePath: filePath,
+        fileBytes: fileBytes,
+        fileName: fileName,
+      ),
+    });
+    final data = await _request<Map<String, dynamic>>(
+      () => _dio.post<Map<String, dynamic>>(
+        '/api/admin/backups/preview',
+        data: formData,
+        options: Options(
+          headers: _headers(accessToken),
+          contentType: 'multipart/form-data',
+          connectTimeout: Duration.zero,
+          sendTimeout: Duration.zero,
+          receiveTimeout: Duration.zero,
+        ),
+      ),
+    );
+    return AdminBackupPreview.fromJson(data);
+  }
+
+  Future<AdminBackupRestoreResult> restoreFullSystemBackup(
+    String accessToken, {
+    required String operationId,
+    required String fileName,
+    String? filePath,
+    Uint8List? fileBytes,
+    ProgressCallback? onSendProgress,
+  }) async {
+    return restoreBackup(
+      accessToken,
+      operationId: operationId,
+      fileName: fileName,
+      filePath: filePath,
+      fileBytes: fileBytes,
+      restoreScope: 'FULL',
+      onSendProgress: onSendProgress,
+    );
+  }
+
+  Future<AdminBackupRestoreResult> restoreBackup(
+    String accessToken, {
+    required String operationId,
+    required String fileName,
+    String? filePath,
+    Uint8List? fileBytes,
+    required String restoreScope,
+    Map<int, int>? userMappings,
+    List<String> dataTypes = const [],
+    String mode = 'MERGE',
+    ProgressCallback? onSendProgress,
+  }) async {
+    final formData = FormData.fromMap({
+      'file': await _multipartFile(
+        filePath: filePath,
+        fileBytes: fileBytes,
+        fileName: fileName,
+      ),
+      'request': MultipartFile.fromString(
+        jsonEncode({
+          'scope': restoreScope,
+          'dataTypes': dataTypes,
+          if (userMappings != null)
+            'userMappings': userMappings.map(
+              (key, value) => MapEntry(key.toString(), value),
+            ),
+          'mode': mode,
+        }),
+        contentType: DioMediaType.parse('application/json'),
+      ),
+    });
+    final data = await _request<Map<String, dynamic>>(
+      () => _dio.post<Map<String, dynamic>>(
+        '/api/admin/backups/restore',
+        queryParameters: {'operationId': operationId},
+        data: formData,
+        options: Options(
+          headers: _headers(accessToken),
+          contentType: 'multipart/form-data',
+          connectTimeout: Duration.zero,
+          sendTimeout: Duration.zero,
+          receiveTimeout: Duration.zero,
+        ),
+        onSendProgress: onSendProgress,
+      ),
+    );
+    return AdminBackupRestoreResult.fromJson(data);
+  }
+
+  Future<AdminBackupRestoreStatus> getFullSystemRestoreStatus(
+    String accessToken,
+    String operationId,
+  ) async {
+    final data = await _request<Map<String, dynamic>>(
+      () => _dio.get<Map<String, dynamic>>(
+        '/api/admin/backups/restore-status/$operationId',
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+    return AdminBackupRestoreStatus.fromJson(data);
   }
 
   Future<List<AdminUserView>> listGrantableUsers(String accessToken) async {

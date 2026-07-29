@@ -17,6 +17,7 @@ import '../../shared/widgets/glass_segmented_control.dart';
 import '../../shared/widgets/glass_surface.dart';
 import '../../shared/widgets/glass_dialog.dart';
 import '../auth/auth_controller.dart';
+import 'admin_backup_section.dart';
 import 'admin_library_sources_section.dart';
 import 'admin_center_controller.dart';
 import 'admin_book_import_progress_dialog.dart';
@@ -287,6 +288,8 @@ class _SectionBody extends StatelessWidget {
         return _AnnotationManagementSection(controller: controller);
       case AdminSection.librarySources:
         return AdminLibrarySourcesSection(controller: controller);
+      case AdminSection.backups:
+        return AdminBackupSection(controller: controller);
     }
   }
 }
@@ -2072,6 +2075,8 @@ String _sectionLabel(AdminSection section) {
       return '批注管理';
     case AdminSection.librarySources:
       return '资源扫描';
+    case AdminSection.backups:
+      return '备份恢复';
   }
 }
 
@@ -2087,6 +2092,8 @@ IconData _sectionIcon(AdminSection section) {
       return Icons.format_quote_rounded;
     case AdminSection.librarySources:
       return Icons.cloud_sync_outlined;
+    case AdminSection.backups:
+      return Icons.settings_backup_restore_rounded;
   }
 }
 

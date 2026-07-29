@@ -148,6 +148,18 @@ class SyncService(
                     .param("updatedAt", incomingUpdatedAt.toSqlTimestamp())
                     .update()
             }
+            jdbcClient.sql(
+                """
+                insert into reading_history (user_id, book_id, last_read_at)
+                values (:userId, :bookId, :lastReadAt)
+                on conflict (user_id, book_id) do update
+                set last_read_at = greatest(reading_history.last_read_at, excluded.last_read_at)
+                """.trimIndent(),
+            )
+                .param("userId", userId)
+                .param("bookId", mutation.bookId)
+                .param("lastReadAt", incomingUpdatedAt.toSqlTimestamp())
+                .update()
         }
 
         return SyncPushResponse(annotationMappings = mappings, conflicts = conflicts)
@@ -197,11 +209,25 @@ class SyncService(
             .query { rs, _ -> rs.toProgressView() }
             .list()
 
+        val histories = jdbcClient.sql(
+            """
+            select book_id, last_read_at
+            from reading_history
+            where user_id = :userId and last_read_at > :since
+            order by last_read_at asc
+            """.trimIndent(),
+        )
+            .param("userId", userId)
+            .param("since", since.toSqlTimestamp())
+            .query { rs, _ -> ReadingHistoryView(rs.getLong("book_id"), rs.getTimestamp("last_read_at").toInstant().toString()) }
+            .list()
+
         // 游标取三类同步数据中的最大更新时间，让客户端下次从该时间之后继续拉取。
         val nextCursor = listOf(
             annotations.maxOfOrNull { Instant.parse(it.updatedAt).toEpochMilli() } ?: 0L,
             bookmarks.maxOfOrNull { Instant.parse(it.updatedAt).toEpochMilli() } ?: 0L,
             progresses.maxOfOrNull { Instant.parse(it.updatedAt).toEpochMilli() } ?: 0L,
+            histories.maxOfOrNull { Instant.parse(it.lastReadAt).toEpochMilli() } ?: 0L,
             since.toEpochMilli(),
         ).fold(0L, ::max)
 
@@ -210,6 +236,7 @@ class SyncService(
             annotations = annotations,
             bookmarks = bookmarks,
             progresses = progresses,
+            histories = histories,
         )
     }
 

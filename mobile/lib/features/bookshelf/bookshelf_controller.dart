@@ -64,6 +64,7 @@ class BookshelfController extends ChangeNotifier {
   final Set<int> _downloadingBookIds = <int>{};
   int _offlineLibrarySizeBytes = 0;
   List<ReadingProgressView> _readingProgresses = const [];
+  List<ReadingHistoryView> _readingHistories = const [];
   String _selectedFilterKey = bookshelfFilterAll;
   String? _activeScopeKey;
   int _pendingCountRequestId = 0;
@@ -124,10 +125,17 @@ class BookshelfController extends ChangeNotifier {
   };
   List<BookSummary> get recentBooks {
     final booksById = {for (final book in _books) book.id: book};
-    final progresses = [..._readingProgresses]
-      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-    return progresses
-        .map((progress) => booksById[progress.bookId])
+    final lastReadByBook = <int, String>{
+      for (final history in _readingHistories)
+        history.bookId: history.lastReadAt,
+    };
+    for (final progress in _readingProgresses) {
+      lastReadByBook.putIfAbsent(progress.bookId, () => progress.updatedAt);
+    }
+    final entries = lastReadByBook.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    return entries
+        .map((entry) => booksById[entry.key])
         .whereType<BookSummary>()
         .take(10)
         .toList();
@@ -259,6 +267,7 @@ class BookshelfController extends ChangeNotifier {
       _pendingCountRequestId++;
       _books = const [];
       _readingProgresses = const [];
+      _readingHistories = const [];
       _selectedFilterKey = bookshelfFilterAll;
       _pendingCount = 0;
       _error = null;
@@ -327,11 +336,13 @@ class BookshelfController extends ChangeNotifier {
       );
       _authController.markServerReachable();
       var nextProgresses = _readingProgresses;
+      var nextHistories = _readingHistories;
       try {
         final sync = await _authController.runAuthorized(
           (accessToken) => _apiClient.pullSync(accessToken, cursor: 0),
         );
         nextProgresses = _mergeProgresses(sync.progresses, localProgresses);
+        nextHistories = sync.histories;
       } catch (error, stackTrace) {
         developer.log(
           'Failed to load recent reading progress',
@@ -351,6 +362,7 @@ class BookshelfController extends ChangeNotifier {
         userId,
       );
       _readingProgresses = nextProgresses;
+      _readingHistories = nextHistories;
       if (!filterOptions.any((option) => option.key == _selectedFilterKey)) {
         _selectedFilterKey = bookshelfFilterAll;
       }
@@ -621,6 +633,7 @@ class BookshelfController extends ChangeNotifier {
       _pendingCountRequestId++;
       _books = const [];
       _readingProgresses = const [];
+      _readingHistories = const [];
       _selectedFilterKey = bookshelfFilterAll;
       _pendingCount = 0;
       _error = null;

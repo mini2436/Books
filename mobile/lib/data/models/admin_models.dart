@@ -406,6 +406,148 @@ class AdminImportJobView {
   }
 }
 
+class AdminBackupPreview {
+  const AdminBackupPreview({
+    required this.formatVersion,
+    required this.scope,
+    required this.createdAt,
+    required this.sourceUsers,
+    required this.books,
+    required this.annotations,
+    required this.bookmarks,
+    required this.histories,
+    required this.progresses,
+    this.dataTypes = const [],
+  });
+
+  final int formatVersion;
+  final String scope;
+  final String createdAt;
+  final List<AdminBackupUserView> sourceUsers;
+  final int books;
+  final int annotations;
+  final int bookmarks;
+  final int histories;
+  final int progresses;
+  final List<String> dataTypes;
+
+  bool get isFull => scope == 'FULL';
+  bool get isBooks => scope == 'BOOKS';
+  bool get isUserData => scope == 'USER_DATA';
+
+  factory AdminBackupPreview.fromJson(Map<String, dynamic> json) {
+    return AdminBackupPreview(
+      formatVersion: (json['formatVersion'] as num?)?.toInt() ?? 0,
+      scope: json['scope'] as String? ?? '',
+      createdAt: json['createdAt'] as String? ?? '',
+      sourceUsers: (json['sourceUsers'] as List<dynamic>? ?? const [])
+          .map(
+            (item) =>
+                AdminBackupUserView.fromJson(item as Map<String, dynamic>),
+          )
+          .toList(),
+      books: (json['books'] as num?)?.toInt() ?? 0,
+      annotations: (json['annotations'] as num?)?.toInt() ?? 0,
+      bookmarks: (json['bookmarks'] as num?)?.toInt() ?? 0,
+      histories: (json['histories'] as num?)?.toInt() ?? 0,
+      progresses: (json['progresses'] as num?)?.toInt() ?? 0,
+      dataTypes: (json['dataTypes'] as List<dynamic>? ?? const [])
+          .map((item) => item.toString())
+          .toList(),
+    );
+  }
+}
+
+class AdminBackupUserView {
+  const AdminBackupUserView({
+    required this.id,
+    required this.username,
+    required this.displayName,
+  });
+
+  final int id;
+  final String username;
+  final String? displayName;
+
+  factory AdminBackupUserView.fromJson(Map<String, dynamic> json) {
+    return AdminBackupUserView(
+      id: (json['id'] as num).toInt(),
+      username: json['username'] as String? ?? '',
+      displayName: json['displayName'] as String?,
+    );
+  }
+}
+
+class AdminBackupRestoreResult {
+  const AdminBackupRestoreResult({
+    required this.scope,
+    required this.restoredUsers,
+    required this.restoredBooks,
+    required this.annotations,
+    required this.bookmarks,
+    required this.progresses,
+    required this.histories,
+    required this.skippedBooks,
+  });
+
+  final String scope;
+  final int restoredUsers;
+  final int restoredBooks;
+  final int annotations;
+  final int bookmarks;
+  final int progresses;
+  final int histories;
+  final int skippedBooks;
+
+  factory AdminBackupRestoreResult.fromJson(Map<String, dynamic> json) {
+    return AdminBackupRestoreResult(
+      scope: json['scope'] as String? ?? '',
+      restoredUsers: (json['restoredUsers'] as num?)?.toInt() ?? 0,
+      restoredBooks: (json['restoredBooks'] as num?)?.toInt() ?? 0,
+      annotations: (json['annotations'] as num?)?.toInt() ?? 0,
+      bookmarks: (json['bookmarks'] as num?)?.toInt() ?? 0,
+      progresses: (json['progresses'] as num?)?.toInt() ?? 0,
+      histories: (json['histories'] as num?)?.toInt() ?? 0,
+      skippedBooks: (json['skippedBooks'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
+class AdminBackupRestoreStatus {
+  const AdminBackupRestoreStatus({
+    required this.operationId,
+    required this.phase,
+    required this.percent,
+    required this.current,
+    required this.total,
+    required this.message,
+    required this.updatedAt,
+  });
+
+  final String operationId;
+  final String phase;
+  final int percent;
+  final int current;
+  final int total;
+  final String message;
+  final String updatedAt;
+
+  bool get isCompleted => phase == 'COMPLETED';
+  bool get isFailed => phase == 'FAILED';
+
+  factory AdminBackupRestoreStatus.fromJson(Map<String, dynamic> json) {
+    return AdminBackupRestoreStatus(
+      operationId: json['operationId'] as String? ?? '',
+      phase: json['phase'] as String? ?? '',
+      percent: (json['percent'] as num?)?.toInt() ?? 0,
+      current: (json['current'] as num?)?.toInt() ?? 0,
+      total: (json['total'] as num?)?.toInt() ?? 0,
+      message: json['message'] as String? ?? '',
+      updatedAt: json['updatedAt'] as String? ?? '',
+    );
+  }
+}
+
 class AdminRoleSummary {
   const AdminRoleSummary({
     required this.role,

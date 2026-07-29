@@ -63,6 +63,11 @@ data class ReadingProgressView(
     val updatedAt: String,
 )
 
+data class ReadingHistoryView(
+    val bookId: Long,
+    val lastReadAt: String,
+)
+
 data class SyncConflict(
     val entityType: String,
     val entityId: Long,
@@ -80,5 +85,6 @@ data class SyncPullResponse(
     val annotations: List<AnnotationView>,
     val bookmarks: List<BookmarkView>,
     val progresses: List<ReadingProgressView>,
+    val histories: List<ReadingHistoryView> = emptyList(),
 )
 

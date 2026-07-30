@@ -59,14 +59,6 @@ class _AdminBackupSectionState extends ConsumerState<AdminBackupSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _BackupCard(
-          child: _SectionIntroduction(
-            icon: Icons.shield_outlined,
-            title: '系统备份与恢复',
-            body: '完整保存数据库、封面、正文缓存以及服务器当前可读取的书籍原文件。建议在升级或迁移前生成一份新备份。',
-          ),
-        ),
-        const SizedBox(height: 14),
         LayoutBuilder(
           builder: (context, constraints) {
             final operation = widget.controller.backupOperation;
@@ -133,15 +125,25 @@ class _AdminBackupSectionState extends ConsumerState<AdminBackupSection> {
                   setState(() => _restoreMode = value),
             );
             if (constraints.maxWidth >= 840) {
-              return IntrinsicHeight(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(child: exportPanel),
-                    const SizedBox(width: 14),
-                    Expanded(child: restorePanel),
-                  ],
-                ),
+              if (_selectedFile == null && _exportScope == 'FULL') {
+                return IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(child: exportPanel),
+                      const SizedBox(width: 14),
+                      Expanded(child: restorePanel),
+                    ],
+                  ),
+                );
+              }
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: exportPanel),
+                  const SizedBox(width: 14),
+                  Expanded(child: restorePanel),
+                ],
               );
             }
             return Column(

@@ -124,6 +124,9 @@ class _AdminBookDetailScreenState extends ConsumerState<AdminBookDetailScreen> {
                                 title: title,
                                 author: author,
                                 accessToken: auth.accessToken,
+                                coverVersion:
+                                    detail?.coverVersion ??
+                                    summary?.coverVersion,
                               ),
                             ),
                             const SizedBox(width: 18),
@@ -149,6 +152,8 @@ class _AdminBookDetailScreenState extends ConsumerState<AdminBookDetailScreen> {
                               title: title,
                               author: author,
                               accessToken: auth.accessToken,
+                              coverVersion:
+                                  detail?.coverVersion ?? summary?.coverVersion,
                             ),
                             const SizedBox(height: 14),
                             _BookDetailOperations(
@@ -176,19 +181,23 @@ class _BookProfileCard extends ConsumerWidget {
     required this.title,
     required this.author,
     required this.accessToken,
+    this.coverVersion,
   });
 
   final int bookId;
   final String title;
   final String? author;
   final String? accessToken;
+  final String? coverVersion;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final palette = AppReaderPalette.of(context);
     final imageUrl = accessToken == null
         ? null
-        : ref.read(apiClientProvider).buildUrl('/api/me/books/$bookId/cover');
+        : ref
+              .read(apiClientProvider)
+              .buildBookCoverUrl(bookId, version: coverVersion);
     final headers = accessToken == null
         ? null
         : ref.read(apiClientProvider).coverHeaders(accessToken!);

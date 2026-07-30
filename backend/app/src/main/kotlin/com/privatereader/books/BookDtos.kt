@@ -16,6 +16,7 @@ data class BookView(
     val granted: Boolean,
     val sourceMissing: Boolean,
     val updatedAt: String,
+    val coverVersion: String?,
 )
 
 data class BookDetailView(
@@ -33,6 +34,7 @@ data class BookDetailView(
     val hasStructuredContent: Boolean,
     val contentModel: String?,
     val latestContentVersionId: Long?,
+    val coverVersion: String?,
 )
 
 data class AdminBookDetailView(
@@ -49,6 +51,7 @@ data class AdminBookDetailView(
     val contentModel: String?,
     val latestContentVersionId: Long?,
     val updatedAt: String,
+    val coverVersion: String?,
 )
 
 data class BookContentView(
@@ -96,6 +99,7 @@ data class AdminBookView(
     val sourceType: String,
     val sourceMissing: Boolean,
     val updatedAt: String,
+    val coverVersion: String?,
 )
 
 data class CreateGrantRequest(

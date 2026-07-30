@@ -627,7 +627,7 @@ class _BookCover extends ConsumerWidget {
         ? null
         : ref
               .read(apiClientProvider)
-              .buildUrl('/api/me/books/${book.id}/cover');
+              .buildBookCoverUrl(book.id, version: book.coverVersion);
     final headers = auth.accessToken == null
         ? null
         : ref.read(apiClientProvider).coverHeaders(auth.accessToken!);

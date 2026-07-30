@@ -108,6 +108,7 @@ class BookServiceCoverTest {
         val cover = service.getBookCover(1, 10)
 
         assertEquals("image/jpeg", cover?.mimeType)
+        requireNotNull(cover?.version)
         assertArrayEquals(expected, cover?.resource?.byteArray)
         verify(pluginRegistryService, never()).findPluginById(any())
     }
@@ -126,6 +127,7 @@ class BookServiceCoverTest {
 
         assertArrayEquals(expected, first?.resource?.byteArray)
         assertArrayEquals(expected, second?.resource?.byteArray)
+        assertEquals(first?.version, second?.version)
         assertEquals(
             "hash-20",
             jdbcClient.sql("select cover_source_file_hash from books where id = 20")

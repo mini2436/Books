@@ -865,7 +865,10 @@ class _BookManagementSection extends ConsumerWidget {
                           ? null
                           : ref
                                 .read(apiClientProvider)
-                                .buildUrl('/api/me/books/${book.id}/cover'),
+                                .buildBookCoverUrl(
+                                  book.id,
+                                  version: book.coverVersion,
+                                ),
                       headers: auth.accessToken == null
                           ? null
                           : ref
@@ -1563,7 +1566,9 @@ class _AdminMiniBookCover extends ConsumerWidget {
     final auth = ref.watch(authControllerProvider);
     final imageUrl = auth.accessToken == null
         ? null
-        : ref.read(apiClientProvider).buildUrl('/api/me/books/$bookId/cover');
+        : ref
+              .read(apiClientProvider)
+              .buildBookCoverUrl(bookId, version: book?.coverVersion);
     final headers = auth.accessToken == null
         ? null
         : ref.read(apiClientProvider).coverHeaders(auth.accessToken!);

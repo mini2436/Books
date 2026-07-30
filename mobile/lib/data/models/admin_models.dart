@@ -12,6 +12,7 @@ class AdminBookSummary {
     required this.sourceType,
     required this.sourceMissing,
     required this.updatedAt,
+    this.coverVersion,
   });
 
   final int id;
@@ -24,6 +25,7 @@ class AdminBookSummary {
   final String sourceType;
   final bool sourceMissing;
   final String updatedAt;
+  final String? coverVersion;
 
   factory AdminBookSummary.fromJson(Map<String, dynamic> json) {
     return AdminBookSummary(
@@ -37,6 +39,7 @@ class AdminBookSummary {
       sourceType: json['sourceType'] as String? ?? '',
       sourceMissing: json['sourceMissing'] as bool? ?? false,
       updatedAt: json['updatedAt'] as String? ?? '',
+      coverVersion: json['coverVersion']?.toString(),
     );
   }
 
@@ -50,6 +53,7 @@ class AdminBookSummary {
     String? sourceType,
     bool? sourceMissing,
     String? updatedAt,
+    String? coverVersion,
     bool clearAuthor = false,
     bool clearGroupName = false,
   }) {
@@ -64,6 +68,7 @@ class AdminBookSummary {
       sourceType: sourceType ?? this.sourceType,
       sourceMissing: sourceMissing ?? this.sourceMissing,
       updatedAt: updatedAt ?? this.updatedAt,
+      coverVersion: coverVersion ?? this.coverVersion,
     );
   }
 }
@@ -83,6 +88,7 @@ class AdminBookDetail {
     required this.contentModel,
     required this.latestContentVersionId,
     required this.updatedAt,
+    this.coverVersion,
   });
 
   final int id;
@@ -98,6 +104,7 @@ class AdminBookDetail {
   final String? contentModel;
   final int? latestContentVersionId;
   final String updatedAt;
+  final String? coverVersion;
 
   factory AdminBookDetail.fromJson(Map<String, dynamic> json) {
     return AdminBookDetail(
@@ -114,6 +121,7 @@ class AdminBookDetail {
       contentModel: json['contentModel'] as String?,
       latestContentVersionId: (json['latestContentVersionId'] as num?)?.toInt(),
       updatedAt: json['updatedAt'] as String? ?? '',
+      coverVersion: json['coverVersion']?.toString(),
     );
   }
 }

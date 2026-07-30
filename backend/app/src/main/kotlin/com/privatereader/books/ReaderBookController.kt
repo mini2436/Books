@@ -13,7 +13,9 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.TimeUnit
@@ -94,10 +96,26 @@ class ReaderBookController(
     fun downloadCover(
         @AuthenticationPrincipal principal: UserPrincipal,
         @PathVariable bookId: Long,
+        @RequestParam(required = false) v: String?,
+        @RequestHeader(name = HttpHeaders.IF_NONE_MATCH, required = false) ifNoneMatch: String?,
     ): ResponseEntity<Resource> {
         val cover = bookService.getBookCover(principal.id, bookId)
             ?: return ResponseEntity.noContent().build()
+        val etag = "\"book-cover-$bookId-${cover.version}\""
+        val cacheControl = if (v == cover.version) {
+            CacheControl.maxAge(365, TimeUnit.DAYS).cachePrivate().immutable()
+        } else {
+            CacheControl.noCache().cachePrivate()
+        }
+        if (ifNoneMatch?.split(',')?.any { it.trim() == etag } == true) {
+            return ResponseEntity.status(304)
+                .cacheControl(cacheControl)
+                .eTag(etag)
+                .build()
+        }
         return ResponseEntity.ok()
+            .cacheControl(cacheControl)
+            .eTag(etag)
             .contentType(MediaType.parseMediaType(cover.mimeType))
             .body(cover.resource)
     }

@@ -155,7 +155,8 @@ class BookService(
             // 查询全局角色可访问的全部书籍，每本书只取最新文件记录用于列表展示。
             return jdbcClient.sql(
                 """
-                select b.id, b.title, b.author, ubg.group_name, b.description, bf.plugin_id, bf.format, bf.source_type, bf.source_missing, b.updated_at
+                select b.id, b.title, b.author, ubg.group_name, b.description, bf.plugin_id, bf.format, bf.source_type, bf.source_missing, b.updated_at,
+                       extract(epoch from b.cover_updated_at) * 1000 as cover_version
                 from books b
                 join book_files bf on bf.book_id = b.id
                 left join user_book_groups ubg on ubg.book_id = b.id and ubg.user_id = :userId
@@ -174,7 +175,8 @@ class BookService(
         // 查询普通读者被显式授权的书籍列表，并带出最新文件信息。
         return jdbcClient.sql(
             """
-            select b.id, b.title, b.author, ubg.group_name, b.description, bf.plugin_id, bf.format, bf.source_type, bf.source_missing, b.updated_at
+            select b.id, b.title, b.author, ubg.group_name, b.description, bf.plugin_id, bf.format, bf.source_type, bf.source_missing, b.updated_at,
+                   extract(epoch from b.cover_updated_at) * 1000 as cover_version
             from books b
             join book_files bf on bf.book_id = b.id
             join user_book_access uba on uba.book_id = b.id and uba.user_id = :userId
@@ -191,7 +193,8 @@ class BookService(
         // 查询后台书籍列表，每本书取最新文件记录并按更新时间倒序展示。
         jdbcClient.sql(
             """
-            select b.id, b.title, b.author, b.group_name, b.description, bf.plugin_id, bf.format, bf.source_type, bf.source_missing, b.updated_at
+            select b.id, b.title, b.author, b.group_name, b.description, bf.plugin_id, bf.format, bf.source_type, bf.source_missing, b.updated_at,
+                   extract(epoch from b.cover_updated_at) * 1000 as cover_version
             from books b
             join book_files bf on bf.book_id = b.id
             where bf.id = (
@@ -213,6 +216,7 @@ class BookService(
                     sourceType = rs.getString("source_type"),
                     sourceMissing = rs.getBoolean("source_missing"),
                     updatedAt = rs.getTimestamp("updated_at").toInstant().toString(),
+                    coverVersion = rs.getObject("cover_version")?.let { (it as Number).toLong().toString() },
                 )
             }
             .list()
@@ -222,6 +226,7 @@ class BookService(
         jdbcClient.sql(
             """
             select b.id, b.title, b.author, b.group_name, b.description, bf.plugin_id, bf.format, f.source_type, f.source_missing,
+                   extract(epoch from b.cover_updated_at) * 1000 as cover_version,
                    exists(
                        select 1 from book_content_versions bcv
                        where bcv.book_id = b.id and bcv.status = 'READY'
@@ -263,6 +268,7 @@ class BookService(
                     contentModel = rs.getString("content_model"),
                     latestContentVersionId = rs.getObject("latest_content_version_id")?.let { (it as Number).toLong() },
                     updatedAt = rs.getTimestamp("updated_at").toInstant().toString(),
+                    coverVersion = rs.getObject("cover_version")?.let { (it as Number).toLong().toString() },
                 )
             }
             .optional()
@@ -457,7 +463,7 @@ class BookService(
             .getOrNull()
             ?: return null
         storeBookCover(bookId, fileRef.fileHash, cover)
-        return cover.toResource()
+        return findStoredBookCover(bookId) ?: cover.toResource(fileRef.fileHash)
     }
 
     fun getBookResource(userId: Long, bookId: Long, resourceId: String): BookBinaryResource? {
@@ -776,6 +782,7 @@ class BookService(
             granted = granted,
             sourceMissing = getBoolean("source_missing"),
             updatedAt = getTimestamp("updated_at").toInstant().toString(),
+            coverVersion = getObject("cover_version")?.let { (it as Number).toLong().toString() },
         )
 
     private fun getBookDetail(bookId: Long): BookDetailView =
@@ -783,6 +790,7 @@ class BookService(
         jdbcClient.sql(
             """
             select b.id, b.title, b.author, b.group_name, b.description, bf.plugin_id, bf.format, f.source_type, f.source_missing,
+                   extract(epoch from b.cover_updated_at) * 1000 as cover_version,
                    bf.manifest_json, bf.capabilities_json,
                    exists(
                        select 1 from book_content_versions bcv
@@ -834,6 +842,7 @@ class BookService(
             hasStructuredContent = getBoolean("has_structured_content"),
             contentModel = getString("content_model"),
             latestContentVersionId = getObject("latest_content_version_id")?.let { (it as Number).toLong() },
+            coverVersion = getObject("cover_version")?.let { (it as Number).toLong().toString() },
         )
     }
 
@@ -867,7 +876,8 @@ class BookService(
     private fun findStoredBookCover(bookId: Long): BookCoverResource? =
         jdbcClient.sql(
             """
-            select cover_content_type, cover_data
+            select cover_content_type, cover_data, cover_source_file_hash,
+                   extract(epoch from cover_updated_at) * 1000 as cover_version
             from books
             where id = :bookId
               and cover_data is not null
@@ -876,9 +886,13 @@ class BookService(
         )
             .param("bookId", bookId)
             .query { rs, _ ->
+                val bytes = rs.getBytes("cover_data")
                 BookCoverResource(
                     mimeType = rs.getString("cover_content_type"),
-                    resource = ByteArrayResource(rs.getBytes("cover_data")),
+                    resource = ByteArrayResource(bytes),
+                    version = rs.getObject("cover_version")?.let { (it as Number).toLong().toString() }
+                        ?: rs.getString("cover_source_file_hash")
+                        ?: HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)),
                 )
             }
             .optional()
@@ -917,10 +931,11 @@ class BookService(
         bookResourceStorageService.cacheReferencedResources(bookId, fileHash, pluginId, filePath)
     }
 
-    private fun CoverExtractionResult.toResource(): BookCoverResource =
+    private fun CoverExtractionResult.toResource(version: String): BookCoverResource =
         BookCoverResource(
             mimeType = mimeType,
             resource = ByteArrayResource(bytes),
+            version = version,
         )
 
     private fun String.toPostgresText(): String =
@@ -1318,6 +1333,7 @@ class BookService(
     data class BookCoverResource(
         val mimeType: String,
         val resource: ByteArrayResource,
+        val version: String,
     )
 
     data class BookBinaryResource(

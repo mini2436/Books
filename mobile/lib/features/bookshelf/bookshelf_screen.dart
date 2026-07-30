@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart' hide Text;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:private_reader_mobile/shared/localization/localized_text.dart';
@@ -92,7 +93,7 @@ class _BookshelfScreenState extends ConsumerState<BookshelfScreen>
 
     String? coverUrl(BookSummary book) => accessToken == null
         ? null
-        : apiClient.buildUrl('/api/me/books/${book.id}/cover');
+        : apiClient.buildBookCoverUrl(book.id, version: book.coverVersion);
     final coverHeaders = accessToken == null
         ? null
         : apiClient.coverHeaders(accessToken);
@@ -708,8 +709,9 @@ class _BookshelfSearchScreenState extends ConsumerState<BookshelfSearchScreen> {
                         final book = results[index];
                         final imageUrl = accessToken == null
                             ? null
-                            : apiClient.buildUrl(
-                                '/api/me/books/${book.id}/cover',
+                            : apiClient.buildBookCoverUrl(
+                                book.id,
+                                version: book.coverVersion,
                               );
                         final heroTag = 'book-cover-search-${book.id}';
                         final frameHeroTag = 'book-frame-search-${book.id}';
@@ -1272,11 +1274,15 @@ class _BookCover extends StatelessWidget {
                   ? Image.memory(imageBytes!, fit: BoxFit.cover)
                   : imageUrl == null
                   ? _BookFallback(title: title)
-                  : Image.network(
-                      imageUrl!,
-                      headers: headers,
+                  : CachedNetworkImage(
+                      imageUrl: imageUrl!,
+                      httpHeaders: headers,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => _BookFallback(title: title),
+                      useOldImageOnUrlChange: true,
+                      fadeInDuration: const Duration(milliseconds: 120),
+                      fadeOutDuration: Duration.zero,
+                      placeholder: (_, _) => _BookFallback(title: title),
+                      errorWidget: (_, _, _) => _BookFallback(title: title),
                     ),
             ),
             if (badge != null)

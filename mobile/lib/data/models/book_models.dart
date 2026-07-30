@@ -9,6 +9,7 @@ class BookSummary {
     required this.format,
     required this.sourceMissing,
     required this.updatedAt,
+    this.coverVersion,
   });
 
   final int id;
@@ -20,6 +21,7 @@ class BookSummary {
   final String format;
   final bool sourceMissing;
   final String updatedAt;
+  final String? coverVersion;
 
   factory BookSummary.fromJson(Map<String, dynamic> json) {
     return BookSummary(
@@ -32,6 +34,7 @@ class BookSummary {
       format: (json['format'] as String? ?? '').toLowerCase(),
       sourceMissing: json['sourceMissing'] as bool? ?? false,
       updatedAt: json['updatedAt'] as String? ?? '',
+      coverVersion: json['coverVersion']?.toString(),
     );
   }
 
@@ -45,6 +48,7 @@ class BookSummary {
     'format': format,
     'sourceMissing': sourceMissing,
     'updatedAt': updatedAt,
+    'coverVersion': coverVersion,
   };
 
   BookSummary copyWith({String? groupName, bool clearGroup = false}) {
@@ -58,6 +62,7 @@ class BookSummary {
       format: format,
       sourceMissing: sourceMissing,
       updatedAt: updatedAt,
+      coverVersion: coverVersion,
     );
   }
 }
@@ -73,6 +78,7 @@ class BookDetail extends BookSummary {
     required super.format,
     required super.sourceMissing,
     required super.updatedAt,
+    super.coverVersion,
     required this.sourceType,
     required this.manifest,
     required this.capabilities,
@@ -110,6 +116,7 @@ class BookDetail extends BookSummary {
       format: (json['format'] as String? ?? '').toLowerCase(),
       sourceMissing: json['sourceMissing'] as bool? ?? false,
       updatedAt: json['updatedAt'] as String? ?? '',
+      coverVersion: json['coverVersion']?.toString(),
       sourceType: json['sourceType'] as String? ?? '',
       manifest: json['manifest'] as Map<String, dynamic>?,
       capabilities:

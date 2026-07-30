@@ -29,6 +29,7 @@ class BookServiceBookshelfTest {
                 title varchar(255) not null,
                 author varchar(255),
                 description text,
+                cover_updated_at timestamp with time zone,
                 updated_at timestamp with time zone not null
             );
             create table book_files (

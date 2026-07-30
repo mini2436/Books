@@ -423,7 +423,7 @@ class BookshelfController extends ChangeNotifier {
         _authController.runAuthorized(
           (token) => _apiClient.listBookmarks(token, summary.id),
         ),
-        _downloadCover(summary.id),
+        _downloadCover(summary),
       ]);
 
       BookContent? content;
@@ -546,10 +546,14 @@ class BookshelfController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<Uint8List?> _downloadCover(int bookId) async {
+  Future<Uint8List?> _downloadCover(BookSummary book) async {
     try {
       return await _authController.runAuthorized(
-        (token) => _apiClient.downloadBookCover(token, bookId),
+        (token) => _apiClient.downloadBookCover(
+          token,
+          book.id,
+          version: book.coverVersion,
+        ),
       );
     } catch (_) {
       return null;

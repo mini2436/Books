@@ -52,6 +52,19 @@ class ApiClient {
 
   String buildUrl(String path) => _dio.options.baseUrl + path;
 
+  String buildBookCoverUrl(int bookId, {String? version}) {
+    final uri = Uri.parse(buildUrl('/api/me/books/$bookId/cover'));
+    final normalizedVersion = version?.trim();
+    if (normalizedVersion == null || normalizedVersion.isEmpty) {
+      return uri.toString();
+    }
+    return uri
+        .replace(
+          queryParameters: {...uri.queryParameters, 'v': normalizedVersion},
+        )
+        .toString();
+  }
+
   Future<Session> login({
     required String username,
     required String password,
@@ -943,10 +956,14 @@ class ApiClient {
     return Uint8List.fromList(data);
   }
 
-  Future<Uint8List> downloadBookCover(String accessToken, int bookId) async {
+  Future<Uint8List> downloadBookCover(
+    String accessToken,
+    int bookId, {
+    String? version,
+  }) async {
     final data = await _request<List<int>>(
       () => _dio.get<List<int>>(
-        '/api/me/books/$bookId/cover',
+        buildBookCoverUrl(bookId, version: version),
         options: Options(
           headers: _headers(accessToken),
           responseType: ResponseType.bytes,

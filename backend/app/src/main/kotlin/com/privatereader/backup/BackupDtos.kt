@@ -2,6 +2,10 @@ package com.privatereader.backup
 
 enum class BackupScope { FULL, BOOKS, USER_DATA }
 
+enum class BackupOrigin { MANUAL, SCHEDULED }
+
+enum class BackupFrequency { WEEKLY, MONTHLY }
+
 enum class UserDataType {
     BOOK_ACCESS,
     BOOK_GROUPS,
@@ -21,6 +25,28 @@ data class BackupExportRequest(
 data class BackupDownloadTicketView(
     val downloadPath: String,
     val expiresAt: String,
+)
+
+data class BackupRecordView(
+    val id: String,
+    val scope: BackupScope,
+    val origin: BackupOrigin,
+    val filename: String,
+    val sizeBytes: Long,
+    val createdAt: String,
+)
+
+data class BackupScheduleView(
+    val enabled: Boolean,
+    val frequency: BackupFrequency,
+    val lastRunAt: String? = null,
+    val nextRunAt: String? = null,
+    val updatedAt: String,
+)
+
+data class BackupScheduleUpdateRequest(
+    val enabled: Boolean,
+    val frequency: BackupFrequency = BackupFrequency.WEEKLY,
 )
 
 enum class UserDataRestoreMode { MERGE, REPLACE }

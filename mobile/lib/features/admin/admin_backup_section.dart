@@ -151,8 +151,103 @@ class _AdminBackupSectionState extends ConsumerState<AdminBackupSection> {
             );
           },
         ),
+        const SizedBox(height: 14),
+        _ScheduledBackupPanel(
+          schedule: widget.controller.backupSchedule,
+          isBusy: widget.controller.isWorking,
+          onChanged: _updateSchedule,
+        ),
+        const SizedBox(height: 14),
+        _BackupHistoryPanel(
+          records: widget.controller.backupRecords,
+          isBusy: widget.controller.isWorking,
+          onDownload: _downloadHistoryRecord,
+          onDelete: _confirmDeleteHistoryRecord,
+        ),
       ],
     );
+  }
+
+  Future<void> _updateSchedule(bool enabled, String frequency) async {
+    await ref
+        .read(adminCenterControllerProvider)
+        .updateBackupSchedule(enabled: enabled, frequency: frequency);
+  }
+
+  Future<void> _downloadHistoryRecord(AdminBackupRecord record) async {
+    final controller = ref.read(adminCenterControllerProvider);
+    if (kIsWeb || defaultTargetPlatform == TargetPlatform.android) {
+      final downloadUrl = await controller.createBackupRecordDownloadUrl(
+        record.id,
+      );
+      if (downloadUrl == null || !mounted) return;
+      await startSystemBackupDownload(downloadUrl, record.filename);
+      if (mounted) controller.markBackupDownloadStarted();
+      return;
+    }
+    final path = await FilePicker.platform.saveFile(
+      dialogTitle: '保存历史备份',
+      fileName: record.filename,
+      type: FileType.custom,
+      allowedExtensions: const ['zip'],
+      lockParentWindow: true,
+    );
+    if (path == null || !mounted) return;
+    await controller.downloadBackupRecordToFile(
+      recordId: record.id,
+      destinationPath: path,
+    );
+  }
+
+  Future<void> _confirmDeleteHistoryRecord(AdminBackupRecord record) async {
+    final firstConfirmation = await showCenteredScaleDialog<bool>(
+      context,
+      builder: (context) => GlassAlertDialog(
+        title: const Text('清理历史备份？'),
+        content: Text(
+          '${_backupScopeLabel(record.scope)} · ${_formatDateTime(record.createdAt)}\n'
+          '清理后将同时删除服务器上的 ZIP 文件。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('继续清理'),
+          ),
+        ],
+      ),
+    );
+    if (firstConfirmation != true || !mounted) return;
+    final finalConfirmation = await showCenteredScaleDialog<bool>(
+      context,
+      barrierDismissible: false,
+      builder: (context) => GlassAlertDialog(
+        title: const Text('再次确认永久删除'),
+        content: Text('${record.filename}\n此操作无法撤销，请确认不再需要这份备份。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('保留备份'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
+            ),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('永久删除'),
+          ),
+        ],
+      ),
+    );
+    if (finalConfirmation == true && mounted) {
+      await ref
+          .read(adminCenterControllerProvider)
+          .deleteBackupRecord(record.id);
+    }
   }
 
   Future<void> _exportBackup() async {
@@ -379,6 +474,325 @@ class _AdminBackupSectionState extends ConsumerState<AdminBackupSection> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _ScheduledBackupPanel extends StatelessWidget {
+  const _ScheduledBackupPanel({
+    required this.schedule,
+    required this.isBusy,
+    required this.onChanged,
+  });
+
+  final AdminBackupSchedule? schedule;
+  final bool isBusy;
+  final void Function(bool enabled, String frequency) onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppReaderPalette.of(context);
+    final value = schedule;
+    final enabled = value?.enabled ?? false;
+    final frequency = value?.frequency ?? 'WEEKLY';
+    return _BackupCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Expanded(
+                child: _PanelHeading(
+                  icon: Icons.event_repeat_rounded,
+                  title: '定期备份',
+                  body: '按计划自动生成三种完整归档，并保留在服务器供随时下载。',
+                ),
+              ),
+              const SizedBox(width: 16),
+              Switch.adaptive(
+                value: enabled,
+                onChanged: isBusy ? null : (next) => onChanged(next, frequency),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Wrap(
+            spacing: 16,
+            runSpacing: 12,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'WEEKLY', label: Text('按周备份')),
+                  ButtonSegment(value: 'MONTHLY', label: Text('按月备份')),
+                ],
+                selected: {frequency},
+                onSelectionChanged: isBusy
+                    ? null
+                    : (selection) => onChanged(enabled, selection.first),
+              ),
+              _ScheduleStatus(
+                icon: enabled
+                    ? Icons.schedule_rounded
+                    : Icons.pause_circle_outline_rounded,
+                label: enabled
+                    ? value?.nextRunAt == null
+                          ? '正在计算下次执行时间'
+                          : '下次执行 ${_formatDateTime(value!.nextRunAt!)}'
+                    : '当前未启用',
+              ),
+              if (value?.lastRunAt != null)
+                _ScheduleStatus(
+                  icon: Icons.check_circle_outline_rounded,
+                  label: '上次完成 ${_formatDateTime(value!.lastRunAt!)}',
+                ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Divider(height: 1, color: palette.line.withValues(alpha: 0.55)),
+          const SizedBox(height: 14),
+          const Wrap(
+            spacing: 18,
+            runSpacing: 10,
+            children: [
+              _ScheduledScopeItem(
+                icon: Icons.inventory_2_outlined,
+                label: '全量备份',
+              ),
+              _ScheduledScopeItem(
+                icon: Icons.menu_book_outlined,
+                label: '全部书籍',
+              ),
+              _ScheduledScopeItem(
+                icon: Icons.people_outline_rounded,
+                label: '全部用户数据',
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            frequency == 'WEEKLY'
+                ? '启用后每 7 天执行一次；每次任务都会分别生成全量、书籍和用户数据备份。'
+                : '启用后每月执行一次；每次任务都会分别生成全量、书籍和用户数据备份。',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: palette.inkSecondary,
+              height: 1.45,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ScheduleStatus extends StatelessWidget {
+  const _ScheduleStatus({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppReaderPalette.of(context);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 18, color: palette.inkSecondary),
+        const SizedBox(width: 7),
+        Text(
+          label,
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: palette.inkSecondary),
+        ),
+      ],
+    );
+  }
+}
+
+class _ScheduledScopeItem extends StatelessWidget {
+  const _ScheduledScopeItem({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppReaderPalette.of(context);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 18, color: palette.accent),
+        const SizedBox(width: 8),
+        Text(
+          label,
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+        ),
+      ],
+    );
+  }
+}
+
+class _BackupHistoryPanel extends StatelessWidget {
+  const _BackupHistoryPanel({
+    required this.records,
+    required this.isBusy,
+    required this.onDownload,
+    required this.onDelete,
+  });
+
+  final List<AdminBackupRecord> records;
+  final bool isBusy;
+  final ValueChanged<AdminBackupRecord> onDownload;
+  final ValueChanged<AdminBackupRecord> onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppReaderPalette.of(context);
+    return _BackupCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _PanelHeading(
+            icon: Icons.history_rounded,
+            title: '备份历史',
+            body: records.isEmpty
+                ? '手动导出和定期任务生成的备份会保留在这里。'
+                : '共保留 ${records.length} 份备份，可随时下载或清理。',
+          ),
+          const SizedBox(height: 16),
+          if (records.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Center(
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.inventory_2_outlined,
+                      size: 34,
+                      color: palette.inkSecondary,
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      '暂无历史备份',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      '完成一次手动导出，或启用定期备份后即可在此回溯。',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: palette.inkSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 520),
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: records.length,
+                separatorBuilder: (_, _) => Divider(
+                  height: 1,
+                  color: palette.line.withValues(alpha: 0.45),
+                ),
+                itemBuilder: (context, index) {
+                  final record = records[index];
+                  return _BackupHistoryRow(
+                    record: record,
+                    isBusy: isBusy,
+                    onDownload: () => onDownload(record),
+                    onDelete: () => onDelete(record),
+                  );
+                },
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BackupHistoryRow extends StatelessWidget {
+  const _BackupHistoryRow({
+    required this.record,
+    required this.isBusy,
+    required this.onDownload,
+    required this.onDelete,
+  });
+
+  final AdminBackupRecord record;
+  final bool isBusy;
+  final VoidCallback onDownload;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppReaderPalette.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 11),
+      child: Row(
+        children: [
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: palette.accent.withValues(alpha: 0.11),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: Icon(
+                record.scope == 'BOOKS'
+                    ? Icons.menu_book_outlined
+                    : record.scope == 'USER_DATA'
+                    ? Icons.people_outline_rounded
+                    : Icons.inventory_2_outlined,
+                size: 21,
+                color: palette.accent,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _backupScopeLabel(record.scope),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${_backupOriginLabel(record.origin)} · ${_formatDateTime(record.createdAt)} · ${_formatBytes(record.sizeBytes)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: palette.inkSecondary),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            tooltip: '下载备份',
+            onPressed: isBusy ? null : onDownload,
+            icon: const Icon(Icons.download_rounded),
+          ),
+          IconButton(
+            tooltip: '清理备份',
+            color: Theme.of(context).colorScheme.error,
+            onPressed: isBusy ? null : onDelete,
+            icon: const Icon(Icons.delete_outline_rounded),
+          ),
+        ],
       ),
     );
   }
@@ -1524,6 +1938,12 @@ String _backupScopeLabel(String scope) => switch (scope) {
   'BOOKS' => '书籍备份',
   'USER_DATA' => '用户数据备份',
   _ => scope,
+};
+
+String _backupOriginLabel(String origin) => switch (origin) {
+  'SCHEDULED' => '定期备份',
+  'MANUAL' => '手动导出',
+  _ => origin,
 };
 
 String _formatBytes(int bytes) {

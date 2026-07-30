@@ -103,6 +103,8 @@ class AdminCenterController extends ChangeNotifier {
   List<AdminBookmarkView> _bookmarks = const [];
   List<AdminLibrarySourceView> _librarySources = const [];
   List<AdminImportJobView> _importJobs = const [];
+  List<AdminBackupRecord> _backupRecords = const [];
+  AdminBackupSchedule? _backupSchedule;
   Map<int, List<BookViewerView>> _bookViewers = const {};
   Map<int, AdminBookDetail> _bookDetails = const {};
   Set<int> _loadingViewerBookIds = <int>{};
@@ -130,6 +132,8 @@ class AdminCenterController extends ChangeNotifier {
   List<AdminBookmarkView> get bookmarks => _bookmarks;
   List<AdminLibrarySourceView> get librarySources => _librarySources;
   List<AdminImportJobView> get importJobs => _importJobs;
+  List<AdminBackupRecord> get backupRecords => _backupRecords;
+  AdminBackupSchedule? get backupSchedule => _backupSchedule;
   bool get isLoading => _isLoading;
   bool get isWorking => _isWorking;
   bool isRebuildingBook(int bookId) => _rebuildingBookIds.contains(bookId);
@@ -256,6 +260,14 @@ class AdminCenterController extends ChangeNotifier {
         ),
         if (canManageUsers)
           _authController.runAuthorized((token) => _apiClient.listUsers(token)),
+        if (canManageBackups)
+          _authController.runAuthorized(
+            (token) => _apiClient.listBackupRecords(token),
+          ),
+        if (canManageBackups)
+          _authController.runAuthorized(
+            (token) => _apiClient.getBackupSchedule(token),
+          ),
       ]);
 
       _books = results[0] as List<AdminBookSummary>;
@@ -266,6 +278,12 @@ class AdminCenterController extends ChangeNotifier {
       _users = canManageUsers
           ? results[5] as List<AdminUserView>
           : const <AdminUserView>[];
+      _backupRecords = canManageBackups
+          ? results[6] as List<AdminBackupRecord>
+          : const <AdminBackupRecord>[];
+      _backupSchedule = canManageBackups
+          ? results[7] as AdminBackupSchedule
+          : null;
       _bookmarks = const [];
       _bookViewers = const {};
       _bookDetails = const {};
@@ -321,7 +339,7 @@ class AdminCenterController extends ChangeNotifier {
       final scopedDataTypes = scope == 'USER_DATA'
           ? dataTypes
           : const <String>[];
-      return await _authController.runAuthorized(
+      final archive = await _authController.runAuthorized(
         (token) => _apiClient.exportBackup(
           token,
           scope: scope,
@@ -330,6 +348,8 @@ class AdminCenterController extends ChangeNotifier {
           dataTypes: scopedDataTypes,
         ),
       );
+      await _reloadBackupRecords();
+      return archive;
     } catch (error) {
       _error = ApiException.userFacingMessage(
         error,
@@ -360,7 +380,7 @@ class AdminCenterController extends ChangeNotifier {
         bookIds: bookIds,
         dataTypes: dataTypes,
       );
-      return await _authController.runAuthorized(
+      final downloadUrl = await _authController.runAuthorized(
         (token) => _apiClient.createBackupDownloadTicket(
           token,
           scope: scope,
@@ -369,6 +389,8 @@ class AdminCenterController extends ChangeNotifier {
           dataTypes: filters.dataTypes,
         ),
       );
+      await _reloadBackupRecords();
+      return downloadUrl;
     } catch (error) {
       _error = ApiException.userFacingMessage(
         error,
@@ -415,6 +437,7 @@ class AdminCenterController extends ChangeNotifier {
           },
         ),
       );
+      await _reloadBackupRecords();
       return true;
     } catch (error) {
       _error = ApiException.userFacingMessage(
@@ -655,6 +678,142 @@ class AdminCenterController extends ChangeNotifier {
   void markBackupSaved() {
     _notice = '完整系统备份已保存';
     _error = null;
+    notifyListeners();
+  }
+
+  Future<bool> updateBackupSchedule({
+    required bool enabled,
+    required String frequency,
+  }) async {
+    if (!canManageBackups || _isWorking) return false;
+    _isWorking = true;
+    _error = null;
+    _notice = null;
+    _workingMessage = '正在保存定期备份设置';
+    notifyListeners();
+    try {
+      _backupSchedule = await _authController.runAuthorized(
+        (token) => _apiClient.updateBackupSchedule(
+          token,
+          enabled: enabled,
+          frequency: frequency,
+        ),
+      );
+      _notice = enabled ? '定期备份已启用' : '定期备份已停用';
+      return true;
+    } catch (error) {
+      _error = ApiException.userFacingMessage(
+        error,
+        fallback: '保存定期备份设置失败，请稍后重试。',
+      );
+      return false;
+    } finally {
+      _isWorking = false;
+      _workingMessage = null;
+      notifyListeners();
+    }
+  }
+
+  Future<String?> createBackupRecordDownloadUrl(String recordId) async {
+    if (!canManageBackups || _isWorking) return null;
+    _isWorking = true;
+    _error = null;
+    _notice = null;
+    _workingMessage = '正在准备历史备份下载';
+    notifyListeners();
+    try {
+      return await _authController.runAuthorized(
+        (token) => _apiClient.createBackupRecordDownloadTicket(token, recordId),
+      );
+    } catch (error) {
+      _error = ApiException.userFacingMessage(
+        error,
+        fallback: '历史备份下载准备失败，请稍后重试。',
+      );
+      return null;
+    } finally {
+      _isWorking = false;
+      _workingMessage = null;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> downloadBackupRecordToFile({
+    required String recordId,
+    required String destinationPath,
+  }) async {
+    if (!canManageBackups || _isWorking) return false;
+    _isWorking = true;
+    _error = null;
+    _notice = null;
+    _workingMessage = '正在下载历史备份';
+    notifyListeners();
+    var lastPercentage = -1;
+    try {
+      await _authController.runAuthorized(
+        (token) => _apiClient.downloadBackupRecordToFile(
+          token,
+          recordId: recordId,
+          destinationPath: destinationPath,
+          onReceiveProgress: (received, total) {
+            if (total <= 0) return;
+            final percentage = (received * 100 / total).floor().clamp(0, 100);
+            if (percentage == lastPercentage) return;
+            lastPercentage = percentage;
+            _workingMessage = '正在下载历史备份 $percentage%';
+            notifyListeners();
+          },
+        ),
+      );
+      _notice = '历史备份已保存';
+      return true;
+    } catch (error) {
+      _error = ApiException.userFacingMessage(
+        error,
+        fallback: '历史备份下载失败，请稍后重试。',
+      );
+      return false;
+    } finally {
+      _isWorking = false;
+      _workingMessage = null;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> deleteBackupRecord(String recordId) async {
+    if (!canManageBackups || _isWorking) return false;
+    _isWorking = true;
+    _error = null;
+    _notice = null;
+    _workingMessage = '正在清理历史备份';
+    notifyListeners();
+    try {
+      await _authController.runAuthorized(
+        (token) => _apiClient.deleteBackupRecord(token, recordId),
+      );
+      _backupRecords = _backupRecords
+          .where((record) => record.id != recordId)
+          .toList();
+      _notice = '历史备份已清理';
+      return true;
+    } catch (error) {
+      _error = ApiException.userFacingMessage(
+        error,
+        fallback: '清理历史备份失败，请稍后重试。',
+      );
+      return false;
+    } finally {
+      _isWorking = false;
+      _workingMessage = null;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _reloadBackupRecords() async {
+    if (!canManageBackups) return;
+    _backupRecords = await _authController.runAuthorized(
+      (token) => _apiClient.listBackupRecords(token),
+    );
     notifyListeners();
   }
 
@@ -1485,6 +1644,8 @@ class AdminCenterController extends ChangeNotifier {
     _bookmarks = const [];
     _librarySources = const [];
     _importJobs = const [];
+    _backupRecords = const [];
+    _backupSchedule = null;
     _bookViewers = const {};
     _bookDetails = const {};
     _loadingViewerBookIds = <int>{};

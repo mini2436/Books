@@ -13,7 +13,12 @@ import java.util.concurrent.ConcurrentHashMap
 class BackupDownloadTicketService {
     private val tickets = ConcurrentHashMap<String, Ticket>()
 
-    fun issue(actorId: Long, archivePath: Path, filename: String): BackupDownloadTicketView {
+    fun issue(
+        actorId: Long,
+        archivePath: Path,
+        filename: String,
+        deleteArchiveOnExpiry: Boolean = true,
+    ): BackupDownloadTicketView {
         removeExpired()
         val id = UUID.randomUUID().toString()
         val expiresAt = Instant.now().plus(TICKET_LIFETIME)
@@ -22,6 +27,7 @@ class BackupDownloadTicketService {
             archivePath = archivePath,
             filename = filename,
             expiresAt = expiresAt,
+            deleteArchiveOnExpiry = deleteArchiveOnExpiry,
         )
         return BackupDownloadTicketView(
             downloadPath = "/api/admin/backups/download/$id",
@@ -34,7 +40,7 @@ class BackupDownloadTicketService {
         val ticket = tickets[id] ?: throw IllegalArgumentException("Backup download ticket was not found")
         if (!ticket.expiresAt.isAfter(Instant.now())) {
             tickets.remove(id, ticket)
-            runCatching { Files.deleteIfExists(ticket.archivePath) }
+            if (ticket.deleteArchiveOnExpiry) runCatching { Files.deleteIfExists(ticket.archivePath) }
             throw IllegalArgumentException("Backup download ticket has expired")
         }
         require(Files.isRegularFile(ticket.archivePath)) { "Prepared backup archive was not found" }
@@ -46,7 +52,9 @@ class BackupDownloadTicketService {
         val now = Instant.now()
         tickets.entries.removeIf { entry ->
             val expired = !entry.value.expiresAt.isAfter(now)
-            if (expired) runCatching { Files.deleteIfExists(entry.value.archivePath) }
+            if (expired && entry.value.deleteArchiveOnExpiry) {
+                runCatching { Files.deleteIfExists(entry.value.archivePath) }
+            }
             expired
         }
     }
@@ -56,6 +64,7 @@ class BackupDownloadTicketService {
         val archivePath: Path,
         val filename: String,
         val expiresAt: Instant,
+        val deleteArchiveOnExpiry: Boolean,
     )
 
     private companion object {

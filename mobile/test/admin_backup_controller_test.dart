@@ -31,6 +31,8 @@ void main() {
     await _waitUntil(() => !controller.isLoading);
 
     expect(controller.availableSections.last, AdminSection.backups);
+    expect(controller.backupSchedule?.frequency, 'WEEKLY');
+    expect(controller.backupRecords, [_backupRecord]);
     expect(
       controller.availableSections.indexOf(AdminSection.backups),
       controller.availableSections.indexOf(AdminSection.librarySources) + 1,
@@ -54,10 +56,7 @@ void main() {
       'http://server-1:8080/api/admin/backups/download/ticket',
     );
     controller.markBackupDownloadStarted();
-    expect(
-      controller.notice,
-      '备份下载已启动，请在浏览器或系统下载列表中查看进度',
-    );
+    expect(controller.notice, '备份下载已启动，请在浏览器或系统下载列表中查看进度');
     expect(
       await controller.exportBackupToFile(
         destinationPath: 'C:/backup.zip',
@@ -66,6 +65,18 @@ void main() {
       isTrue,
     );
     expect(apiClient.downloadDestinationPath, 'C:/backup.zip');
+
+    expect(
+      await controller.updateBackupSchedule(
+        enabled: true,
+        frequency: 'MONTHLY',
+      ),
+      isTrue,
+    );
+    expect(controller.backupSchedule?.enabled, isTrue);
+    expect(controller.backupSchedule?.frequency, 'MONTHLY');
+    expect(await controller.deleteBackupRecord(_backupRecord.id), isTrue);
+    expect(controller.backupRecords, isEmpty);
 
     final preview = await controller.previewSystemBackup(
       fileName: 'backup.zip',
@@ -176,6 +187,8 @@ class _BackupApiClient extends ApiClient {
   String? restoreScope;
   List<String> restoreDataTypes = const [];
   String? restoreMode;
+  bool scheduleEnabled = false;
+  String scheduleFrequency = 'WEEKLY';
   AdminBackupPreview previewValue = _fullPreview;
   final Completer<AdminBackupRestoreResult> restoreResult =
       Completer<AdminBackupRestoreResult>();
@@ -210,6 +223,28 @@ class _BackupApiClient extends ApiClient {
 
   @override
   Future<List<AdminUserView>> listUsers(String accessToken) async => const [];
+
+  @override
+  Future<List<AdminBackupRecord>> listBackupRecords(String accessToken) async =>
+      const [_backupRecord];
+
+  @override
+  Future<AdminBackupSchedule> getBackupSchedule(String accessToken) async =>
+      _schedule(scheduleEnabled, scheduleFrequency);
+
+  @override
+  Future<AdminBackupSchedule> updateBackupSchedule(
+    String accessToken, {
+    required bool enabled,
+    required String frequency,
+  }) async {
+    scheduleEnabled = enabled;
+    scheduleFrequency = frequency;
+    return _schedule(enabled, frequency);
+  }
+
+  @override
+  Future<void> deleteBackupRecord(String accessToken, String recordId) async {}
 
   @override
   Future<Uint8List> exportBackup(
@@ -306,6 +341,24 @@ const _userDataPreview = AdminBackupPreview(
   progresses: 1,
   dataTypes: ['ANNOTATIONS', 'READING_HISTORY', 'READING_PROGRESS'],
 );
+
+const _backupRecord = AdminBackupRecord(
+  id: '7c505eec-5af2-4e16-aa34-a681a52afabc',
+  scope: 'FULL',
+  origin: 'MANUAL',
+  filename: 'private-reader-full-20260730-120000.zip',
+  sizeBytes: 1024,
+  createdAt: '2026-07-30T12:00:00Z',
+);
+
+AdminBackupSchedule _schedule(bool enabled, String frequency) =>
+    AdminBackupSchedule(
+      enabled: enabled,
+      frequency: frequency,
+      lastRunAt: null,
+      nextRunAt: enabled ? '2026-08-30T12:00:00Z' : null,
+      updatedAt: '2026-07-30T12:00:00Z',
+    );
 
 const _restoreResult = AdminBackupRestoreResult(
   scope: 'FULL',

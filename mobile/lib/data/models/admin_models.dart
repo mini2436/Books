@@ -466,6 +466,63 @@ class AdminBackupPreview {
   }
 }
 
+class AdminBackupRecord {
+  const AdminBackupRecord({
+    required this.id,
+    required this.scope,
+    required this.origin,
+    required this.filename,
+    required this.sizeBytes,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String scope;
+  final String origin;
+  final String filename;
+  final int sizeBytes;
+  final String createdAt;
+
+  bool get isScheduled => origin == 'SCHEDULED';
+
+  factory AdminBackupRecord.fromJson(Map<String, dynamic> json) {
+    return AdminBackupRecord(
+      id: json['id'] as String? ?? '',
+      scope: json['scope'] as String? ?? '',
+      origin: json['origin'] as String? ?? '',
+      filename: json['filename'] as String? ?? '',
+      sizeBytes: (json['sizeBytes'] as num?)?.toInt() ?? 0,
+      createdAt: json['createdAt'] as String? ?? '',
+    );
+  }
+}
+
+class AdminBackupSchedule {
+  const AdminBackupSchedule({
+    required this.enabled,
+    required this.frequency,
+    required this.lastRunAt,
+    required this.nextRunAt,
+    required this.updatedAt,
+  });
+
+  final bool enabled;
+  final String frequency;
+  final String? lastRunAt;
+  final String? nextRunAt;
+  final String updatedAt;
+
+  factory AdminBackupSchedule.fromJson(Map<String, dynamic> json) {
+    return AdminBackupSchedule(
+      enabled: json['enabled'] as bool? ?? false,
+      frequency: json['frequency'] as String? ?? 'WEEKLY',
+      lastRunAt: json['lastRunAt'] as String?,
+      nextRunAt: json['nextRunAt'] as String?,
+      updatedAt: json['updatedAt'] as String? ?? '',
+    );
+  }
+}
+
 class AdminBackupUserView {
   const AdminBackupUserView({
     required this.id,

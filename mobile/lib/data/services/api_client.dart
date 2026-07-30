@@ -412,6 +412,96 @@ class ApiClient {
     }
   }
 
+  Future<List<AdminBackupRecord>> listBackupRecords(String accessToken) async {
+    final data = await _request<List<dynamic>>(
+      () => _dio.get<List<dynamic>>(
+        '/api/admin/backups/records',
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+    return data
+        .map((item) => AdminBackupRecord.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<AdminBackupSchedule> getBackupSchedule(String accessToken) async {
+    final data = await _request<Map<String, dynamic>>(
+      () => _dio.get<Map<String, dynamic>>(
+        '/api/admin/backups/schedule',
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+    return AdminBackupSchedule.fromJson(data);
+  }
+
+  Future<AdminBackupSchedule> updateBackupSchedule(
+    String accessToken, {
+    required bool enabled,
+    required String frequency,
+  }) async {
+    final data = await _request<Map<String, dynamic>>(
+      () => _dio.put<Map<String, dynamic>>(
+        '/api/admin/backups/schedule',
+        data: {'enabled': enabled, 'frequency': frequency},
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+    return AdminBackupSchedule.fromJson(data);
+  }
+
+  Future<String> createBackupRecordDownloadTicket(
+    String accessToken,
+    String recordId,
+  ) async {
+    final data = await _request<Map<String, dynamic>>(
+      () => _dio.post<Map<String, dynamic>>(
+        '/api/admin/backups/records/$recordId/download-ticket',
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+    final downloadPath = data['downloadPath']?.toString().trim();
+    if (downloadPath == null || downloadPath.isEmpty) {
+      throw const ApiException('服务器未返回有效的备份下载地址');
+    }
+    return Uri.parse(baseUrl).resolve(downloadPath).toString();
+  }
+
+  Future<void> downloadBackupRecordToFile(
+    String accessToken, {
+    required String recordId,
+    required String destinationPath,
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    try {
+      final downloadUrl = await createBackupRecordDownloadTicket(
+        accessToken,
+        recordId,
+      );
+      await _dio.download(
+        downloadUrl,
+        destinationPath,
+        options: Options(receiveTimeout: Duration.zero),
+        onReceiveProgress: onReceiveProgress,
+        deleteOnError: true,
+      );
+    } on DioException catch (error) {
+      throw ApiException(
+        _extractMessage(error),
+        statusCode: error.response?.statusCode,
+      );
+    }
+  }
+
+  Future<void> deleteBackupRecord(String accessToken, String recordId) async {
+    await _request<Map<String, dynamic>>(
+      () => _dio.delete<Map<String, dynamic>>(
+        '/api/admin/backups/records/$recordId',
+        queryParameters: const {'confirm': true},
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+  }
+
   Future<AdminBackupPreview> previewSystemBackup(
     String accessToken, {
     required String fileName,

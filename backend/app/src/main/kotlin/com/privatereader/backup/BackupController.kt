@@ -11,24 +11,28 @@ import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.DeleteMapping
+import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RequestPart
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.multipart.MultipartFile
-import java.time.Instant
 
 @RestController
 @RequestMapping("/api/admin/backups")
 @PreAuthorize(RoleExpressions.SUPER_ADMIN_ONLY)
 class BackupController(
     private val backupService: BackupService,
+    private val backupHistoryService: BackupHistoryService,
     private val downloadTickets: BackupDownloadTicketService,
 ) {
     @GetMapping("/export")
     fun export(
+        @AuthenticationPrincipal principal: UserPrincipal,
         @RequestParam(defaultValue = "FULL") scope: BackupScope,
         @RequestParam(required = false) userIds: Set<Long>?,
         @RequestParam(required = false) bookIds: Set<Long>?,
@@ -40,15 +44,7 @@ class BackupController(
             bookIds = bookIds.orEmpty(),
             dataTypes = dataTypes.orEmpty(),
         )
-        val filename = "private-reader-${scope.name.lowercase()}-${Instant.now().toString().replace(':', '-')}.zip"
-        val resource = FileSystemResource(backupService.exportToFile(request))
-        return ResponseEntity.ok()
-            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"$filename\"")
-            .header(HttpHeaders.CACHE_CONTROL, "private, no-store")
-            .header(HttpHeaders.ACCEPT_RANGES, "bytes")
-            .contentLength(resource.contentLength())
-            .contentType(MediaType.parseMediaType("application/zip"))
-            .body(resource)
+        return archiveResponse(backupHistoryService.createManualArchive(request, principal.id))
     }
 
     @PostMapping("/export-ticket")
@@ -56,15 +52,52 @@ class BackupController(
         @AuthenticationPrincipal principal: UserPrincipal,
         @RequestBody request: BackupExportRequest,
     ): BackupDownloadTicketView {
-        val filename = "private-reader-${request.scope.name.lowercase()}-${Instant.now().toString().replace(':', '-')}.zip"
-        val archivePath = backupService.exportToFile(request)
-        return try {
-            downloadTickets.issue(principal.id, archivePath, filename)
-        } catch (error: Exception) {
-            java.nio.file.Files.deleteIfExists(archivePath)
-            throw error
-        }
+        val stored = backupHistoryService.createManualArchive(request, principal.id)
+        return downloadTickets.issue(
+            principal.id,
+            stored.archivePath,
+            stored.record.filename,
+            deleteArchiveOnExpiry = false,
+        )
     }
+
+    @GetMapping("/records")
+    fun listRecords(): List<BackupRecordView> = backupHistoryService.listRecords()
+
+    @GetMapping("/records/{id}/download")
+    fun downloadRecord(@PathVariable id: String): ResponseEntity<Resource> =
+        archiveResponse(backupHistoryService.getStoredBackup(id))
+
+    @PostMapping("/records/{id}/download-ticket")
+    fun createRecordDownloadTicket(
+        @AuthenticationPrincipal principal: UserPrincipal,
+        @PathVariable id: String,
+    ): BackupDownloadTicketView {
+        val stored = backupHistoryService.getStoredBackup(id)
+        return downloadTickets.issue(
+            principal.id,
+            stored.archivePath,
+            stored.record.filename,
+            deleteArchiveOnExpiry = false,
+        )
+    }
+
+    @DeleteMapping("/records/{id}")
+    fun deleteRecord(
+        @PathVariable id: String,
+        @RequestParam(defaultValue = "false") confirm: Boolean,
+    ): Map<String, Boolean> {
+        require(confirm) { "Backup deletion must be explicitly confirmed" }
+        backupHistoryService.deleteRecord(id)
+        return mapOf("deleted" to true)
+    }
+
+    @GetMapping("/schedule")
+    fun getSchedule(): BackupScheduleView = backupHistoryService.getSchedule()
+
+    @PutMapping("/schedule")
+    fun updateSchedule(@RequestBody request: BackupScheduleUpdateRequest): BackupScheduleView =
+        backupHistoryService.updateSchedule(request)
 
     /** Upload first to inspect identities, then submit the selected mappings to /restore. */
     @PostMapping("/preview", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
@@ -81,4 +114,15 @@ class BackupController(
     @GetMapping("/restore-status/{operationId}")
     fun restoreStatus(@org.springframework.web.bind.annotation.PathVariable operationId: String): FullRestoreStatusView =
         backupService.getRestoreStatus(operationId)
+
+    private fun archiveResponse(stored: StoredBackup): ResponseEntity<Resource> {
+        val resource = FileSystemResource(stored.archivePath)
+        return ResponseEntity.ok()
+            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"${stored.record.filename}\"")
+            .header(HttpHeaders.CACHE_CONTROL, "private, no-store")
+            .header(HttpHeaders.ACCEPT_RANGES, "bytes")
+            .contentLength(resource.contentLength())
+            .contentType(MediaType.parseMediaType("application/zip"))
+            .body(resource)
+    }
 }

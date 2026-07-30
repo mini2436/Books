@@ -227,3 +227,30 @@ create table if not exists plugin_error_logs (
     error_message text not null,
     created_at timestamp with time zone not null
 );
+
+create table if not exists backup_schedule_settings (
+    id integer primary key,
+    enabled boolean not null default false,
+    frequency varchar(16) not null default 'WEEKLY',
+    last_run_at timestamp with time zone,
+    next_run_at timestamp with time zone,
+    updated_at timestamp with time zone not null
+);
+
+insert into backup_schedule_settings (id, enabled, frequency, updated_at)
+select 1, false, 'WEEKLY', current_timestamp
+where not exists (select 1 from backup_schedule_settings where id = 1);
+
+create table if not exists backup_records (
+    id varchar(36) primary key,
+    scope varchar(32) not null,
+    origin varchar(32) not null,
+    filename varchar(255) not null,
+    storage_path text not null,
+    file_size bigint not null,
+    created_by bigint references users(id) on delete set null,
+    created_at timestamp with time zone not null
+);
+
+create index if not exists idx_backup_records_created_at
+    on backup_records (created_at desc);

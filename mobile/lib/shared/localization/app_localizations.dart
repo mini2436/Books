@@ -184,6 +184,16 @@ class AppLocalizations {
     }
     match = RegExp(r'^(全量备份|书籍备份|用户数据备份) · 创建于 (.+)$').firstMatch(source);
     if (match != null) return '${tr(match[1]!)} · Created ${match[2]}';
+    match = RegExp(r'^下次执行 (.+)$').firstMatch(source);
+    if (match != null) return 'Next run ${match[1]}';
+    match = RegExp(r'^上次完成 (.+)$').firstMatch(source);
+    if (match != null) return 'Last completed ${match[1]}';
+    match = RegExp(r'^共保留 (\d+) 份备份，可随时下载或清理。$').firstMatch(source);
+    if (match != null) {
+      return '${match[1]} backups retained. Download or clean them up at any time.';
+    }
+    match = RegExp(r'^(定期备份|手动导出) · (.+) · (.+)$').firstMatch(source);
+    if (match != null) return '${tr(match[1]!)} · ${match[2]} · ${match[3]}';
     match = RegExp(r'^正在恢复 (\d+)%$').firstMatch(source);
     if (match != null) return 'Restoring ${match[1]}%';
     match = RegExp(r'^正在上传备份文件 (\d+)%$').firstMatch(source);
@@ -598,6 +608,41 @@ class AppLocalizations {
     '完整系统备份已保存': 'Full system backup saved',
     '备份下载已启动，请在浏览器或系统下载列表中查看进度':
         'Backup download started. Check your browser or system downloads for progress.',
+    '定期备份': 'Scheduled backups',
+    '按计划自动生成三种完整归档，并保留在服务器供随时下载。':
+        'Automatically create all three archive types and retain them on the server for download.',
+    '按周备份': 'Weekly',
+    '按月备份': 'Monthly',
+    '正在计算下次执行时间': 'Calculating the next run',
+    '当前未启用': 'Not enabled',
+    '全部用户数据': 'All user data',
+    '启用后每 7 天执行一次；每次任务都会分别生成全量、书籍和用户数据备份。':
+        'Runs every 7 days when enabled. Each run creates full, book, and user-data backups.',
+    '启用后每月执行一次；每次任务都会分别生成全量、书籍和用户数据备份。':
+        'Runs monthly when enabled. Each run creates full, book, and user-data backups.',
+    '备份历史': 'Backup history',
+    '手动导出和定期任务生成的备份会保留在这里。':
+        'Manual exports and scheduled backups are retained here.',
+    '暂无历史备份': 'No backup history',
+    '完成一次手动导出，或启用定期备份后即可在此回溯。':
+        'Complete a manual export or enable scheduled backups to build history.',
+    '手动导出': 'Manual export',
+    '下载备份': 'Download backup',
+    '清理备份': 'Clean up backup',
+    '保存历史备份': 'Save backup from history',
+    '清理历史备份？': 'Clean up this backup?',
+    '继续清理': 'Continue',
+    '再次确认永久删除': 'Confirm permanent deletion',
+    '保留备份': 'Keep backup',
+    '永久删除': 'Delete permanently',
+    '正在保存定期备份设置': 'Saving scheduled backup settings',
+    '定期备份已启用': 'Scheduled backups enabled',
+    '定期备份已停用': 'Scheduled backups disabled',
+    '正在准备历史备份下载': 'Preparing backup download',
+    '正在下载历史备份': 'Downloading backup',
+    '历史备份已保存': 'Backup saved',
+    '正在清理历史备份': 'Cleaning up backup',
+    '历史备份已清理': 'Backup removed',
     '插件': 'Plugins',
     '添加用户': 'Add user',
     '新建后台用户': 'Create user',

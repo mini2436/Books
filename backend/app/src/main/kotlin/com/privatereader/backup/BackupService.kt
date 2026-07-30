@@ -9,6 +9,7 @@ import org.springframework.jdbc.core.PreparedStatementCreator
 import org.springframework.jdbc.core.ResultSetExtractor
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.jdbc.BadSqlGrammarException
+import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.multipart.MultipartFile
@@ -23,6 +24,7 @@ import java.sql.ResultSet
 import java.sql.Timestamp
 import java.security.MessageDigest
 import java.time.Instant
+import java.time.temporal.ChronoUnit
 import java.time.temporal.TemporalAccessor
 import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
@@ -66,14 +68,17 @@ class BackupService(
         }
     }
 
-    /**
-     * Writes an export directly to the caller-provided stream. This keeps HTTP
-     * downloads end-to-end streaming instead of waiting for a temporary ZIP to
-     * be completed before the response can start.
-     */
-    @Transactional(readOnly = true)
-    fun exportTo(request: BackupExportRequest, output: OutputStream) {
-        writeExport(request, output)
+    /** Removes completed or abandoned prepared downloads after their retry window. */
+    @Scheduled(fixedDelayString = "\${app.scheduler.backup-file-cleanup-ms:3600000}")
+    fun cleanupTemporaryExports() {
+        val temporaryRoot = Path.of(appProperties.storageRoot, "backup-temp")
+        if (!Files.isDirectory(temporaryRoot)) return
+        val cutoff = Instant.now().minus(TEMPORARY_EXPORT_RETENTION_HOURS, ChronoUnit.HOURS)
+        Files.list(temporaryRoot).use { paths ->
+            paths.filter { Files.isRegularFile(it) }
+                .filter { Files.getLastModifiedTime(it).toInstant().isBefore(cutoff) }
+                .forEach { runCatching { Files.deleteIfExists(it) } }
+        }
     }
 
     private fun writeExport(request: BackupExportRequest, output: OutputStream) {
@@ -955,6 +960,7 @@ class BackupService(
         private const val PROGRESS_REPORT_BYTES = 4L * 1024 * 1024
         private const val EXPORT_BUFFER_SIZE = 256 * 1024
         private const val EXPORT_FETCH_SIZE = 500
+        private const val TEMPORARY_EXPORT_RETENTION_HOURS = 24L
         private const val MAX_RESTORE_STATUSES = 100
         private val FULL_TABLES = listOf("users", "books", "library_sources", "book_files", "book_formats", "book_content_versions", "book_content_blocks", "book_resources", "user_book_access", "user_book_groups", "annotations", "bookmarks", "reading_progress", "reading_history", "library_source_files", "import_jobs", "plugin_registry", "plugin_error_logs")
         private val USER_DATA_TYPE_TABLES = mapOf(

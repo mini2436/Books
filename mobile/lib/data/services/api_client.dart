@@ -367,7 +367,10 @@ class ApiClient {
           'bookIds': bookIds,
           'dataTypes': dataTypes,
         },
-        options: Options(headers: _headers(accessToken)),
+        options: Options(
+          headers: _headers(accessToken),
+          receiveTimeout: Duration.zero,
+        ),
       ),
     );
     final downloadPath = data['downloadPath']?.toString().trim();
@@ -387,19 +390,17 @@ class ApiClient {
     ProgressCallback? onReceiveProgress,
   }) async {
     try {
+      final downloadUrl = await createBackupDownloadTicket(
+        accessToken,
+        scope: scope,
+        userIds: userIds,
+        bookIds: bookIds,
+        dataTypes: dataTypes,
+      );
       await _dio.download(
-        '/api/admin/backups/export',
+        downloadUrl,
         destinationPath,
-        queryParameters: {
-          'scope': scope,
-          if (userIds.isNotEmpty) 'userIds': userIds,
-          if (bookIds.isNotEmpty) 'bookIds': bookIds,
-          if (dataTypes.isNotEmpty) 'dataTypes': dataTypes,
-        },
-        options: Options(
-          headers: _headers(accessToken),
-          receiveTimeout: Duration.zero,
-        ),
+        options: Options(receiveTimeout: Duration.zero),
         onReceiveProgress: onReceiveProgress,
         deleteOnError: true,
       );

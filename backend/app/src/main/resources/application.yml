@@ -15,13 +15,6 @@ spring:
     multipart:
       max-file-size: ${SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE:1GB}
       max-request-size: ${SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE:1100MB}
-  mvc:
-    # Streaming backups can legitimately run for several minutes. Keep a
-    # bounded but generous timeout so the servlet container does not truncate
-    # an otherwise healthy ZIP response at its short default timeout.
-    async:
-      request-timeout: ${SPRING_MVC_ASYNC_REQUEST_TIMEOUT:30m}
-
 management:
   endpoints:
     web:

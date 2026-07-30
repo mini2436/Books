@@ -4,6 +4,7 @@ import 'package:flutter/material.dart' hide Text;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/admin_models.dart';
+import '../../shared/localization/app_localizations.dart';
 import '../../shared/localization/localized_text.dart';
 import '../../shared/theme/reader_theme_extension.dart';
 import '../../shared/widgets/centered_scale_dialog.dart';
@@ -291,7 +292,7 @@ class _AdminBackupSectionState extends ConsumerState<AdminBackupSection> {
         dataTypes: _exportDataTypes.toList(),
       );
       if (saved && mounted) {
-        controller.markBackupSaved();
+        controller.markBackupSaved(_exportScope);
       }
     } catch (_) {
       if (!mounted) return;
@@ -1439,9 +1440,9 @@ class _UserMappingEditor extends StatelessWidget {
                   initialValue: mappings[source.id],
                   isExpanded: true,
                   decoration: InputDecoration(
-                    labelText: source.displayName?.trim().isNotEmpty == true
-                        ? '${source.displayName} · ${source.username}'
-                        : source.username,
+                    labelText: context.tr(
+                      '${source.displayName?.trim().isNotEmpty == true ? '${source.displayName} · ${source.username}' : source.username}（备份文件中的用户）',
+                    ),
                     prefixIcon: const Icon(Icons.person_outline_rounded),
                   ),
                   hint: const Text('选择当前系统用户'),
@@ -1454,7 +1455,7 @@ class _UserMappingEditor extends StatelessWidget {
                       (target) => DropdownMenuItem<int>(
                         value: target.id,
                         child: Text(
-                          target.username,
+                          '${target.username}（现在系统中的用户）',
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),

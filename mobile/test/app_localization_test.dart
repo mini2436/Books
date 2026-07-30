@@ -22,6 +22,19 @@ void main() {
     expect(english.tr('选择恢复范围'), 'Choose restore scope');
     expect(english.tr('定期备份'), 'Scheduled backups');
     expect(english.tr('备份历史'), 'Backup history');
+    expect(english.tr('书籍备份已保存'), 'Book backup saved');
+    expect(english.tr('用户数据备份已保存'), 'User-data backup saved');
+    expect(english.tr('admin（备份文件中的用户）'), 'admin (user in backup file)');
+    expect(english.tr('book（现在系统中的用户）'), 'book (user in current system)');
+    expect(english.tr('导出批注'), 'Export annotations');
+    expect(
+      english.tr('仅显示当前用户有批注的书籍。已选择 2 本，共 8 条批注。'),
+      'Only books annotated by the current user are shown. 2 books and 8 annotations selected.',
+    );
+    expect(
+      english.tr('已导出 2 本书的 8 条批注'),
+      'Exported 8 annotations from 2 books',
+    );
     expect(
       english.tr('共保留 3 份备份，可随时下载或清理。'),
       '3 backups retained. Download or clean them up at any time.',

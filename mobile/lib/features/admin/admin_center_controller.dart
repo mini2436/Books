@@ -675,8 +675,12 @@ class AdminCenterController extends ChangeNotifier {
     }
   }
 
-  void markBackupSaved() {
-    _notice = '完整系统备份已保存';
+  void markBackupSaved(String scope) {
+    _notice = switch (scope) {
+      'BOOKS' => '书籍备份已保存',
+      'USER_DATA' => '用户数据备份已保存',
+      _ => '完整系统备份已保存',
+    };
     _error = null;
     notifyListeners();
   }

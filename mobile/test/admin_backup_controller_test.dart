@@ -65,6 +65,12 @@ void main() {
       isTrue,
     );
     expect(apiClient.downloadDestinationPath, 'C:/backup.zip');
+    controller.markBackupSaved('BOOKS');
+    expect(controller.notice, '书籍备份已保存');
+    controller.markBackupSaved('USER_DATA');
+    expect(controller.notice, '用户数据备份已保存');
+    controller.markBackupSaved('FULL');
+    expect(controller.notice, '完整系统备份已保存');
 
     expect(
       await controller.updateBackupSchedule(

@@ -1,3 +1,7 @@
+import 'dart:convert';
+
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' hide Text;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:private_reader_mobile/shared/localization/localized_text.dart';
@@ -7,10 +11,12 @@ import 'package:go_router/go_router.dart';
 import '../../data/models/book_models.dart';
 import '../auth/auth_controller.dart';
 import '../../shared/theme/reader_theme_extension.dart';
+import '../../shared/widgets/centered_scale_dialog.dart';
 import '../../shared/widgets/glass_dialog.dart';
 import '../../shared/widgets/glass_surface.dart';
 import '../../shared/utils/responsive.dart';
 import 'annotation_center_controller.dart';
+import 'annotation_markdown_exporter.dart';
 
 class AnnotationCenterScreen extends ConsumerStatefulWidget {
   const AnnotationCenterScreen({super.key});
@@ -24,6 +30,7 @@ class _AnnotationCenterScreenState
     extends ConsumerState<AnnotationCenterScreen> {
   late final TextEditingController _searchController;
   String _query = '';
+  bool _isExporting = false;
 
   @override
   void initState() {
@@ -86,6 +93,24 @@ class _AnnotationCenterScreenState
                               ],
                             ),
                           ),
+                          const SizedBox(width: 12),
+                          FilledButton.icon(
+                            onPressed:
+                                controller.bookGroups.isEmpty || _isExporting
+                                ? null
+                                : () =>
+                                      _exportAnnotations(controller.bookGroups),
+                            icon: _isExporting
+                                ? const SizedBox.square(
+                                    dimension: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.download_outlined),
+                            label: Text(_isExporting ? '正在导出' : '导出批注'),
+                          ),
+                          const SizedBox(width: 4),
                           IconButton(
                             onPressed: controller.isLoading
                                 ? null
@@ -227,6 +252,159 @@ class _AnnotationCenterScreenState
           author.contains(normalized) ||
           format.contains(normalized);
     }).toList();
+  }
+
+  Future<void> _exportAnnotations(
+    List<AnnotationBookGroup> availableGroups,
+  ) async {
+    final selectedIds = await _showExportDialog(availableGroups);
+    if (selectedIds == null || selectedIds.isEmpty || !mounted) return;
+
+    setState(() => _isExporting = true);
+    try {
+      final auth = ref.read(authControllerProvider);
+      final user = auth.user;
+      if (user == null) {
+        throw StateError('无法读取当前用户信息，请重新登录后再试。');
+      }
+      final selectedGroups = availableGroups
+          .where((group) => selectedIds.contains(group.book.id))
+          .toList();
+      final now = DateTime.now();
+      final markdown = buildAnnotationMarkdown(
+        groups: selectedGroups,
+        userDisplayName: user.displayLabel,
+        username: user.username,
+        exportedAt: now,
+      );
+      final bytes = Uint8List.fromList(utf8.encode(markdown));
+      final path = await FilePicker.platform.saveFile(
+        dialogTitle: '保存批注 Markdown',
+        fileName: buildAnnotationExportFileName(
+          username: user.username,
+          exportedAt: now,
+        ),
+        type: FileType.custom,
+        allowedExtensions: const ['md'],
+        bytes: bytes,
+        lockParentWindow: true,
+      );
+      if (!mounted || (!kIsWeb && path == null)) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '已导出 ${selectedGroups.length} 本书的 ${selectedGroups.fold<int>(0, (total, group) => total + group.annotationCount)} 条批注',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('批注导出失败：$error')));
+    } finally {
+      if (mounted) setState(() => _isExporting = false);
+    }
+  }
+
+  Future<Set<int>?> _showExportDialog(List<AnnotationBookGroup> groups) {
+    final working = groups.map((group) => group.book.id).toSet();
+    return showCenteredScaleDialog<Set<int>>(
+      context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final selectedAnnotationCount = groups
+              .where((group) => working.contains(group.book.id))
+              .fold<int>(0, (total, group) => total + group.annotationCount);
+          final allSelected = working.length == groups.length;
+          return GlassAlertDialog(
+            title: const Text('导出批注'),
+            content: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 540, maxHeight: 520),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    '仅显示当前用户有批注的书籍。已选择 ${working.length} 本，共 $selectedAnnotationCount 条批注。',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: AppReaderPalette.of(context).inkSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: () => setDialogState(() {
+                        if (allSelected) {
+                          working.clear();
+                        } else {
+                          working.addAll(groups.map((group) => group.book.id));
+                        }
+                      }),
+                      icon: Icon(
+                        allSelected
+                            ? Icons.deselect_rounded
+                            : Icons.select_all_rounded,
+                      ),
+                      label: Text(allSelected ? '取消全选' : '全选'),
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  Flexible(
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.only(top: 8),
+                      itemCount: groups.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 2),
+                      itemBuilder: (context, index) {
+                        final group = groups[index];
+                        final selected = working.contains(group.book.id);
+                        return CheckboxListTile(
+                          value: selected,
+                          controlAffinity: ListTileControlAffinity.leading,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                          ),
+                          title: Text(
+                            group.book.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: Text(
+                            '${group.book.author?.trim().isNotEmpty == true ? '${group.book.author} · ' : ''}${group.annotationCount} 条批注',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          onChanged: (value) => setDialogState(() {
+                            value == true
+                                ? working.add(group.book.id)
+                                : working.remove(group.book.id);
+                          }),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('取消'),
+              ),
+              FilledButton.icon(
+                onPressed: working.isEmpty
+                    ? null
+                    : () => Navigator.of(context).pop({...working}),
+                icon: const Icon(Icons.download_outlined),
+                label: const Text('选择保存位置'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 }
 

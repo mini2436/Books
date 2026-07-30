@@ -32,6 +32,18 @@ class AppLocalizations {
     if (match != null) return '${match[1]} offline books';
     match = RegExp(r'^(\d+) (?:条|项)批注$').firstMatch(source);
     if (match != null) return '${match[1]} annotations';
+    match = RegExp(r'^(.+) · (\d+) 条批注$').firstMatch(source);
+    if (match != null) return '${match[1]} · ${match[2]} annotations';
+    match = RegExp(
+      r'^仅显示当前用户有批注的书籍。已选择 (\d+) 本，共 (\d+) 条批注。$',
+    ).firstMatch(source);
+    if (match != null) {
+      return 'Only books annotated by the current user are shown. ${match[1]} books and ${match[2]} annotations selected.';
+    }
+    match = RegExp(r'^已导出 (\d+) 本书的 (\d+) 条批注$').firstMatch(source);
+    if (match != null) {
+      return 'Exported ${match[2]} annotations from ${match[1]} books';
+    }
     match = RegExp(r'^(\d+) 项$').firstMatch(source);
     if (match != null) return '${match[1]} items';
     match = RegExp(r'^共 (\d+) 人$').firstMatch(source);
@@ -98,6 +110,8 @@ class AppLocalizations {
     if (match != null) return 'Could not update group: ${match[1]}';
     match = RegExp(r'^批注加载失败：(.+)$').firstMatch(source);
     if (match != null) return 'Could not load annotations: ${match[1]}';
+    match = RegExp(r'^批注导出失败：(.+)$').firstMatch(source);
+    if (match != null) return 'Could not export annotations: ${match[1]}';
     match = RegExp(r'^PDF 加载失败：(.+)$').firstMatch(source);
     if (match != null) return 'Could not load PDF: ${match[1]}';
     match = RegExp(r'^分组已改为“(.+)”，更新 (\d+) 本书$').firstMatch(source);
@@ -194,6 +208,10 @@ class AppLocalizations {
     }
     match = RegExp(r'^(定期备份|手动导出) · (.+) · (.+)$').firstMatch(source);
     if (match != null) return '${tr(match[1]!)} · ${match[2]} · ${match[3]}';
+    match = RegExp(r'^(.+)（备份文件中的用户）$').firstMatch(source);
+    if (match != null) return '${match[1]} (user in backup file)';
+    match = RegExp(r'^(.+)（现在系统中的用户）$').firstMatch(source);
+    if (match != null) return '${match[1]} (user in current system)';
     match = RegExp(r'^正在恢复 (\d+)%$').firstMatch(source);
     if (match != null) return 'Restoring ${match[1]}%';
     match = RegExp(r'^正在上传备份文件 (\d+)%$').firstMatch(source);
@@ -323,6 +341,12 @@ class AppLocalizations {
     '请选择要进入的服务器和账户。离线产生的阅读进度只会同步回所选身份。':
         'Choose a server and account. Offline reading progress will sync only to that identity.',
     '取消': 'Cancel',
+    '取消全选': 'Clear selection',
+    '全选': 'Select all',
+    '导出批注': 'Export annotations',
+    '正在导出': 'Exporting',
+    '选择保存位置': 'Choose save location',
+    '保存批注 Markdown': 'Save annotation Markdown',
     '进入离线阅读': 'Open offline library',
     '时间未知': 'Unknown time',
     '书架': 'Library',
@@ -606,6 +630,8 @@ class AppLocalizations {
         'The restore is still running, but detailed progress is temporarily unavailable.',
     '正在校验备份': 'Validating backup',
     '完整系统备份已保存': 'Full system backup saved',
+    '书籍备份已保存': 'Book backup saved',
+    '用户数据备份已保存': 'User-data backup saved',
     '备份下载已启动，请在浏览器或系统下载列表中查看进度':
         'Backup download started. Check your browser or system downloads for progress.',
     '定期备份': 'Scheduled backups',
@@ -853,7 +879,6 @@ class AppLocalizations {
     '请输入 WebDAV 地址': 'Enter a WebDAV address',
     '请输入大于 0 的分钟数': 'Enter a number of minutes greater than zero',
     '请输入名称': 'Enter a name',
-    '取消全选': 'Clear selection',
     '全部书籍': 'All books',
     '全选当前结果': 'Select all results',
     '权限': 'Access',

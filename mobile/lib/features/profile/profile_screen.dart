@@ -8,6 +8,7 @@ import 'package:private_reader_mobile/shared/localization/localized_text.dart';
 
 import '../../data/models/user_role.dart';
 import '../../data/services/api_client.dart';
+import '../../shared/theme/glass_theme.dart';
 import '../../shared/theme/reader_theme_extension.dart';
 import '../../shared/utils/responsive.dart';
 import '../../shared/widgets/glass_dialog.dart';
@@ -37,6 +38,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final user = auth.user;
     final isOfflineGuest = auth.isOfflineGuest;
     final isNightMode = preferences.themeMode == ReaderThemeMode.night;
+    final usesLiquidGlass =
+        preferences.glassMaterialMode == GlassMaterialMode.liquid;
     final appLanguage = ref
         .watch(appLocaleControllerProvider)
         .effectiveLanguage(context);
@@ -235,6 +238,32 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       isNightMode
                           ? ReaderThemeMode.paper
                           : ReaderThemeMode.night,
+                    );
+              },
+            ),
+            _ActionTile(
+              icon: Icons.water_drop_outlined,
+              title: '液态玻璃样板',
+              subtitle: '切换应用导航与阅读工具栏的局部材质',
+              trailing: Switch(
+                value: usesLiquidGlass,
+                onChanged: (value) {
+                  ref
+                      .read(readerPreferencesControllerProvider)
+                      .setGlassMaterialMode(
+                        value
+                            ? GlassMaterialMode.liquid
+                            : GlassMaterialMode.lightweight,
+                      );
+                },
+              ),
+              onTap: () {
+                ref
+                    .read(readerPreferencesControllerProvider)
+                    .setGlassMaterialMode(
+                      usesLiquidGlass
+                          ? GlassMaterialMode.lightweight
+                          : GlassMaterialMode.liquid,
                     );
               },
             ),

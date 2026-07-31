@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:private_reader_mobile/data/services/settings_storage.dart';
 import 'package:private_reader_mobile/features/settings/reader_preferences_controller.dart';
+import 'package:private_reader_mobile/shared/theme/glass_theme.dart';
 import 'package:private_reader_mobile/shared/theme/reader_theme_extension.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -65,4 +66,25 @@ void main() {
       expect(preferences.containsKey('reader.tabletPageTurnAxis'), isFalse);
     },
   );
+
+  test('glass material mode persists and defaults safely', () async {
+    SharedPreferences.setMockInitialValues({});
+
+    final defaults = await SettingsStorage().read();
+    expect(defaults.glassMaterialMode, GlassMaterialMode.lightweight);
+
+    await SettingsStorage().save(
+      const ReaderPreferences(
+        themeMode: ReaderThemeMode.paper,
+        fontScale: 1,
+        lineHeight: 1.8,
+        fontFamily: ReaderFontFamilyPreference.system,
+        tabletPageTurnAnimation: TabletPageTurnAnimation.smooth,
+        glassMaterialMode: GlassMaterialMode.liquid,
+      ),
+    );
+
+    final restored = await SettingsStorage().read();
+    expect(restored.glassMaterialMode, GlassMaterialMode.liquid);
+  });
 }

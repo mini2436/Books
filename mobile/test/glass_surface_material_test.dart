@@ -49,4 +49,54 @@ void main() {
       debugDefaultTargetPlatformOverride = previousPlatform;
     }
   });
+
+  testWidgets('liquid material only affects opted-in surfaces', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(
+          extensions: [
+            AppReaderPalette.resolve(ReaderThemeMode.paper),
+            const GlassMaterialTheme(mode: GlassMaterialMode.liquid),
+          ],
+        ),
+        home: const Scaffold(
+          body: Column(
+            children: [
+              GlassSurface(child: SizedBox(width: 240, height: 80)),
+              GlassSurface(
+                enableLiquidGlass: true,
+                child: SizedBox(width: 240, height: 80),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      find.byKey(const ValueKey('liquid-glass-highlight')),
+      findsOneWidget,
+    );
+    expect(find.byType(BackdropFilter), findsNWidgets(2));
+  });
+
+  testWidgets('opted-in surfaces keep lightweight fallback by default', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(
+          extensions: [AppReaderPalette.resolve(ReaderThemeMode.paper)],
+        ),
+        home: const Scaffold(
+          body: GlassSurface(
+            enableLiquidGlass: true,
+            child: SizedBox(width: 240, height: 80),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byKey(const ValueKey('liquid-glass-highlight')), findsNothing);
+  });
 }

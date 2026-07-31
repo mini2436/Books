@@ -1,6 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../features/settings/reader_preferences_controller.dart';
+import '../../shared/theme/glass_theme.dart';
 
 class SettingsStorage {
   static const String _themeKey = 'reader.theme';
@@ -11,6 +12,7 @@ class SettingsStorage {
       'reader.tabletPageTurnAxis';
   static const String _tabletPageTurnAnimationKey =
       'reader.tabletPageTurnAnimation';
+  static const String _glassMaterialModeKey = 'ui.glassMaterialMode';
 
   Future<ReaderPreferences> read() async {
     final preferences = await SharedPreferences.getInstance();
@@ -26,6 +28,9 @@ class SettingsStorage {
       tabletPageTurnAnimation: TabletPageTurnAnimationX.fromStorage(
         preferences.getString(_tabletPageTurnAnimationKey),
       ),
+      glassMaterialMode: GlassMaterialModeX.fromStorage(
+        preferences.getString(_glassMaterialModeKey),
+      ),
     );
   }
 
@@ -39,6 +44,10 @@ class SettingsStorage {
     await preferences.setString(
       _tabletPageTurnAnimationKey,
       value.tabletPageTurnAnimation.storageValue,
+    );
+    await preferences.setString(
+      _glassMaterialModeKey,
+      value.glassMaterialMode.storageValue,
     );
   }
 }

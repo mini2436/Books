@@ -4,6 +4,46 @@ import '../utils/responsive.dart';
 
 enum GlassSurfaceLevel { subtle, standard, elevated, floating }
 
+enum GlassMaterialMode { lightweight, liquid }
+
+extension GlassMaterialModeX on GlassMaterialMode {
+  String get storageValue => name;
+
+  static GlassMaterialMode fromStorage(String? value) {
+    return GlassMaterialMode.values.firstWhere(
+      (item) => item.name == value,
+      orElse: () => GlassMaterialMode.lightweight,
+    );
+  }
+}
+
+@immutable
+class GlassMaterialTheme extends ThemeExtension<GlassMaterialTheme> {
+  const GlassMaterialTheme({required this.mode});
+
+  final GlassMaterialMode mode;
+
+  static GlassMaterialTheme of(BuildContext context) =>
+      Theme.of(context).extension<GlassMaterialTheme>() ??
+      const GlassMaterialTheme(mode: GlassMaterialMode.lightweight);
+
+  @override
+  GlassMaterialTheme copyWith({GlassMaterialMode? mode}) {
+    return GlassMaterialTheme(mode: mode ?? this.mode);
+  }
+
+  @override
+  GlassMaterialTheme lerp(
+    covariant ThemeExtension<GlassMaterialTheme>? other,
+    double t,
+  ) {
+    if (other is! GlassMaterialTheme) {
+      return this;
+    }
+    return t < 0.5 ? this : other;
+  }
+}
+
 @immutable
 class GlassPlatformStyle {
   const GlassPlatformStyle({

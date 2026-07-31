@@ -1,0 +1,166 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-31T10:58:47+08:00",
+  "title": "Design System: 轻阅 · Private Reader",
+  "extensions": {
+    "colorMeta": {
+      "brand-walnut": {
+        "role": "primary",
+        "displayName": "书脊胡桃棕",
+        "canonical": "#7A4A24",
+        "tonalRamp": ["#2B190B", "#472915", "#623B1F", "#7A4A24", "#9D6B43", "#C39A78", "#E5CDB7", "#F7EEE6"]
+      },
+      "eye-care-green": {
+        "role": "primary",
+        "displayName": "护眼苔绿",
+        "canonical": "#4A6B3F",
+        "tonalRamp": ["#172713", "#263D20", "#36532D", "#4A6B3F", "#6F8E64", "#9EB494", "#CDD9C8", "#EFF4EC"]
+      },
+      "night-amber": {
+        "role": "primary",
+        "displayName": "夜读琥珀",
+        "canonical": "#C3924A",
+        "tonalRamp": ["#33230E", "#543A18", "#765424", "#987031", "#C3924A", "#D8B77F", "#EBD7B3", "#F8F0E3"]
+      },
+      "paper-background": {
+        "role": "neutral",
+        "displayName": "清纸白",
+        "canonical": "#FFFFFF",
+        "tonalRamp": ["#262626", "#444444", "#646464", "#858585", "#A8A8A8", "#CACACA", "#E9E9E9", "#FFFFFF"]
+      },
+      "kraft-background": {
+        "role": "neutral",
+        "displayName": "牛皮纸米色",
+        "canonical": "#F5F0E6",
+        "tonalRamp": ["#2C2822", "#49433A", "#665E53", "#847B6E", "#A49A8B", "#C4BAAA", "#E1D9CC", "#F5F0E6"]
+      },
+      "eye-care-background": {
+        "role": "neutral",
+        "displayName": "护眼灰绿",
+        "canonical": "#E3EBDE",
+        "tonalRamp": ["#222A20", "#3B4737", "#55624F", "#71806A", "#8F9E87", "#AFBCA8", "#CED9C9", "#E3EBDE"]
+      },
+      "night-background": {
+        "role": "neutral",
+        "displayName": "夜读炭黑",
+        "canonical": "#17171A",
+        "tonalRamp": ["#17171A", "#29292D", "#404045", "#5A5A60", "#77777D", "#9B9BA0", "#C6C6C9", "#F1F1F2"]
+      },
+      "destructive": {
+        "role": "tertiary",
+        "displayName": "明确红",
+        "canonical": "#D93025",
+        "tonalRamp": ["#3B0907", "#64100C", "#8D1913", "#B6231B", "#D93025", "#E86960", "#F2A29C", "#FBE2DF"]
+      }
+    },
+    "typographyMeta": {
+      "display": {"displayName": "页面主标题", "purpose": "仅用于页面标题与关键空状态。"},
+      "headline": {"displayName": "一级标题", "purpose": "用于对话框与主要信息组。"},
+      "title": {"displayName": "模块标题", "purpose": "用于设置分组、卡片和详情模块。"},
+      "body": {"displayName": "界面正文", "purpose": "用于操作说明和普通产品文本。"},
+      "reader-body": {"displayName": "阅读正文", "purpose": "独立响应用户字体、字号和行高偏好。"},
+      "label": {"displayName": "控件标签", "purpose": "用于按钮、标签和辅助信息。"}
+    },
+    "shadows": [
+      {"name": "glass-subtle", "value": "0 8px 22px rgba(26,26,26,0.045-0.135)", "purpose": "嵌入式轻玻璃表面；按平台主题透明度变化。"},
+      {"name": "glass-elevated", "value": "0 8px 22px rgba(26,26,26,0.10-0.30)", "purpose": "对话框、面板和必要的浮层。"},
+      {"name": "glass-floating", "value": "0 12px 30px rgba(26,26,26,0.10-0.30)", "purpose": "悬浮导航和最高层级工具条，不能用于重复列表项。"}
+    ],
+    "motion": [
+      {"name": "feedback-fast", "value": "160ms ease-out-cubic", "purpose": "按钮透明度、选中和禁用反馈。"},
+      {"name": "liquid-highlight", "value": "180ms ease-out-cubic", "purpose": "全局液态玻璃表面的鼠标方向高光；减少动态效果时立即更新。"},
+      {"name": "state-standard", "value": "180-240ms ease-out", "purpose": "工具栏显隐、内容状态和小型面板切换。"},
+      {"name": "structure", "value": "260-300ms ease-in-out", "purpose": "页面、Drawer 和 Bottom Sheet 的结构变化。"},
+      {"name": "reduced-motion", "value": "0ms or crossfade", "purpose": "系统关闭动画时替代位移与缩放。"}
+    ],
+    "breakpoints": [
+      {"name": "phone", "value": "<768px"},
+      {"name": "tablet", "value": ">=768px"},
+      {"name": "desktop-layout", "value": ">=640px on Windows/Linux/macOS"},
+      {"name": "reader-max", "value": "680px"},
+      {"name": "content-max", "value": "1180px"},
+      {"name": "side-panel", "value": "320px"},
+      {"name": "settings-panel", "value": "380px"}
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "页面唯一主操作，使用实色主题强调色。",
+      "html": "<button class=\"ds-button-primary\">继续阅读</button>",
+      "css": ".ds-button-primary { min-height:48px; padding:12px 18px; border:0; border-radius:16px; background:#7A4A24; color:#fff; font:700 15px MiSans, sans-serif; transition:opacity 160ms cubic-bezier(.22,1,.36,1), transform 160ms cubic-bezier(.22,1,.36,1); } .ds-button-primary:hover { opacity:.92; } .ds-button-primary:active { transform:scale(.97); } .ds-button-primary:focus-visible { outline:2px solid #7A4A24; outline-offset:3px; } .ds-button-primary:disabled { opacity:.52; }"
+    },
+    {
+      "name": "Glass Action Button",
+      "kind": "button",
+      "refersTo": "button-glass-action",
+      "description": "带图标的次级操作，以轻微主题染色和玻璃边界表达层级。",
+      "html": "<button class=\"ds-button-glass\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M12 5v14M5 12h14\"/></svg>添加书籍</button>",
+      "css": ".ds-button-glass { min-height:48px; display:inline-flex; align-items:center; gap:9px; padding:12px 18px; border:1px solid rgba(122,74,36,.28); border-radius:16px; background:rgba(255,249,244,.72); color:#1A1A1A; backdrop-filter:blur(12px); font:700 15px MiSans, sans-serif; transition:background 160ms cubic-bezier(.22,1,.36,1), opacity 160ms cubic-bezier(.22,1,.36,1); } .ds-button-glass svg { width:19px; fill:none; stroke:#7A4A24; stroke-width:2; } .ds-button-glass:hover { background:rgba(250,239,229,.82); } .ds-button-glass:focus-visible { outline:2px solid #7A4A24; outline-offset:3px; } .ds-button-glass:active { opacity:.8; }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input-standard",
+      "description": "主题面板色填充的标准输入框。",
+      "html": "<label class=\"ds-field-label\">书名<input class=\"ds-field\" value=\"百年孤独\"></label>",
+      "css": ".ds-field-label { display:grid; gap:8px; color:#666; font:600 13px MiSans, sans-serif; } .ds-field { min-height:48px; padding:0 14px; border:1px solid rgba(0,0,0,.08); border-radius:14px; background:rgba(255,255,255,.62); color:#1A1A1A; font:400 15px MiSans, sans-serif; } .ds-field:hover { border-color:rgba(122,74,36,.35); } .ds-field:focus-visible { outline:0; border:1.5px solid #7A4A24; } .ds-field:disabled { opacity:.52; }"
+    },
+    {
+      "name": "Glass Card",
+      "kind": "card",
+      "refersTo": "card-glass",
+      "description": "承载独立信息组的标准玻璃容器，不能用于阅读正文或每个列表单元。",
+      "html": "<section class=\"ds-glass-card\"><strong>家庭书库</strong><p>集中管理授权、来源与扫描任务。</p></section>",
+      "css": ".ds-glass-card { width:260px; padding:16px; border:1px solid rgba(0,0,0,.09); border-radius:20px; background:linear-gradient(135deg,rgba(255,255,255,.64),rgba(255,255,255,.34)); color:#1A1A1A; backdrop-filter:blur(12px); font:400 15px/1.5 MiSans, sans-serif; } .ds-glass-card strong { font-weight:700; } .ds-glass-card p { margin:8px 0 0; color:#666; } .ds-glass-card:focus-within { outline:2px solid #7A4A24; outline-offset:3px; }"
+    },
+    {
+      "name": "Segmented Control",
+      "kind": "custom",
+      "refersTo": "control-segmented",
+      "description": "阅读设置、筛选和视图选择使用的药丸形玻璃分段控件。",
+      "html": "<div class=\"ds-segmented\"><button class=\"ds-segment is-selected\">封面</button><button class=\"ds-segment\">列表</button></div>",
+      "css": ".ds-segmented { display:inline-flex; gap:2px; padding:4px; border:1px solid rgba(0,0,0,.08); border-radius:999px; background:rgba(255,255,255,.46); backdrop-filter:blur(12px); } .ds-segment { min-height:42px; padding:9px 16px; border:0; border-radius:999px; background:transparent; color:#666; font:600 14px MiSans, sans-serif; } .ds-segment:hover { color:#7A4A24; } .ds-segment.is-selected { background:rgba(122,74,36,.18); color:#7A4A24; } .ds-segment:focus-visible { outline:2px solid #7A4A24; outline-offset:1px; }"
+    },
+    {
+      "name": "Floating Navigation",
+      "kind": "nav",
+      "refersTo": "card-glass",
+      "description": "手机底部或宽屏左侧的透明悬浮主导航。",
+      "html": "<nav class=\"ds-nav\"><a class=\"is-active\" href=\"#\">书架</a><a href=\"#\">批注</a><a href=\"#\">我的</a></nav>",
+      "css": ".ds-nav { display:flex; gap:4px; padding:6px; border:1px solid rgba(0,0,0,.09); border-radius:22px; background:rgba(255,255,255,.58); backdrop-filter:blur(20px); font:600 13px MiSans, sans-serif; } .ds-nav a { min-width:64px; min-height:44px; display:grid; place-items:center; border-radius:16px; color:#666; text-decoration:none; } .ds-nav a:hover { background:rgba(0,0,0,.04); color:#1A1A1A; } .ds-nav a.is-active { background:rgba(122,74,36,.14); color:#7A4A24; } .ds-nav a:focus-visible { outline:2px solid #7A4A24; outline-offset:1px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "纸页之上的轻透界面",
+    "overview": "轻阅是一套面向家庭私有书库的任务型产品界面。纸张负责承载内容，透明玻璃负责承载导航、选择、设置和临时操作。玻璃不是背景装饰，而是一种把操作层从阅读层中分离出来的功能材质。",
+    "keyCharacteristics": [
+      "纸面内容与玻璃操作层职责分离。",
+      "四套阅读主题共用相同语义色位与组件结构。",
+      "手机、平板、Web、桌面拥有独立材质参数，而非一套数值强行缩放。",
+      "MiSans 统一 UI，阅读正文允许用户选择思源宋体或霞鹜文楷。",
+      "强调色只用于主操作、选中态和进度，不承担装饰职责。"
+    ],
+    "rules": [
+      {"name": "The One Accent Rule", "body": "一个界面状态只允许一个主题强调色；未选中控件不得使用高饱和色争夺注意力。", "section": "colors"},
+      {"name": "The Paper Stays Solid Rule", "body": "阅读正文、封面和需要精确辨认的数据区域保持稳定实色；玻璃仅用于覆盖层、导航、工具栏、对话框和临时控件。", "section": "colors"},
+      {"name": "The One Blur Boundary Rule", "body": "同一覆盖层只建立一个背景模糊边界；嵌套子组件使用透明色调层，不再重复 BackdropFilter。", "section": "elevation"},
+      {"name": "The Functional Glass Rule", "body": "如果移除模糊不影响层级和操作理解，该表面就不应该使用玻璃材质。", "section": "elevation"}
+    ],
+    "dos": [
+      "Do 让书籍封面、正文和阅读进度成为每个页面的第一视觉重心。",
+      "Do 通过 AppReaderPalette 和 GlassPlatformStyle 获取主题与平台参数。",
+      "Do 在手机、平板、Web、桌面之间改变导航和面板结构。",
+      "Do 把动效控制在状态反馈所需的 150–250ms 左右，并尊重减少动态效果设置。"
+    ],
+    "donts": [
+      "Don't 在阅读正文背景上覆盖大面积玻璃、动态高光或实时折射。",
+      "Don't 为每个内容块创建玻璃卡片；能用留白、排版和分割线表达层级时，禁止增加容器。",
+      "Don't 嵌套多个 BackdropFilter，也不要在封面网格的每本书上独立启用模糊。",
+      "Don't 同时使用明显边框和超过 16px 的装饰性软阴影塑造普通卡片。",
+      "Don't 使用渐变文字、霓虹色、装饰性网格背景、重复条纹或营销式大指标。"
+    ]
+  }
+}

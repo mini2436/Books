@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/services/settings_storage.dart';
+import '../../shared/theme/glass_theme.dart';
 import '../../shared/theme/reader_theme_extension.dart';
 
 enum ReaderFontFamilyPreference {
@@ -120,6 +121,7 @@ class ReaderPreferences {
     required this.lineHeight,
     required this.fontFamily,
     required this.tabletPageTurnAnimation,
+    this.glassMaterialMode = GlassMaterialMode.lightweight,
   });
 
   final ReaderThemeMode themeMode;
@@ -127,6 +129,7 @@ class ReaderPreferences {
   final double lineHeight;
   final ReaderFontFamilyPreference fontFamily;
   final TabletPageTurnAnimation tabletPageTurnAnimation;
+  final GlassMaterialMode glassMaterialMode;
 
   ReaderPreferences copyWith({
     ReaderThemeMode? themeMode,
@@ -134,6 +137,7 @@ class ReaderPreferences {
     double? lineHeight,
     ReaderFontFamilyPreference? fontFamily,
     TabletPageTurnAnimation? tabletPageTurnAnimation,
+    GlassMaterialMode? glassMaterialMode,
   }) {
     return ReaderPreferences(
       themeMode: themeMode ?? this.themeMode,
@@ -142,6 +146,7 @@ class ReaderPreferences {
       fontFamily: fontFamily ?? this.fontFamily,
       tabletPageTurnAnimation:
           tabletPageTurnAnimation ?? this.tabletPageTurnAnimation,
+      glassMaterialMode: glassMaterialMode ?? this.glassMaterialMode,
     );
   }
 }
@@ -168,6 +173,7 @@ class ReaderPreferencesController extends ChangeNotifier {
     lineHeight: 1.8,
     fontFamily: ReaderFontFamilyPreference.system,
     tabletPageTurnAnimation: TabletPageTurnAnimation.smooth,
+    glassMaterialMode: GlassMaterialMode.lightweight,
   );
 
   ReaderPreferences get value => _preferences;
@@ -177,6 +183,7 @@ class ReaderPreferencesController extends ChangeNotifier {
   ReaderFontFamilyPreference get fontFamily => _preferences.fontFamily;
   TabletPageTurnAnimation get tabletPageTurnAnimation =>
       _preferences.tabletPageTurnAnimation;
+  GlassMaterialMode get glassMaterialMode => _preferences.glassMaterialMode;
 
   Future<void> setThemeMode(ReaderThemeMode mode) async {
     _preferences = _preferences.copyWith(themeMode: mode);
@@ -204,6 +211,12 @@ class ReaderPreferencesController extends ChangeNotifier {
 
   Future<void> setTabletPageTurnAnimation(TabletPageTurnAnimation value) async {
     _preferences = _preferences.copyWith(tabletPageTurnAnimation: value);
+    notifyListeners();
+    await _settingsStorage.save(_preferences);
+  }
+
+  Future<void> setGlassMaterialMode(GlassMaterialMode value) async {
+    _preferences = _preferences.copyWith(glassMaterialMode: value);
     notifyListeners();
     await _settingsStorage.save(_preferences);
   }

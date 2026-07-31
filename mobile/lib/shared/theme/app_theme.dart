@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../features/settings/reader_preferences_controller.dart';
+import 'glass_theme.dart';
 import 'reader_theme_extension.dart';
 
 class AppTheme {
@@ -63,7 +64,10 @@ class AppTheme {
       dividerColor: palette.line,
       cardColor: palette.panel,
       canvasColor: palette.background,
-      extensions: [palette],
+      extensions: [
+        palette,
+        GlassMaterialTheme(mode: preferences.glassMaterialMode),
+      ],
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: palette.panel,
         indicatorColor: palette.accent.withValues(alpha: 0.14),

@@ -363,6 +363,9 @@ class AppLocalizations {
     '验证当前密码后更新登录密码': 'Verify your current password before changing it',
     '夜间模式': 'Dark mode',
     'APP 与阅读界面同步切换深色主题': 'Use the dark theme throughout the app and reader',
+    '液态玻璃效果': 'Liquid Glass effects',
+    '全局切换卡片、导航、弹窗与阅读工具栏材质':
+        'Switch cards, navigation, dialogs, and reader toolbars globally',
     '同步状态': 'Sync status',
     '离线操作将在网络恢复后自动补偿':
         'Offline changes sync automatically when the network returns',

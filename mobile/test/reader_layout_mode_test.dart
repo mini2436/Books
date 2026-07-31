@@ -22,4 +22,9 @@ void main() {
       isTrue,
     );
   });
+
+  test('initialization overlay remains visible until loading completes', () {
+    expect(readerShowsInitializationOverlay(isLoading: true), isTrue);
+    expect(readerShowsInitializationOverlay(isLoading: false), isFalse);
+  });
 }

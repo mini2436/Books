@@ -10,6 +10,123 @@ import 'package:private_reader_mobile/features/settings/reader_preferences_contr
 import 'package:private_reader_mobile/shared/theme/reader_theme_extension.dart';
 
 void main() {
+  test('web page-turn zones grow on phone and wide viewports', () {
+    expect(
+      readerTapZoneForPosition(localDx: 100, viewportWidth: 400, web: true),
+      'left',
+    );
+    expect(
+      readerTapZoneForPosition(localDx: 300, viewportWidth: 400, web: true),
+      'right',
+    );
+    expect(
+      readerTapZoneForPosition(localDx: 360, viewportWidth: 1600, web: true),
+      'left',
+    );
+    expect(
+      readerTapZoneForPosition(localDx: 800, viewportWidth: 1600, web: true),
+      'center',
+    );
+  });
+
+  test('reader chrome does not change paged content insets', () {
+    for (final twoColumnContent in [false, true]) {
+      final visibleInsets = readerPagedContentInsets(
+        uiVisible: true,
+        twoColumnContent: twoColumnContent,
+      );
+      final hiddenInsets = readerPagedContentInsets(
+        uiVisible: false,
+        twoColumnContent: twoColumnContent,
+      );
+
+      expect(visibleInsets, hiddenInsets);
+      expect(visibleInsets, const EdgeInsets.symmetric(vertical: 12));
+    }
+  });
+
+  testWidgets('wide text chapters use a two-column spread', (tester) async {
+    tester.view.physicalSize = const Size(1200, 700);
+    tester.view.devicePixelRatio = 1;
+    debugDefaultTargetPlatformOverride = TargetPlatform.linux;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+      debugDefaultTargetPlatformOverride = null;
+    });
+
+    final palette = AppReaderPalette.resolve(ReaderThemeMode.paper);
+    final chapterText = List.filled(220, '宽屏阅读应该让正文自然填满左右两栏。').join();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(extensions: [palette]),
+        home: Scaffold(
+          body: ReaderHtmlView(
+            chapter: BookContentChapter(
+              bookId: 1,
+              contentModel: 'structured',
+              contentVersionId: 1,
+              hasStructuredContent: true,
+              chapterIndex: 0,
+              title: '长文本章节',
+              anchor: 'chapter-0',
+              blocks: [
+                BookContentBlock(
+                  blockIndex: 0,
+                  type: 'paragraph',
+                  anchor: 'chapter-0-paragraph',
+                  text: chapterText,
+                  plainText: chapterText,
+                  meta: const {},
+                ),
+              ],
+            ),
+            imageResources: const {},
+            failedImageResourceIds: const {},
+            annotations: const <AnnotationView>[],
+            preferences: _preferences,
+            palette: palette,
+            uiVisible: true,
+            autoScrollEnabled: false,
+            autoScrollPixelsPerSecond: 0,
+            pagedMode: true,
+            dualColumn: true,
+            anchorJumpVersion: 0,
+            onHighlight: (_, _) async {},
+            onAnnotate: (_, _) async {},
+            onSaveAnnotation:
+                (
+                  _,
+                  _, {
+                  required noteText,
+                  required color,
+                  required underlineStyle,
+                }) async {},
+            onOpenAnnotations: (_) async {},
+            onRetryImages: () async {},
+            onVisibleAnchorChanged: (_) {},
+            onPageBoundaryPrevious: () async {},
+            onPageBoundaryNext: () async {},
+            onToggleUi: () {},
+            onMenuRequest: () {},
+            onAutoScrollInterrupted: () {},
+            onAutoScrollBoundaryNext: () async {},
+            viewportTapZoneVersion: 0,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final fragments = find.byType(SelectableText);
+    expect(fragments, findsAtLeastNWidgets(2));
+    final firstPosition = tester.getTopLeft(fragments.at(0));
+    final secondPosition = tester.getTopLeft(fragments.at(1));
+    expect(secondPosition.dx, greaterThan(firstPosition.dx));
+    expect(secondPosition.dy, closeTo(firstPosition.dy, 1));
+    debugDefaultTargetPlatformOverride = null;
+  });
+
   testWidgets('paged Flutter reader flows left page into right page', (
     tester,
   ) async {

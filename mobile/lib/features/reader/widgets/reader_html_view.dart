@@ -42,6 +42,20 @@ const List<String> _webAnnotationColors = [
 const String readerToolbarComposerBackground = 'transparent';
 
 @visibleForTesting
+String readerTapZoneForPosition({
+  required double localDx,
+  required double viewportWidth,
+  required bool web,
+}) {
+  if (viewportWidth <= 0) return 'center';
+  final ratio = (localDx / viewportWidth).clamp(0.0, 1.0);
+  final edgeRatio = web ? (viewportWidth >= 900 ? 0.24 : 0.30) : 0.32;
+  if (ratio <= edgeRatio) return 'left';
+  if (ratio >= 1 - edgeRatio) return 'right';
+  return 'center';
+}
+
+@visibleForTesting
 double readerToolbarBackgroundOpacity(ReaderThemeMode themeMode) =>
     themeMode == ReaderThemeMode.night ? 0.62 : 0.42;
 
@@ -52,6 +66,16 @@ double readerToolbarSoftSurfaceOpacity(ReaderThemeMode themeMode) =>
 @visibleForTesting
 double readerToolbarBorderOpacity(ReaderThemeMode themeMode) =>
     themeMode == ReaderThemeMode.night ? 0.2 : 0.12;
+
+@visibleForTesting
+EdgeInsets readerPagedContentInsets({
+  required bool uiVisible,
+  required bool twoColumnContent,
+}) {
+  // Reader chrome floats above the page. Keeping these insets stable prevents
+  // toolbar visibility from shrinking the page and triggering repagination.
+  return const EdgeInsets.symmetric(vertical: 12);
+}
 
 @visibleForTesting
 String windowsReaderImageFileName(BookContentBlock block) {
@@ -414,21 +438,27 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
     if (_useFlutterFallback) {
       return LayoutBuilder(
         builder: (context, constraints) {
-          final imageBlockCount = widget.chapter.blocks
-              .where((block) => block.isImage)
-              .length;
           final twoColumnContent =
-              widget.dualColumn &&
-              constraints.maxWidth >= 960 &&
-              imageBlockCount >= 2;
+              widget.dualColumn && constraints.maxWidth >= 900;
           final maximumReaderWidth = twoColumnContent
               ? Responsive.desktopContentMaxWidth
               : Responsive.readerMaxWidth;
+          final horizontalPageInset = constraints.maxWidth >= 600 ? 20.0 : 12.0;
           final contentViewportWidth = math.max(
             0.0,
-            math.min(constraints.maxWidth - 40, maximumReaderWidth),
+            math.min(
+              constraints.maxWidth - horizontalPageInset * 2,
+              maximumReaderWidth,
+            ),
           );
-          final pagedColumnHeight = math.max(0.0, constraints.maxHeight - 88);
+          final pageInsets = readerPagedContentInsets(
+            uiVisible: widget.uiVisible,
+            twoColumnContent: twoColumnContent,
+          );
+          final pagedColumnHeight = math.max(
+            0.0,
+            constraints.maxHeight - pageInsets.vertical,
+          );
           final readerContent = widget.pagedMode
               ? Center(
                   child: SizedBox(
@@ -449,7 +479,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
                           controller: _fallbackPagedScrollController,
                           scrollDirection: Axis.horizontal,
                           physics: const NeverScrollableScrollPhysics(),
-                          padding: const EdgeInsets.fromLTRB(0, 64, 0, 24),
+                          padding: pageInsets,
                           child: ReaderBlocksView(
                             blocks: widget.chapter.blocks,
                             imageResources: widget.imageResources,
@@ -905,17 +935,16 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
       widget.onToggleUi();
       return;
     }
-    if (width <= 0) {
-      widget.onToggleUi();
-      return;
-    }
-    final ratio = localDx / width;
-    final edgeRatio = kIsWeb ? 0.10 : 0.32;
-    if (ratio <= edgeRatio) {
+    final zone = readerTapZoneForPosition(
+      localDx: localDx,
+      viewportWidth: width,
+      web: kIsWeb,
+    );
+    if (zone == 'left') {
       unawaited(_handleFallbackTapZone('left'));
       return;
     }
-    if (ratio >= 1 - edgeRatio) {
+    if (zone == 'right') {
       unawaited(_handleFallbackTapZone('right'));
       return;
     }

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,6 +13,56 @@ import '../../data/services/offline_book_cache_service.dart';
 import '../annotations/annotation_change_notifier.dart';
 import '../auth/auth_controller.dart';
 import 'models/annotation_anchor.dart';
+
+const int readerInitializationChapterConcurrency = 4;
+const int readerInitializationResourceConcurrency = 6;
+
+@visibleForTesting
+Future<List<TResult>> runReaderInitializationPool<TItem, TResult>({
+  required List<TItem> items,
+  required int maxConcurrency,
+  required Future<TResult> Function(TItem item) operation,
+  void Function(int completed, int total)? onProgress,
+}) async {
+  if (maxConcurrency <= 0) {
+    throw ArgumentError.value(maxConcurrency, 'maxConcurrency', '必须大于 0');
+  }
+  if (items.isEmpty) return const [];
+
+  final results = <int, TResult>{};
+  var nextIndex = 0;
+  var completed = 0;
+  Object? firstError;
+  StackTrace? firstStackTrace;
+
+  Future<void> worker() async {
+    while (firstError == null) {
+      final index = nextIndex;
+      if (index >= items.length) return;
+      nextIndex += 1;
+
+      try {
+        results[index] = await operation(items[index]);
+        completed += 1;
+        onProgress?.call(completed, items.length);
+      } catch (error, stackTrace) {
+        firstError ??= error;
+        firstStackTrace ??= stackTrace;
+      }
+    }
+  }
+
+  final workerCount = math.min(maxConcurrency, items.length);
+  await Future.wait(List.generate(workerCount, (_) => worker()));
+  if (firstError != null) {
+    Error.throwWithStackTrace(firstError!, firstStackTrace!);
+  }
+  return List<TResult>.generate(
+    items.length,
+    (index) => results[index] as TResult,
+    growable: false,
+  );
+}
 
 enum ReaderInspectorTab { notes, settings }
 
@@ -399,26 +450,34 @@ class ReaderController extends ChangeNotifier {
     var sizeBytes = utf8.encode(jsonEncode(content.toJson())).length;
     final resourceIds = <String>{};
     try {
-      for (var index = 0; index < content.chapters.length; index++) {
-        _setInitialization(
-          '正在初始化阅读（${index + 1}/${content.chapters.length}）',
-          content.chapters.isEmpty ? 1 : index / content.chapters.length,
-        );
-        final summary = content.chapters[index];
-        final chapter = await _authController.runAuthorized(
-          (token) => _apiClient.getStructuredChapter(
-            token,
+      final chapterSummaries = content.chapters;
+      if (chapterSummaries.isNotEmpty) {
+        _setInitialization('正在初始化阅读（0/${chapterSummaries.length}）', 0);
+      }
+      final chapters = await runReaderInitializationPool(
+        items: chapterSummaries,
+        maxConcurrency: readerInitializationChapterConcurrency,
+        operation: (summary) async {
+          final chapter = await _authController.runAuthorized(
+            (token) => _apiClient.getStructuredChapter(
+              token,
+              bookId,
+              summary.chapterIndex,
+            ),
+          );
+          await _offlineBookCacheService.saveChapter(
+            serverKey,
+            userId,
             bookId,
-            summary.chapterIndex,
-          ),
-        );
-        _chapterCache[summary.chapterIndex] = chapter;
-        await _offlineBookCacheService.saveChapter(
-          serverKey,
-          userId,
-          bookId,
-          chapter,
-        );
+            chapter,
+          );
+          return chapter;
+        },
+        onProgress: (completed, total) =>
+            _setInitialization('正在初始化阅读（$completed/$total）', completed / total),
+      );
+      for (final chapter in chapters) {
+        _chapterCache[chapter.chapterIndex] = chapter;
         sizeBytes += utf8.encode(jsonEncode(chapter.toJson())).length;
         resourceIds.addAll(
           chapter.blocks
@@ -429,24 +488,30 @@ class ReaderController extends ChangeNotifier {
         );
       }
       final resources = resourceIds.toList();
-      for (var index = 0; index < resources.length; index++) {
-        _setInitialization(
-          '正在缓存插图（${index + 1}/${resources.length}）',
-          resources.isEmpty ? 1 : index / resources.length,
-        );
-        final resourceId = resources[index];
-        final bytes = await _authController.runAuthorized(
-          (token) => _apiClient.downloadBookResource(token, bookId, resourceId),
-        );
-        await _offlineBookCacheService.saveResource(
-          serverKey,
-          userId,
-          bookId,
-          resourceId,
-          bytes,
-        );
-        sizeBytes += bytes.length;
+      if (resources.isNotEmpty) {
+        _setInitialization('正在缓存插图（0/${resources.length}）', 0);
       }
+      final resourceSizes = await runReaderInitializationPool(
+        items: resources,
+        maxConcurrency: readerInitializationResourceConcurrency,
+        operation: (resourceId) async {
+          final bytes = await _authController.runAuthorized(
+            (token) =>
+                _apiClient.downloadBookResource(token, bookId, resourceId),
+          );
+          await _offlineBookCacheService.saveResource(
+            serverKey,
+            userId,
+            bookId,
+            resourceId,
+            bytes,
+          );
+          return bytes.length;
+        },
+        onProgress: (completed, total) =>
+            _setInitialization('正在缓存插图（$completed/$total）', completed / total),
+      );
+      sizeBytes += resourceSizes.fold(0, (total, size) => total + size);
       _setInitialization('正在保存到本地…', 1);
       await _saveInitialCache(
         detail: detail,

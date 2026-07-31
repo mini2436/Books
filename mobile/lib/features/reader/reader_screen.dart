@@ -30,6 +30,9 @@ bool readerUsesPagedMode({
   required bool autoScrollEnabled,
 }) => wideReader || !autoScrollEnabled;
 
+@visibleForTesting
+bool readerShowsInitializationOverlay({required bool isLoading}) => isLoading;
+
 class ReaderScreen extends ConsumerStatefulWidget {
   const ReaderScreen({super.key, required this.bookId, this.initialAnchor});
 
@@ -118,7 +121,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       autoScrollEnabled: _autoScrollEnabled,
     );
 
-    if (controller.isLoading && controller.currentChapter == null) {
+    if (readerShowsInitializationOverlay(isLoading: controller.isLoading)) {
       return Scaffold(
         body: DecoratedBox(
           decoration: BoxDecoration(color: palette.background),
@@ -449,7 +452,9 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
             children: [
               Positioned.fill(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 24, 16, 40),
+                  padding: detail.isPdf
+                      ? const EdgeInsets.fromLTRB(16, 24, 16, 40)
+                      : EdgeInsets.zero,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [

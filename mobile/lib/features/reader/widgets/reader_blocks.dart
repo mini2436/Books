@@ -242,21 +242,13 @@ class ReaderBlocksView extends StatelessWidget {
     final pageWidth = pagedViewportWidth;
     final columnHeight = pagedColumnHeight;
     if (pageWidth != null && columnHeight != null) {
-      const columnGap = 28.0;
-      final columnCount = pagedColumnCount.clamp(1, 2);
-      final columnWidth = math.max(
-        0.0,
-        (pageWidth - columnGap * (columnCount - 1)) / columnCount,
-      );
-      return SizedBox(
-        height: columnHeight,
-        child: Wrap(
-          direction: Axis.vertical,
-          runSpacing: columnGap,
-          children: blockViews
-              .map((view) => SizedBox(width: columnWidth, child: view))
-              .toList(growable: false),
-        ),
+      return _buildPagedFlow(
+        context,
+        blockViews: blockViews,
+        orderedBlockAnchors: orderedBlockAnchors,
+        pageWidth: pageWidth,
+        columnHeight: columnHeight,
+        columnCount: pagedColumnCount.clamp(1, 2),
       );
     }
 
@@ -319,6 +311,385 @@ class ReaderBlocksView extends StatelessWidget {
         );
       },
     );
+  }
+
+  Widget _buildPagedFlow(
+    BuildContext context, {
+    required List<Widget> blockViews,
+    required List<String> orderedBlockAnchors,
+    required double pageWidth,
+    required double columnHeight,
+    required int columnCount,
+  }) {
+    const columnGap = 28.0;
+    final columnWidth = math.max(
+      0.0,
+      (pageWidth - columnGap * (columnCount - 1)) / columnCount,
+    );
+    final palette = AppReaderPalette.of(context);
+    final columns = <List<Widget>>[<Widget>[]];
+    var currentColumn = columns.last;
+    var usedHeight = 0.0;
+
+    void startNextColumn() {
+      if (currentColumn.isEmpty) return;
+      currentColumn = <Widget>[];
+      columns.add(currentColumn);
+      usedHeight = 0;
+    }
+
+    void addFixedBlock(int index) {
+      final estimatedHeight = _estimatePagedBlockHeight(
+        context,
+        blocks[index],
+        columnWidth,
+        columnHeight,
+        columnCount,
+      );
+      if (currentColumn.isNotEmpty &&
+          usedHeight + estimatedHeight > columnHeight) {
+        startNextColumn();
+      }
+      currentColumn.add(SizedBox(width: columnWidth, child: blockViews[index]));
+      usedHeight = math.min(columnHeight, usedHeight + estimatedHeight);
+    }
+
+    for (var index = 0; index < blocks.length; index += 1) {
+      final block = blocks[index];
+      final sourceText = block.renderedText;
+      if (block.type != 'paragraph' || sourceText.isEmpty) {
+        addFixedBlock(index);
+        continue;
+      }
+
+      final blockAnnotations = _annotationsForBlock(block, orderedBlockAnchors);
+      final highlightColor = _blockHighlightColor(blockAnnotations, palette);
+      final paragraphStyle = _resolvedPagedParagraphStyle(context, palette);
+      final textWidth = math.max(
+        1.0,
+        columnWidth - (highlightColor == null ? 0 : 20),
+      );
+      final frameHeight = highlightColor == null ? 0.0 : 12.0;
+      var sourceOffset = 0;
+      var firstFragment = true;
+
+      while (sourceOffset < sourceText.length) {
+        var remainingHeight = math.max(0.0, columnHeight - usedHeight);
+        final remainingText = sourceText.substring(sourceOffset);
+        final remainingTextHeight = _measurePagedTextHeight(
+          context,
+          remainingText,
+          paragraphStyle,
+          textWidth,
+        );
+        const finalBlockSpacing = 16.0;
+        final completeHeight =
+            remainingTextHeight + frameHeight + finalBlockSpacing;
+
+        if (completeHeight <= remainingHeight + 0.5) {
+          currentColumn.add(
+            _buildPagedParagraphFragment(
+              context,
+              block: block,
+              visibleText: remainingText,
+              sourceText: sourceText,
+              sourceOffset: sourceOffset,
+              annotations: blockAnnotations,
+              orderedBlockAnchors: orderedBlockAnchors,
+              highlightColor: highlightColor,
+              firstFragment: firstFragment,
+              bottomSpacing: finalBlockSpacing,
+            ),
+          );
+          usedHeight += completeHeight;
+          sourceOffset = sourceText.length;
+          continue;
+        }
+
+        final minimumLineHeight =
+            _measurePagedTextHeight(context, '阅', paragraphStyle, textWidth) +
+            frameHeight;
+        if (currentColumn.isNotEmpty &&
+            remainingHeight < minimumLineHeight - 0.5) {
+          startNextColumn();
+          continue;
+        }
+
+        remainingHeight = math.max(1.0, columnHeight - usedHeight);
+        final fittingTextHeight = math.max(1.0, remainingHeight - frameHeight);
+        var localEnd = _fittingPagedTextEnd(
+          context,
+          remainingText,
+          paragraphStyle,
+          textWidth,
+          fittingTextHeight,
+        );
+        if (localEnd <= 0) {
+          if (currentColumn.isNotEmpty) {
+            startNextColumn();
+            continue;
+          }
+          localEnd = _nextCodePointOffset(remainingText, 0);
+        }
+        final visibleText = remainingText.substring(0, localEnd);
+        final visibleTextHeight = _measurePagedTextHeight(
+          context,
+          visibleText,
+          paragraphStyle,
+          textWidth,
+        );
+        final isFinalFragment = sourceOffset + localEnd >= sourceText.length;
+        final bottomSpacing =
+            isFinalFragment &&
+                visibleTextHeight + frameHeight + finalBlockSpacing <=
+                    remainingHeight + 0.5
+            ? finalBlockSpacing
+            : 0.0;
+        currentColumn.add(
+          _buildPagedParagraphFragment(
+            context,
+            block: block,
+            visibleText: visibleText,
+            sourceText: sourceText,
+            sourceOffset: sourceOffset,
+            annotations: blockAnnotations,
+            orderedBlockAnchors: orderedBlockAnchors,
+            highlightColor: highlightColor,
+            firstFragment: firstFragment,
+            bottomSpacing: bottomSpacing,
+          ),
+        );
+        usedHeight += visibleTextHeight + frameHeight + bottomSpacing;
+        sourceOffset += localEnd;
+        firstFragment = false;
+        if (!isFinalFragment) startNextColumn();
+      }
+    }
+
+    if (columns.length > 1 && columns.last.isEmpty) {
+      columns.removeLast();
+    }
+    while (columns.length % columnCount != 0) {
+      columns.add(<Widget>[]);
+    }
+
+    final children = <Widget>[];
+    for (var index = 0; index < columns.length; index += 1) {
+      if (index > 0) children.add(const SizedBox(width: columnGap));
+      children.add(
+        SizedBox(
+          width: columnWidth,
+          height: columnHeight,
+          child: ClipRect(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: columns[index],
+            ),
+          ),
+        ),
+      );
+    }
+    return SizedBox(
+      height: columnHeight,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: children,
+      ),
+    );
+  }
+
+  Widget _buildPagedParagraphFragment(
+    BuildContext context, {
+    required BookContentBlock block,
+    required String visibleText,
+    required String sourceText,
+    required int sourceOffset,
+    required List<AnnotationView> annotations,
+    required List<String> orderedBlockAnchors,
+    required Color? highlightColor,
+    required bool firstFragment,
+    required double bottomSpacing,
+  }) {
+    Widget fragment = Padding(
+      padding: EdgeInsets.only(bottom: bottomSpacing),
+      child: _BlockHighlightFrame(
+        highlightColor: highlightColor,
+        child: _SelectableBlockText(
+          text: visibleText,
+          sourceText: sourceText,
+          sourceOffset: sourceOffset,
+          anchor: block.anchor,
+          annotations: annotations,
+          orderedBlockAnchors: orderedBlockAnchors,
+          preferences: preferences,
+          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+            color: AppReaderPalette.of(context).ink,
+            height: preferences.lineHeight / 1.4,
+          ),
+          onHighlight: onHighlight,
+          onAnnotate: onAnnotate,
+          onOpenAnnotations: onOpenAnnotations,
+        ),
+      ),
+    );
+    final legacyAnnotations = annotations
+        .where(
+          (annotation) =>
+              !AnnotationAnchor.parse(annotation.anchor).hasExplicitRange,
+        )
+        .toList(growable: false);
+    if (legacyAnnotations.isNotEmpty) {
+      fragment = GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => onOpenAnnotations(legacyAnnotations),
+        child: fragment,
+      );
+    }
+    return KeyedSubtree(
+      key: firstFragment
+          ? keyForAnchor(block.anchor)
+          : ValueKey('${block.anchor}@$sourceOffset'),
+      child: fragment,
+    );
+  }
+
+  TextStyle _resolvedPagedParagraphStyle(
+    BuildContext context,
+    AppReaderPalette palette,
+  ) => (Theme.of(context).textTheme.bodyLarge ?? const TextStyle()).copyWith(
+    color: palette.ink,
+    fontSize: 17 * preferences.fontScale,
+    fontFamily: preferences.fontFamily.fontFamily,
+    height: preferences.lineHeight / 1.6,
+  );
+
+  double _measurePagedTextHeight(
+    BuildContext context,
+    String text,
+    TextStyle style,
+    double width,
+  ) {
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textAlign: TextAlign.justify,
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      locale: Localizations.maybeLocaleOf(context),
+    )..layout(maxWidth: width);
+    return painter.height;
+  }
+
+  int _fittingPagedTextEnd(
+    BuildContext context,
+    String text,
+    TextStyle style,
+    double width,
+    double maximumHeight,
+  ) {
+    var low = 1;
+    var high = text.length;
+    var best = 0;
+    while (low <= high) {
+      var middle = (low + high) >> 1;
+      if (middle < text.length && _isLowSurrogate(text.codeUnitAt(middle))) {
+        middle -= 1;
+      }
+      if (middle <= 0) {
+        low = 1;
+        continue;
+      }
+      final height = _measurePagedTextHeight(
+        context,
+        text.substring(0, middle),
+        style,
+        width,
+      );
+      if (height <= maximumHeight + 0.5) {
+        best = middle;
+        low = middle + 1;
+      } else {
+        high = middle - 1;
+      }
+    }
+    return best;
+  }
+
+  int _nextCodePointOffset(String text, int offset) {
+    if (offset >= text.length) return text.length;
+    final first = text.codeUnitAt(offset);
+    if (_isHighSurrogate(first) && offset + 1 < text.length) return offset + 2;
+    return offset + 1;
+  }
+
+  bool _isHighSurrogate(int value) => value >= 0xD800 && value <= 0xDBFF;
+
+  bool _isLowSurrogate(int value) => value >= 0xDC00 && value <= 0xDFFF;
+
+  double _estimatePagedBlockHeight(
+    BuildContext context,
+    BookContentBlock block,
+    double columnWidth,
+    double columnHeight,
+    int columnCount,
+  ) {
+    switch (block.type) {
+      case 'heading':
+        final style = Theme.of(context).textTheme.headlineSmall?.copyWith(
+          fontWeight: FontWeight.w700,
+          fontFamily: preferences.fontFamily.fontFamily,
+        );
+        return _measurePagedTextHeight(
+              context,
+              block.renderedText,
+              style ?? const TextStyle(),
+              columnWidth,
+            ) +
+            22;
+      case 'divider':
+        return 64;
+      case 'quote':
+        final style =
+            (Theme.of(context).textTheme.bodyLarge ?? const TextStyle())
+                .copyWith(
+                  fontSize: 17 * preferences.fontScale,
+                  fontFamily: preferences.fontFamily.fontFamily,
+                  height: preferences.lineHeight / 1.6,
+                  fontStyle: FontStyle.italic,
+                );
+        return _measurePagedTextHeight(
+              context,
+              block.renderedText,
+              style,
+              math.max(1, columnWidth - 32),
+            ) +
+            46;
+      case 'image':
+        final hasLoadedImage =
+            block.resourceId != null &&
+            imageResources.containsKey(block.resourceId);
+        final ratio =
+            block.imageWidth != null &&
+                block.imageHeight != null &&
+                block.imageWidth! > 0 &&
+                block.imageHeight! > 0
+            ? (block.imageWidth! / block.imageHeight!).clamp(0.35, 3.2)
+            : null;
+        final maximumImageHeight = columnCount == 2
+            ? math.max(220.0, columnHeight * 0.78)
+            : math.max(220.0, columnHeight);
+        final imageHeight = ratio == null
+            ? (hasLoadedImage
+                  ? maximumImageHeight
+                  : math.min(180.0, maximumImageHeight))
+            : math.min(columnWidth / ratio, maximumImageHeight);
+        final captionHeight =
+            (block.imageCaption ?? block.imageAlt ?? '').trim().isEmpty
+            ? 0.0
+            : 34.0;
+        return imageHeight + captionHeight + 18;
+      default:
+        return columnHeight;
+    }
   }
 
   List<AnnotationView> _annotationsForBlock(
@@ -683,6 +1054,8 @@ class _ImagePlaceholder extends StatelessWidget {
 class _SelectableBlockText extends StatelessWidget {
   const _SelectableBlockText({
     required this.text,
+    this.sourceText,
+    this.sourceOffset = 0,
     required this.anchor,
     required this.annotations,
     required this.orderedBlockAnchors,
@@ -694,6 +1067,8 @@ class _SelectableBlockText extends StatelessWidget {
   });
 
   final String text;
+  final String? sourceText;
+  final int sourceOffset;
   final String anchor;
   final List<AnnotationView> annotations;
   final List<String> orderedBlockAnchors;
@@ -714,17 +1089,37 @@ class _SelectableBlockText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final resolvedAnnotations = annotations
+    final completeText = sourceText ?? text;
+    final completeResolvedAnnotations = annotations
         .map(
           (annotation) => ResolvedAnnotation.fromAnnotation(
             annotation,
-            text,
+            completeText,
             currentBlockAnchor: anchor,
             orderedBlockAnchors: orderedBlockAnchors,
           ),
         )
         .whereType<ResolvedAnnotation>()
         .toList();
+    final fragmentEnd = sourceOffset + text.length;
+    final resolvedAnnotations = completeResolvedAnnotations
+        .where(
+          (annotation) =>
+              annotation.range.end > sourceOffset &&
+              annotation.range.start < fragmentEnd,
+        )
+        .map(
+          (annotation) => ResolvedAnnotation(
+            annotation: annotation.annotation,
+            anchor: annotation.anchor,
+            range: AnnotationTextRange(
+              start:
+                  math.max(annotation.range.start, sourceOffset) - sourceOffset,
+              end: math.min(annotation.range.end, fragmentEnd) - sourceOffset,
+            ),
+          ),
+        )
+        .toList(growable: false);
     final baseStyle = (style ?? const TextStyle()).copyWith(
       fontSize: 17 * preferences.fontScale,
       fontFamily: preferences.fontFamily.fontFamily,
@@ -762,7 +1157,8 @@ class _SelectableBlockText extends StatelessWidget {
               }
               final intent = _resolveSelectionIntent(
                 normalizedSelection,
-                resolvedAnnotations,
+                completeResolvedAnnotations,
+                completeText,
               );
               await onHighlight(intent.selection, intent.existingAnnotation);
             },
@@ -773,7 +1169,8 @@ class _SelectableBlockText extends StatelessWidget {
               }
               final intent = _resolveSelectionIntent(
                 normalizedSelection,
-                resolvedAnnotations,
+                completeResolvedAnnotations,
+                completeText,
               );
               await onAnnotate(intent.selection, intent.existingAnnotation);
             },
@@ -808,17 +1205,19 @@ class _SelectableBlockText extends StatelessWidget {
     if (normalizedStart >= text.length || normalizedEnd > text.length) {
       return null;
     }
+    final completeText = sourceText ?? text;
     return AnnotationSelection(
       blockAnchor: anchor,
-      blockText: text,
-      startOffset: normalizedStart,
-      endOffset: normalizedEnd,
+      blockText: completeText,
+      startOffset: sourceOffset + normalizedStart,
+      endOffset: sourceOffset + normalizedEnd,
     );
   }
 
   _SelectionIntent _resolveSelectionIntent(
     AnnotationSelection selection,
     List<ResolvedAnnotation> resolvedAnnotations,
+    String completeText,
   ) {
     final containing =
         resolvedAnnotations
@@ -828,7 +1227,7 @@ class _SelectableBlockText extends StatelessWidget {
                   annotation.anchor.containsRange(
                     start: selection.startOffset,
                     end: selection.endOffset,
-                    text: text,
+                    text: completeText,
                   ),
             )
             .toList()
@@ -850,7 +1249,7 @@ class _SelectableBlockText extends StatelessWidget {
                   annotation.anchor.overlapsOrTouches(
                     start: selection.startOffset,
                     end: selection.endOffset,
-                    text: text,
+                    text: completeText,
                   ),
             )
             .toList()

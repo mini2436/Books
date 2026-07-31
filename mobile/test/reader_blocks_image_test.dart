@@ -325,6 +325,60 @@ void main() {
     expect(secondImage.dy, firstImage.dy);
   });
 
+  testWidgets('paged text splits by measured height instead of leaving a gap', (
+    tester,
+  ) async {
+    const columnHeight = 720.0;
+    const text = '移动端分页应该按照实际可用高度拆分长段落，避免因为整段放不下而留下大片空白。';
+    final chapterText = List.filled(120, text).join();
+    final anchorKeys = <String, GlobalKey>{};
+
+    await tester.pumpWidget(
+      _testApp(
+        SizedBox(
+          width: 360,
+          height: columnHeight,
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: ReaderBlocksView(
+              blocks: [
+                BookContentBlock(
+                  blockIndex: 0,
+                  type: 'paragraph',
+                  anchor: 'chapter-0-long-paragraph',
+                  text: chapterText,
+                  plainText: chapterText,
+                  meta: const {},
+                ),
+              ],
+              imageResources: const {},
+              failedImageResourceIds: const {},
+              constrainImagesToViewport: true,
+              annotations: const <AnnotationView>[],
+              preferences: _preferences,
+              keyForAnchor: (anchor) =>
+                  anchorKeys.putIfAbsent(anchor, GlobalKey.new),
+              onHighlight: (_, _) async {},
+              onAnnotate: (_, _) async {},
+              onOpenAnnotations: (_) async {},
+              pagedViewportWidth: 360,
+              pagedColumnHeight: columnHeight,
+              pagedColumnCount: 1,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final fragments = find.byType(SelectableText);
+    expect(fragments, findsAtLeastNWidgets(2));
+    final firstRect = tester.getRect(fragments.at(0));
+    final secondRect = tester.getRect(fragments.at(1));
+    expect(firstRect.bottom, greaterThan(columnHeight * 0.9));
+    expect(secondRect.left, greaterThan(firstRect.left));
+  });
+
   testWidgets('ReaderBlocksView shows annotation actions after selection', (
     tester,
   ) async {

@@ -94,21 +94,32 @@ class _AnnotationCenterScreenState
                             ),
                           ),
                           const SizedBox(width: 12),
-                          FilledButton.icon(
-                            onPressed:
-                                controller.bookGroups.isEmpty || _isExporting
-                                ? null
-                                : () =>
-                                      _exportAnnotations(controller.bookGroups),
-                            icon: _isExporting
-                                ? const SizedBox.square(
-                                    dimension: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
+                          Semantics(
+                            label: '导出批注',
+                            button: true,
+                            child: FilledButton(
+                              onPressed:
+                                  controller.bookGroups.isEmpty || _isExporting
+                                  ? null
+                                  : () => _exportAnnotations(
+                                      controller.bookGroups,
                                     ),
-                                  )
-                                : const Icon(Icons.download_outlined),
-                            label: Text(_isExporting ? '正在导出' : '导出批注'),
+                              style: const ButtonStyle(
+                                fixedSize: WidgetStatePropertyAll(Size(48, 48)),
+                                padding: WidgetStatePropertyAll(
+                                  EdgeInsets.zero,
+                                ),
+                                shape: WidgetStatePropertyAll(CircleBorder()),
+                              ),
+                              child: _isExporting
+                                  ? const SizedBox.square(
+                                      dimension: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.download_outlined),
+                            ),
                           ),
                           const SizedBox(width: 4),
                           IconButton(

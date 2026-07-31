@@ -744,6 +744,19 @@ class _BookManagementSection extends ConsumerWidget {
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: GlassSegmentedControl<String>(
+                    style: isTablet
+                        ? null
+                        : const ButtonStyle(
+                            minimumSize: WidgetStatePropertyAll(Size(0, 52)),
+                            padding: WidgetStatePropertyAll(
+                              EdgeInsets.symmetric(
+                                horizontal: 18,
+                                vertical: 14,
+                              ),
+                            ),
+                            visualDensity: VisualDensity.standard,
+                            tapTargetSize: MaterialTapTargetSize.padded,
+                          ),
                     showSelectedIcon: false,
                     segments: controller.availableBookGroups
                         .map(

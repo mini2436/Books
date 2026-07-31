@@ -68,7 +68,7 @@
     ],
     "motion": [
       {"name": "feedback-fast", "value": "160ms ease-out-cubic", "purpose": "按钮透明度、选中和禁用反馈。"},
-      {"name": "liquid-highlight", "value": "180ms ease-out-cubic", "purpose": "局部液态玻璃的鼠标方向高光；减少动态效果时立即更新。"},
+      {"name": "liquid-highlight", "value": "180ms ease-out-cubic", "purpose": "全局液态玻璃表面的鼠标方向高光；减少动态效果时立即更新。"},
       {"name": "state-standard", "value": "180-240ms ease-out", "purpose": "工具栏显隐、内容状态和小型面板切换。"},
       {"name": "structure", "value": "260-300ms ease-in-out", "purpose": "页面、Drawer 和 Bottom Sheet 的结构变化。"},
       {"name": "reduced-motion", "value": "0ms or crossfade", "purpose": "系统关闭动画时替代位移与缩放。"}

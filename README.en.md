@@ -22,7 +22,7 @@ Private Reader turns ebooks scattered across computers, NAS storage, and family 
 
 ## Screenshots
 
-All screenshots below were freshly captured from the current translucent glass interface. Their original files are tracked under [`docs/screenshots`](docs/screenshots/).
+All screenshots below were freshly captured from the translucent glass interface. Their original files are tracked under [`docs/screenshots`](docs/screenshots/). The Profile screen now switches the complete interface between lightweight glass and Liquid Glass while preserving the same layout, themes, and interaction semantics.
 
 ### One bookshelf across phone and tablet
 

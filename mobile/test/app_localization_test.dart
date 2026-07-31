@@ -27,10 +27,10 @@ void main() {
     expect(english.tr('admin（备份文件中的用户）'), 'admin (user in backup file)');
     expect(english.tr('book（现在系统中的用户）'), 'book (user in current system)');
     expect(english.tr('导出批注'), 'Export annotations');
-    expect(english.tr('液态玻璃样板'), 'Liquid Glass sample');
+    expect(english.tr('液态玻璃效果'), 'Liquid Glass effects');
     expect(
-      english.tr('切换应用导航与阅读工具栏的局部材质'),
-      'Switch the material used by navigation and reader toolbars',
+      english.tr('全局切换卡片、导航、弹窗与阅读工具栏材质'),
+      'Switch cards, navigation, dialogs, and reader toolbars globally',
     );
     expect(
       english.tr('仅显示当前用户有批注的书籍。已选择 2 本，共 8 条批注。'),

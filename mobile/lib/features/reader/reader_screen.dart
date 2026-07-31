@@ -1097,7 +1097,6 @@ class _TabletReaderHeader extends StatelessWidget {
 
     return GlassSurface(
       level: GlassSurfaceLevel.floating,
-      enableLiquidGlass: true,
       borderRadius: BorderRadius.circular(18),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       child: Row(
@@ -1157,7 +1156,6 @@ class _TabletReaderDock extends StatelessWidget {
   Widget build(BuildContext context) {
     return GlassSurface(
       level: GlassSurfaceLevel.floating,
-      enableLiquidGlass: true,
       borderRadius: BorderRadius.circular(24),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
       child: Column(
@@ -1250,7 +1248,6 @@ class _TabletReaderProgressRing extends StatelessWidget {
       label: '阅读进度 ${progress.toStringAsFixed(1)}%',
       child: GlassSurface(
         level: GlassSurfaceLevel.floating,
-        enableLiquidGlass: true,
         borderRadius: BorderRadius.circular(999),
         child: SizedBox.square(
           dimension: 60,
@@ -1342,7 +1339,6 @@ class _MobileReaderTopBar extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
       child: GlassSurface(
         level: GlassSurfaceLevel.floating,
-        enableLiquidGlass: true,
         borderRadius: BorderRadius.circular(20),
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
         child: Row(
@@ -1525,7 +1521,6 @@ class _MobileReaderBottomBar extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
       child: GlassSurface(
         level: GlassSurfaceLevel.floating,
-        enableLiquidGlass: true,
         borderRadius: BorderRadius.circular(22),
         padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
         child: Row(

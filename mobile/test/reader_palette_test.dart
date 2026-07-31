@@ -9,4 +9,25 @@ void main() {
     expect(palette.accent.toARGB32(), const Color(0xFFC3924A).toARGB32());
     expect(palette.background.toARGB32(), const Color(0xFF17171A).toARGB32());
   });
+
+  test('tertiary text remains readable in every reader theme', () {
+    for (final palette in AppReaderPalette.all.values) {
+      expect(
+        _contrastRatio(palette.inkTertiary, palette.background),
+        greaterThanOrEqualTo(4.5),
+      );
+    }
+  });
+}
+
+double _contrastRatio(Color foreground, Color background) {
+  final foregroundLuminance = foreground.computeLuminance();
+  final backgroundLuminance = background.computeLuminance();
+  final lighter = foregroundLuminance > backgroundLuminance
+      ? foregroundLuminance
+      : backgroundLuminance;
+  final darker = foregroundLuminance > backgroundLuminance
+      ? backgroundLuminance
+      : foregroundLuminance;
+  return (lighter + 0.05) / (darker + 0.05);
 }

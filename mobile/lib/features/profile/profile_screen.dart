@@ -243,8 +243,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             ),
             _ActionTile(
               icon: Icons.water_drop_outlined,
-              title: '液态玻璃样板',
-              subtitle: '切换应用导航与阅读工具栏的局部材质',
+              title: '液态玻璃效果',
+              subtitle: '全局切换卡片、导航、弹窗与阅读工具栏材质',
               trailing: Switch(
                 value: usesLiquidGlass,
                 onChanged: (value) {

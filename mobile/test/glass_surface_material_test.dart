@@ -50,7 +50,9 @@ void main() {
     }
   });
 
-  testWidgets('liquid material only affects opted-in surfaces', (tester) async {
+  testWidgets('liquid material affects surfaces unless explicitly disabled', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       MaterialApp(
         theme: ThemeData(
@@ -62,11 +64,11 @@ void main() {
         home: const Scaffold(
           body: Column(
             children: [
-              GlassSurface(child: SizedBox(width: 240, height: 80)),
               GlassSurface(
-                enableLiquidGlass: true,
+                enableLiquidGlass: false,
                 child: SizedBox(width: 240, height: 80),
               ),
+              GlassSurface(child: SizedBox(width: 240, height: 80)),
             ],
           ),
         ),
@@ -98,5 +100,40 @@ void main() {
     );
 
     expect(find.byKey(const ValueKey('liquid-glass-highlight')), findsNothing);
+  });
+
+  testWidgets('liquid material preserves a custom semantic border', (
+    tester,
+  ) async {
+    const semanticBorder = Color(0xFFB3261E);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(
+          extensions: [
+            AppReaderPalette.resolve(ReaderThemeMode.paper),
+            const GlassMaterialTheme(mode: GlassMaterialMode.liquid),
+          ],
+        ),
+        home: Scaffold(
+          body: GlassSurface(
+            border: Border.all(color: semanticBorder, width: 1.5),
+            child: const SizedBox(width: 240, height: 80),
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      find.byWidgetPredicate((widget) {
+        if (widget case DecoratedBox(
+          decoration: final BoxDecoration decoration,
+        )) {
+          return decoration.border is Border &&
+              (decoration.border! as Border).top.color == semanticBorder;
+        }
+        return false;
+      }),
+      findsOneWidget,
+    );
   });
 }

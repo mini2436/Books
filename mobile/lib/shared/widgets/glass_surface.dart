@@ -16,7 +16,7 @@ class GlassSurface extends StatelessWidget {
     this.border,
     this.blur = true,
     this.shadow = true,
-    this.enableLiquidGlass = false,
+    this.enableLiquidGlass = true,
     this.clipBehavior = Clip.antiAlias,
   });
 
@@ -63,6 +63,7 @@ class GlassSurface extends StatelessWidget {
         ? _LiquidGlassLayer(
             surfaceColor: surfaceColor,
             borderColor: borderColor,
+            border: border,
             accent: palette.accent,
             radius: radius,
             dark: dark,
@@ -141,7 +142,7 @@ class GlassCard extends StatelessWidget {
     this.borderRadius,
     this.border,
     this.blur = true,
-    this.enableLiquidGlass = false,
+    this.enableLiquidGlass = true,
   });
 
   final Widget child;
@@ -180,6 +181,7 @@ class _LiquidGlassLayer extends StatefulWidget {
   const _LiquidGlassLayer({
     required this.surfaceColor,
     required this.borderColor,
+    required this.border,
     required this.accent,
     required this.radius,
     required this.dark,
@@ -188,6 +190,7 @@ class _LiquidGlassLayer extends StatefulWidget {
 
   final Color surfaceColor;
   final Color borderColor;
+  final BoxBorder? border;
   final Color accent;
   final BorderRadius radius;
   final bool dark;
@@ -293,6 +296,17 @@ class _LiquidGlassLayerState extends State<_LiquidGlassLayer> {
                 ),
               ),
             ),
+            if (widget.border case final customBorder?)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: widget.radius,
+                      border: customBorder,
+                    ),
+                  ),
+                ),
+              ),
             widget.child,
           ],
         ),

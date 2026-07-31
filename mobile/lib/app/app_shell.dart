@@ -210,7 +210,6 @@ class _FloatingNavigation extends StatelessWidget {
 
     return GlassSurface(
       level: GlassSurfaceLevel.floating,
-      enableLiquidGlass: true,
       borderRadius: radius,
       padding: const EdgeInsets.all(6),
       child: axis == Axis.horizontal

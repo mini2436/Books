@@ -9,22 +9,25 @@ colors:
   paper-surface: "#FFFFFFF2"
   paper-ink: "#1A1A1A"
   paper-ink-secondary: "#666666"
-  paper-ink-tertiary: "#999999"
+  paper-ink-tertiary: "#737373"
   paper-line: "#00000014"
   kraft-background: "#F5F0E6"
   kraft-surface: "#F5F0E6F2"
   kraft-ink: "#2C241B"
   kraft-ink-secondary: "#5E5043"
+  kraft-ink-tertiary: "#706254"
   kraft-line: "#3C28141A"
   eye-care-background: "#E3EBDE"
   eye-care-surface: "#E3EBDEF2"
   eye-care-ink: "#233222"
   eye-care-ink-secondary: "#4A5E43"
+  eye-care-ink-tertiary: "#55694F"
   eye-care-line: "#283C1E1A"
   night-background: "#17171A"
   night-surface: "#1E1E22F2"
   night-ink: "#C8C8C8"
   night-ink-secondary: "#888888"
+  night-ink-tertiary: "#87878A"
   night-line: "#FFFFFF14"
   destructive: "#D93025"
 typography:
@@ -238,8 +241,8 @@ components:
 `GlassSurface` 是材质唯一入口，统一管理表面等级、主题 tint、圆角、边界、模糊和阴影。业务页面不得自行拼装另一套“玻璃卡片”；特殊场景通过 `level`、`blur`、`shadow`、`tint` 和 `border` 参数表达。
 
 - **轻量玻璃:** 默认模式，使用固定方向渐变、平台模糊参数和环境阴影，适用于全部既有玻璃组件。
-- **液态玻璃样板:** 由用户在“我的”页面显式开启并持久化；当前仅主导航和阅读工具栏响应。它增加鼠标方向高光、渐变边缘与近距离阴影，不改变字体、尺寸、布局和交互语义。
-- **回退约束:** 未设置 `enableLiquidGlass` 的表面即使全局开启样板仍保持轻量玻璃；因此新页面不得在未评估性能与层级职责时批量开启。
+- **液态玻璃模式:** 由用户在“我的”页面显式开启并持久化；全部 `GlassSurface`、`GlassCard` 及其派生的弹窗、Bottom Sheet、分段控件和操作按钮共同响应。它增加鼠标方向高光、渐变边缘与近距离阴影，不改变字体、尺寸、布局和交互语义。
+- **局部回退:** 对性能敏感或必须保持稳定实色的特殊表面显式设置 `enableLiquidGlass: false`；正文、封面本体和非玻璃数据区域不接入材质切换。
 
 ### Dialogs and Bottom Sheets
 

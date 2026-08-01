@@ -154,6 +154,7 @@ class ReaderBlocksView extends StatelessWidget {
                       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                         color: palette.inkSecondary,
                         fontStyle: FontStyle.italic,
+                        height: preferences.lineHeight / 1.6,
                       ),
                       onHighlight: onHighlight,
                       onAnnotate: onAnnotate,
@@ -560,7 +561,7 @@ class ReaderBlocksView extends StatelessWidget {
     color: palette.ink,
     fontSize: 17 * preferences.fontScale,
     fontFamily: preferences.fontFamily.fontFamily,
-    height: preferences.lineHeight / 1.6,
+    height: preferences.lineHeight / 1.4,
   );
 
   double _measurePagedTextHeight(
@@ -1123,12 +1124,24 @@ class _SelectableBlockText extends StatelessWidget {
     final baseStyle = (style ?? const TextStyle()).copyWith(
       fontSize: 17 * preferences.fontScale,
       fontFamily: preferences.fontFamily.fontFamily,
-      height: preferences.lineHeight / 1.6,
     );
+    final textDirection = Directionality.of(context);
+    final textScaler = MediaQuery.textScalerOf(context);
+    final locale = Localizations.maybeLocaleOf(context);
+    final defaultTextStyle = DefaultTextStyle.of(context);
+    final textHeightBehavior = defaultTextStyle.textHeightBehavior;
+    final textWidthBasis = defaultTextStyle.textWidthBasis;
+    const strutStyle = StrutStyle();
 
     return _AnnotationTapRegion(
       text: text,
       style: baseStyle,
+      textDirection: textDirection,
+      textScaler: textScaler,
+      locale: locale,
+      strutStyle: strutStyle,
+      textHeightBehavior: textHeightBehavior,
+      textWidthBasis: textWidthBasis,
       annotations: resolvedAnnotations,
       onOpenAnnotations: onOpenAnnotations,
       child: Stack(
@@ -1139,7 +1152,12 @@ class _SelectableBlockText extends StatelessWidget {
                 painter: _AnnotationPainter(
                   text: text,
                   style: baseStyle,
-                  textDirection: Directionality.of(context),
+                  textDirection: textDirection,
+                  textScaler: textScaler,
+                  locale: locale,
+                  strutStyle: strutStyle,
+                  textHeightBehavior: textHeightBehavior,
+                  textWidthBasis: textWidthBasis,
                   annotations: resolvedAnnotations,
                   drawBackgrounds: true,
                   drawUnderlines: false,
@@ -1150,6 +1168,11 @@ class _SelectableBlockText extends StatelessWidget {
           _SelectableTextWithActions(
             text,
             style: baseStyle,
+            textDirection: textDirection,
+            textScaler: textScaler,
+            strutStyle: strutStyle,
+            textHeightBehavior: textHeightBehavior,
+            textWidthBasis: textWidthBasis,
             onHighlight: (selection) async {
               final normalizedSelection = _normalizeSelection(selection);
               if (normalizedSelection == null) {
@@ -1181,7 +1204,12 @@ class _SelectableBlockText extends StatelessWidget {
                 painter: _AnnotationPainter(
                   text: text,
                   style: baseStyle,
-                  textDirection: Directionality.of(context),
+                  textDirection: textDirection,
+                  textScaler: textScaler,
+                  locale: locale,
+                  strutStyle: strutStyle,
+                  textHeightBehavior: textHeightBehavior,
+                  textWidthBasis: textWidthBasis,
                   annotations: resolvedAnnotations,
                   drawBackgrounds: false,
                   drawUnderlines: true,
@@ -1277,6 +1305,12 @@ class _AnnotationTapRegion extends StatefulWidget {
   const _AnnotationTapRegion({
     required this.text,
     required this.style,
+    required this.textDirection,
+    required this.textScaler,
+    required this.locale,
+    required this.strutStyle,
+    required this.textHeightBehavior,
+    required this.textWidthBasis,
     required this.annotations,
     required this.onOpenAnnotations,
     required this.child,
@@ -1284,6 +1318,12 @@ class _AnnotationTapRegion extends StatefulWidget {
 
   final String text;
   final TextStyle style;
+  final TextDirection textDirection;
+  final TextScaler textScaler;
+  final Locale? locale;
+  final StrutStyle strutStyle;
+  final TextHeightBehavior? textHeightBehavior;
+  final TextWidthBasis textWidthBasis;
   final List<ResolvedAnnotation> annotations;
   final Future<void> Function(List<AnnotationView> annotations)
   onOpenAnnotations;
@@ -1344,9 +1384,12 @@ class _AnnotationTapRegionState extends State<_AnnotationTapRegion> {
     final textPainter = TextPainter(
       text: TextSpan(text: widget.text, style: widget.style),
       textAlign: TextAlign.justify,
-      textDirection: Directionality.of(context),
-      textScaler: MediaQuery.textScalerOf(context),
-      locale: Localizations.maybeLocaleOf(context),
+      textDirection: widget.textDirection,
+      textScaler: widget.textScaler,
+      locale: widget.locale,
+      strutStyle: widget.strutStyle,
+      textHeightBehavior: widget.textHeightBehavior,
+      textWidthBasis: widget.textWidthBasis,
     )..layout(maxWidth: maximumWidth);
     final matches = <int, AnnotationView>{};
     for (final annotation in widget.annotations) {
@@ -1372,12 +1415,22 @@ class _SelectableTextWithActions extends StatefulWidget {
   const _SelectableTextWithActions(
     this.text, {
     required this.style,
+    required this.textDirection,
+    required this.textScaler,
+    required this.strutStyle,
+    required this.textHeightBehavior,
+    required this.textWidthBasis,
     required this.onHighlight,
     required this.onAnnotate,
   });
 
   final String text;
   final TextStyle style;
+  final TextDirection textDirection;
+  final TextScaler textScaler;
+  final StrutStyle strutStyle;
+  final TextHeightBehavior? textHeightBehavior;
+  final TextWidthBasis textWidthBasis;
   final Future<void> Function(TextSelection selection) onHighlight;
   final Future<void> Function(TextSelection selection) onAnnotate;
 
@@ -1407,6 +1460,11 @@ class _SelectableTextWithActionsState
       child: SelectableText(
         widget.text,
         textAlign: TextAlign.justify,
+        textDirection: widget.textDirection,
+        textScaler: widget.textScaler,
+        strutStyle: widget.strutStyle,
+        textHeightBehavior: widget.textHeightBehavior,
+        textWidthBasis: widget.textWidthBasis,
         style: widget.style,
         onSelectionChanged: _handleSelectionChanged,
         // Selection actions are rendered by the linked GlassSurface overlay
@@ -1571,6 +1629,11 @@ class _AnnotationPainter extends CustomPainter {
     required this.text,
     required this.style,
     required this.textDirection,
+    required this.textScaler,
+    required this.locale,
+    required this.strutStyle,
+    required this.textHeightBehavior,
+    required this.textWidthBasis,
     required this.annotations,
     required this.drawBackgrounds,
     required this.drawUnderlines,
@@ -1579,6 +1642,11 @@ class _AnnotationPainter extends CustomPainter {
   final String text;
   final TextStyle style;
   final TextDirection textDirection;
+  final TextScaler textScaler;
+  final Locale? locale;
+  final StrutStyle strutStyle;
+  final TextHeightBehavior? textHeightBehavior;
+  final TextWidthBasis textWidthBasis;
   final List<ResolvedAnnotation> annotations;
   final bool drawBackgrounds;
   final bool drawUnderlines;
@@ -1593,7 +1661,13 @@ class _AnnotationPainter extends CustomPainter {
       text: TextSpan(text: text, style: style),
       textDirection: textDirection,
       textAlign: TextAlign.justify,
+      textScaler: textScaler,
+      locale: locale,
+      strutStyle: strutStyle,
+      textHeightBehavior: textHeightBehavior,
+      textWidthBasis: textWidthBasis,
     )..layout(maxWidth: size.width);
+    final lineMetrics = textPainter.computeLineMetrics();
 
     for (final annotation in annotations) {
       final boxes = textPainter.getBoxesForSelection(
@@ -1638,50 +1712,70 @@ class _AnnotationPainter extends CustomPainter {
       if (drawUnderlines &&
           annotation.anchor.underlineStyle != AnnotationUnderlineStyle.none) {
         for (final rect in mergedBoxes) {
-          final baselineY = math.min(size.height, rect.bottom + 1.8);
+          final lineBottom = _lineBottomForRect(rect, lineMetrics, size.height);
           switch (annotation.anchor.underlineStyle) {
             case AnnotationUnderlineStyle.none:
               break;
             case AnnotationUnderlineStyle.solid:
+              const strokeWidth = 1.8;
+              final underlineY = _underlineCenterY(
+                rect: rect,
+                lineBottom: lineBottom,
+                canvasHeight: size.height,
+                decorationExtent: strokeWidth / 2,
+              );
               final paint = Paint()
                 ..color = lineColor
-                ..strokeWidth = 1.8
+                ..strokeWidth = strokeWidth
                 ..style = PaintingStyle.stroke
                 ..strokeCap = StrokeCap.round;
               canvas.drawLine(
-                Offset(rect.left, baselineY),
-                Offset(rect.right, baselineY),
+                Offset(rect.left, underlineY),
+                Offset(rect.right, underlineY),
                 paint,
               );
               break;
             case AnnotationUnderlineStyle.dotted:
+              const radius = 1.3;
+              final underlineY = _underlineCenterY(
+                rect: rect,
+                lineBottom: lineBottom,
+                canvasHeight: size.height,
+                decorationExtent: radius,
+              );
               final paint = Paint()
                 ..color = lineColor
                 ..style = PaintingStyle.fill;
               const gap = 5.0;
-              const radius = 1.3;
               for (double x = rect.left; x <= rect.right; x += gap) {
-                canvas.drawCircle(Offset(x, baselineY), radius, paint);
+                canvas.drawCircle(Offset(x, underlineY), radius, paint);
               }
               break;
             case AnnotationUnderlineStyle.wavy:
+              const strokeWidth = 1.6;
+              const amplitude = 2.0;
+              final underlineY = _underlineCenterY(
+                rect: rect,
+                lineBottom: lineBottom,
+                canvasHeight: size.height,
+                decorationExtent: amplitude + strokeWidth / 2,
+              );
               final paint = Paint()
                 ..color = lineColor
-                ..strokeWidth = 1.6
+                ..strokeWidth = strokeWidth
                 ..style = PaintingStyle.stroke
                 ..strokeCap = StrokeCap.round;
-              final path = Path()..moveTo(rect.left, baselineY);
+              final path = Path()..moveTo(rect.left, underlineY);
               const waveLength = 8.0;
-              const amplitude = 2.0;
               double x = rect.left;
               while (x < rect.right) {
                 final nextX = math.min(x + waveLength / 2, rect.right);
                 final controlX = x + waveLength / 4;
                 path.quadraticBezierTo(
                   controlX,
-                  baselineY - amplitude,
+                  underlineY - amplitude,
                   nextX,
-                  baselineY,
+                  underlineY,
                 );
                 if (nextX >= rect.right) {
                   break;
@@ -1690,9 +1784,9 @@ class _AnnotationPainter extends CustomPainter {
                 final nextControlX = nextX + waveLength / 4;
                 path.quadraticBezierTo(
                   nextControlX,
-                  baselineY + amplitude,
+                  underlineY + amplitude,
                   endX,
-                  baselineY,
+                  underlineY,
                 );
                 x = endX;
               }
@@ -1702,6 +1796,42 @@ class _AnnotationPainter extends CustomPainter {
         }
       }
     }
+  }
+
+  double _lineBottomForRect(
+    Rect rect,
+    List<ui.LineMetrics> lineMetrics,
+    double canvasHeight,
+  ) {
+    if (lineMetrics.isEmpty) {
+      return canvasHeight;
+    }
+    final centerY = rect.center.dy;
+    ui.LineMetrics nearest = lineMetrics.first;
+    var nearestDistance = double.infinity;
+    for (final line in lineMetrics) {
+      final top = line.baseline - line.ascent;
+      final bottom = line.baseline + line.descent;
+      if (centerY >= top - 0.5 && centerY <= bottom + 0.5) {
+        return math.min(canvasHeight, bottom);
+      }
+      final distance = (centerY - line.baseline).abs();
+      if (distance < nearestDistance) {
+        nearest = line;
+        nearestDistance = distance;
+      }
+    }
+    return math.min(canvasHeight, nearest.baseline + nearest.descent);
+  }
+
+  double _underlineCenterY({
+    required Rect rect,
+    required double lineBottom,
+    required double canvasHeight,
+    required double decorationExtent,
+  }) {
+    final safeBottom = math.min(canvasHeight, lineBottom);
+    return math.min(rect.bottom + 1.8, safeBottom - decorationExtent);
   }
 
   List<Rect> _mergeBoxes(List<TextBox> boxes) {
@@ -1765,25 +1895,26 @@ class _AnnotationPainter extends CustomPainter {
     }
     return List<Rect>.generate(lineRects.length, (index) {
       final rect = lineRects[index];
+      const minimumLineGap = 0.8;
       final previous = index == 0 ? null : lineRects[index - 1];
       final next = index == lineRects.length - 1 ? null : lineRects[index + 1];
-      final previousGap = previous == null
+      final previousBoundary = previous == null
           ? 0.0
-          : math.max(0.0, rect.top - previous.bottom);
-      final nextGap = next == null
-          ? 0.0
-          : math.max(0.0, next.top - rect.bottom);
-      final topPadding = previous == null
-          ? 0.7
-          : math.min(1.6, math.max(0.35, previousGap * 0.38));
-      final bottomPadding = next == null
-          ? 1.0
-          : math.min(1.6, math.max(0.35, nextGap * 0.38));
+          : (previous.bottom + rect.top) / 2;
+      final nextBoundary = next == null
+          ? canvasHeight
+          : (rect.bottom + next.top) / 2;
       return Rect.fromLTRB(
         rect.left,
-        math.max(0, rect.top - topPadding),
+        math.max(
+          rect.top + minimumLineGap / 2,
+          previousBoundary + minimumLineGap / 2,
+        ),
         rect.right,
-        math.min(canvasHeight, rect.bottom + bottomPadding),
+        math.min(
+          rect.bottom - minimumLineGap / 2,
+          nextBoundary - minimumLineGap / 2,
+        ),
       );
     });
   }
@@ -1798,42 +1929,15 @@ class _AnnotationPainter extends CustomPainter {
       return;
     }
 
-    if (lineRects.length == 1) {
-      final rect = lineRects.first;
+    for (final rect in lineRects) {
       final expanded = Rect.fromLTRB(
         rect.left - 1.2,
-        math.max(0, rect.top - 0.6),
+        math.max(0, rect.top),
         rect.right + 1.2,
-        math.min(size.height, rect.bottom + 0.6),
+        math.min(size.height, rect.bottom),
       );
       canvas.drawRRect(
         RRect.fromRectAndRadius(expanded, const Radius.circular(2)),
-        paint,
-      );
-      return;
-    }
-
-    for (var index = 0; index < lineRects.length; index++) {
-      final rect = lineRects[index];
-      final expanded = Rect.fromLTRB(
-        rect.left - 1.2,
-        math.max(0, rect.top - (index == 0 ? 0.2 : 0)),
-        rect.right + 1.2,
-        math.min(
-          size.height,
-          rect.bottom + (index == lineRects.length - 1 ? 0.2 : 0),
-        ),
-      );
-      final isFirst = index == 0;
-      final isLast = index == lineRects.length - 1;
-      canvas.drawRRect(
-        RRect.fromRectAndCorners(
-          expanded,
-          topLeft: isFirst ? const Radius.circular(2) : Radius.zero,
-          topRight: isFirst ? const Radius.circular(2) : Radius.zero,
-          bottomLeft: isLast ? const Radius.circular(2) : Radius.zero,
-          bottomRight: isLast ? const Radius.circular(2) : Radius.zero,
-        ),
         paint,
       );
     }
@@ -1844,6 +1948,11 @@ class _AnnotationPainter extends CustomPainter {
     return text != oldDelegate.text ||
         style != oldDelegate.style ||
         textDirection != oldDelegate.textDirection ||
+        textScaler != oldDelegate.textScaler ||
+        locale != oldDelegate.locale ||
+        strutStyle != oldDelegate.strutStyle ||
+        textHeightBehavior != oldDelegate.textHeightBehavior ||
+        textWidthBasis != oldDelegate.textWidthBasis ||
         drawBackgrounds != oldDelegate.drawBackgrounds ||
         drawUnderlines != oldDelegate.drawUnderlines ||
         annotations.length != oldDelegate.annotations.length ||

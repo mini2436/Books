@@ -120,6 +120,12 @@ void main() {
 
     final fragments = find.byType(SelectableText);
     expect(fragments, findsAtLeastNWidgets(2));
+    final firstFragment = tester.widget<SelectableText>(fragments.first);
+    expect(
+      firstFragment.style?.height,
+      closeTo(_preferences.lineHeight / 1.4, 0.001),
+    );
+    expect(firstFragment.textScaler?.scale(16), 16);
     final firstPosition = tester.getTopLeft(fragments.at(0));
     final secondPosition = tester.getTopLeft(fragments.at(1));
     expect(secondPosition.dx, greaterThan(firstPosition.dx));

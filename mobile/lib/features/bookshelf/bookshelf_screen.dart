@@ -11,6 +11,7 @@ import '../../data/models/book_models.dart';
 import '../../data/models/sync_models.dart';
 import '../../data/services/api_client.dart';
 import '../../shared/theme/reader_theme_extension.dart';
+import '../../shared/utils/image_decode_size.dart';
 import '../../shared/utils/responsive.dart';
 import '../../shared/widgets/centered_scale_dialog.dart';
 import '../../shared/widgets/glass_segmented_control.dart';
@@ -349,6 +350,7 @@ class _BookshelfScreenState extends ConsumerState<BookshelfScreen>
                         ),
                       ),
                       GlassSegmentedControl<_ShelfView>(
+                        blur: false,
                         style: mobileSegmentStyle,
                         showSelectedIcon: false,
                         segments: const [
@@ -389,6 +391,7 @@ class _BookshelfScreenState extends ConsumerState<BookshelfScreen>
                               final isPrimaryFilterSet =
                                   controller.filterOptions.length == 3;
                               final selector = GlassSegmentedControl<String>(
+                                blur: false,
                                 style: mobileSegmentStyle,
                                 showSelectedIcon: false,
                                 expandedInsets: isPrimaryFilterSet
@@ -981,7 +984,7 @@ class _RecentBookItem extends StatelessWidget {
   final Object heroTag;
   final Object frameHeroTag;
   final String? imageUrl;
-  final Uint8List? imageBytes;
+  final Future<Uint8List?>? imageBytes;
   final Map<String, String>? headers;
 
   @override
@@ -1119,7 +1122,7 @@ class _BookTile extends StatefulWidget {
   final Object? heroTag;
   final Object? frameHeroTag;
   final String? imageUrl;
-  final Uint8List? imageBytes;
+  final Future<Uint8List?>? imageBytes;
   final Map<String, String>? headers;
   final bool isOfflineAvailable;
   final bool isDownloading;
@@ -1158,6 +1161,7 @@ class _BookTileState extends State<_BookTile> {
               child: _BookHeroFrame(
                 heroTag: widget.frameHeroTag,
                 borderRadius: 12,
+                shadow: false,
               ),
             ),
             Material(
@@ -1234,7 +1238,7 @@ class _BookCover extends StatelessWidget {
 
   final String title;
   final String? imageUrl;
-  final Uint8List? imageBytes;
+  final Future<Uint8List?>? imageBytes;
   final Map<String, String>? headers;
   final String? badge;
   final bool elevated;
@@ -1245,115 +1249,139 @@ class _BookCover extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cover = AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(9),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: elevated ? 0.2 : 0.1),
-            blurRadius: elevated ? 18 : 9,
-            offset: Offset(0, elevated ? 8 : 4),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final cacheWidth = quantizedImageDecodeWidth(
+          logicalWidth: constraints.maxWidth,
+          devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+        );
+        final fallbackOrNetwork = imageUrl == null
+            ? _BookFallback(title: title)
+            : CachedNetworkImage(
+                imageUrl: imageUrl!,
+                httpHeaders: headers,
+                fit: BoxFit.cover,
+                memCacheWidth: cacheWidth,
+                useOldImageOnUrlChange: true,
+                fadeInDuration: Duration.zero,
+                fadeOutDuration: Duration.zero,
+                placeholder: (_, _) => _BookFallback(title: title),
+                errorWidget: (_, _, _) => _BookFallback(title: title),
+              );
+        final coverArtwork = imageBytes == null
+            ? fallbackOrNetwork
+            : FutureBuilder<Uint8List?>(
+                future: imageBytes,
+                builder: (context, snapshot) {
+                  final bytes = snapshot.data;
+                  return bytes == null
+                      ? fallbackOrNetwork
+                      : Image.memory(
+                          bytes,
+                          fit: BoxFit.cover,
+                          cacheWidth: cacheWidth,
+                          gaplessPlayback: true,
+                        );
+                },
+              );
+        final cover = AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(9),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: elevated ? 0.2 : 0.1),
+                blurRadius: elevated ? 18 : 9,
+                offset: Offset(0, elevated ? 8 : 4),
+              ),
+            ],
           ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(9),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            DecoratedBox(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Color(0xFF70472D), Color(0xFF9A6844)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-              ),
-              child: imageBytes != null
-                  ? Image.memory(imageBytes!, fit: BoxFit.cover)
-                  : imageUrl == null
-                  ? _BookFallback(title: title)
-                  : CachedNetworkImage(
-                      imageUrl: imageUrl!,
-                      httpHeaders: headers,
-                      fit: BoxFit.cover,
-                      useOldImageOnUrlChange: true,
-                      fadeInDuration: const Duration(milliseconds: 120),
-                      fadeOutDuration: Duration.zero,
-                      placeholder: (_, _) => _BookFallback(title: title),
-                      errorWidget: (_, _, _) => _BookFallback(title: title),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(9),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                DecoratedBox(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Color(0xFF70472D), Color(0xFF9A6844)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
+                  ),
+                  child: coverArtwork,
+                ),
+                if (badge != null)
+                  Positioned(
+                    top: 7,
+                    right: 7,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.52),
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 3,
+                        ),
+                        child: Text(
+                          badge!,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                if (onOfflinePressed != null)
+                  Positioned(
+                    right: 7,
+                    bottom: 7,
+                    child: Material(
+                      color: Colors.black.withValues(alpha: 0.58),
+                      shape: const CircleBorder(),
+                      child: InkWell(
+                        customBorder: const CircleBorder(),
+                        onTap: isDownloading ? null : onOfflinePressed,
+                        child: SizedBox.square(
+                          dimension: 32,
+                          child: Center(
+                            child: isDownloading
+                                ? const SizedBox.square(
+                                    dimension: 15,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : Icon(
+                                    isOfflineAvailable
+                                        ? Icons.offline_pin_rounded
+                                        : Icons.download_for_offline_outlined,
+                                    size: 18,
+                                    color: Colors.white,
+                                  ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
-            if (badge != null)
-              Positioned(
-                top: 7,
-                right: 7,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.52),
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 3,
-                    ),
-                    child: Text(
-                      badge!,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 9,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            if (onOfflinePressed != null)
-              Positioned(
-                right: 7,
-                bottom: 7,
-                child: Material(
-                  color: Colors.black.withValues(alpha: 0.58),
-                  shape: const CircleBorder(),
-                  child: InkWell(
-                    customBorder: const CircleBorder(),
-                    onTap: isDownloading ? null : onOfflinePressed,
-                    child: SizedBox.square(
-                      dimension: 32,
-                      child: Center(
-                        child: isDownloading
-                            ? const SizedBox.square(
-                                dimension: 15,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : Icon(
-                                isOfflineAvailable
-                                    ? Icons.offline_pin_rounded
-                                    : Icons.download_for_offline_outlined,
-                                size: 18,
-                                color: Colors.white,
-                              ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-    if (heroTag == null || MediaQuery.of(context).disableAnimations) {
-      return cover;
-    }
-    return Hero(
-      tag: heroTag!,
-      transitionOnUserGestures: true,
-      child: Material(color: Colors.transparent, child: cover),
+          ),
+        );
+        if (heroTag == null || MediaQuery.of(context).disableAnimations) {
+          return cover;
+        }
+        return Hero(
+          tag: heroTag!,
+          transitionOnUserGestures: true,
+          child: Material(color: Colors.transparent, child: cover),
+        );
+      },
     );
   }
 }
@@ -1378,6 +1406,7 @@ class _BookHeroFrame extends StatelessWidget {
       borderRadius: BorderRadius.circular(borderRadius),
       blur: dialog,
       shadow: shadow,
+      repaintBoundary: dialog,
       child: const SizedBox.expand(),
     );
     if (heroTag == null || MediaQuery.of(context).disableAnimations) {
@@ -1630,6 +1659,7 @@ class _GroupFolderHeroFrame extends StatelessWidget {
                 : GlassSurfaceLevel.standard,
             borderRadius: BorderRadius.circular(dialog ? 24 : 17),
             blur: dialog,
+            repaintBoundary: dialog,
             child: const SizedBox.expand(),
           ),
         ),
@@ -2024,7 +2054,7 @@ Future<void> _showBookDetails(
   required BookSummary book,
   required BookshelfController controller,
   required String? imageUrl,
-  required Uint8List? imageBytes,
+  required Future<Uint8List?>? imageBytes,
   required Map<String, String>? headers,
   Object? heroTag,
   Object? frameHeroTag,
@@ -2098,7 +2128,7 @@ class _BookDetailsDialog extends StatefulWidget {
   final BookSummary book;
   final BookshelfController controller;
   final String? imageUrl;
-  final Uint8List? imageBytes;
+  final Future<Uint8List?>? imageBytes;
   final Map<String, String>? headers;
   final Object? heroTag;
   final Object? frameHeroTag;

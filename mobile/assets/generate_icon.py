@@ -79,6 +79,14 @@ def save_icon(image, path, size):
     print(f"Saved {path.relative_to(ROOT)}")
 
 
+def flatten_ios_icon(image):
+    """Composite transparency onto the brand background required by iOS icons."""
+    image = image.convert("RGBA")
+    background = Image.new("RGB", image.size, TRANSPARENT_EDGE_RGB)
+    background.paste(image, mask=image.getchannel("A"))
+    return background
+
+
 def generate_ios_icons(master):
     if not IOS_ICON_DIR.exists():
         print(f"Skipped {IOS_ICON_DIR.relative_to(ROOT)}")
@@ -101,8 +109,9 @@ def generate_ios_icons(master):
         "Icon-App-83.5x83.5@2x.png": 167,
         "Icon-App-1024x1024@1x.png": 1024,
     }
+    ios_master = flatten_ios_icon(master)
     for name, target_size in ios_sizes.items():
-        save_icon(master, IOS_ICON_DIR / name, target_size)
+        save_icon(ios_master, IOS_ICON_DIR / name, target_size)
 
 
 def generate_macos_icons(master):

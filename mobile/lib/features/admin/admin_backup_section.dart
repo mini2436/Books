@@ -305,39 +305,46 @@ class _AdminBackupSectionState extends ConsumerState<AdminBackupSection> {
   }
 
   Future<void> _pickBackup() async {
-    final result = await FilePicker.platform.pickFiles(
-      dialogTitle: '选择轻阅备份',
-      type: FileType.custom,
-      allowedExtensions: const ['zip'],
-      allowMultiple: false,
-      withData: kIsWeb,
-      lockParentWindow: true,
-    );
-    if (result == null || result.files.isEmpty || !mounted) return;
-    final file = result.files.single;
-    setState(() {
-      _selectedFile = file;
-      _preview = null;
-    });
-    final preview = await ref
-        .read(adminCenterControllerProvider)
-        .previewBackup(
-          fileName: file.name,
-          filePath: file.path,
-          fileBytes: file.bytes,
-        );
-    if (!mounted || _selectedFile != file) return;
-    setState(() {
-      _preview = preview;
-      _userMappings = <int, int>{};
-      _restoreScope = preview?.scope ?? 'FULL';
-      _restoreDataTypes = preview == null
-          ? {..._allBackupUserDataTypes}
-          : preview.dataTypes.isEmpty
-          ? {..._allBackupUserDataTypes}
-          : preview.dataTypes.toSet();
-      _restoreMode = 'MERGE';
-    });
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        dialogTitle: '选择轻阅备份',
+        type: FileType.custom,
+        allowedExtensions: const ['zip'],
+        allowMultiple: false,
+        withData: kIsWeb,
+        lockParentWindow: true,
+      );
+      if (result == null || result.files.isEmpty || !mounted) return;
+      final file = result.files.single;
+      setState(() {
+        _selectedFile = file;
+        _preview = null;
+      });
+      final preview = await ref
+          .read(adminCenterControllerProvider)
+          .previewBackup(
+            fileName: file.name,
+            filePath: file.path,
+            fileBytes: file.bytes,
+          );
+      if (!mounted || _selectedFile != file) return;
+      setState(() {
+        _preview = preview;
+        _userMappings = <int, int>{};
+        _restoreScope = preview?.scope ?? 'FULL';
+        _restoreDataTypes = preview == null
+            ? {..._allBackupUserDataTypes}
+            : preview.dataTypes.isEmpty
+            ? {..._allBackupUserDataTypes}
+            : preview.dataTypes.toSet();
+        _restoreMode = 'MERGE';
+      });
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('无法打开备份文件选择器，请稍后重试。')));
+    }
   }
 
   void _clearSelection() {

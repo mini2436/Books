@@ -230,7 +230,9 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
   bool get _forceFlutterReader =>
-      kIsWeb || defaultTargetPlatform == TargetPlatform.linux;
+      kIsWeb ||
+      defaultTargetPlatform == TargetPlatform.linux ||
+      defaultTargetPlatform == TargetPlatform.macOS;
 
   bool get _allowFlutterFallback =>
       _forceFlutterReader || _useWindowsWebView || !widget.pagedMode;

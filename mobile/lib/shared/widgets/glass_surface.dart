@@ -18,6 +18,7 @@ class GlassSurface extends StatelessWidget {
     this.shadow = true,
     this.enableLiquidGlass = true,
     this.clipBehavior = Clip.antiAlias,
+    this.repaintBoundary = true,
   });
 
   final Widget child;
@@ -30,6 +31,7 @@ class GlassSurface extends StatelessWidget {
   final bool shadow;
   final bool enableLiquidGlass;
   final Clip clipBehavior;
+  final bool repaintBoundary;
 
   @override
   Widget build(BuildContext context) {
@@ -92,43 +94,42 @@ class GlassSurface extends StatelessWidget {
       );
     }
 
-    return RepaintBoundary(
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: radius,
-          boxShadow: shadow
-              ? [
-                  BoxShadow(
-                    color: palette.ink.withValues(
-                      alpha:
-                          style.shadowOpacity *
-                          shadowStrength *
-                          (useLiquidGlass ? 0.55 : 1),
-                    ),
-                    blurRadius: useLiquidGlass
-                        ? 8
-                        : level == GlassSurfaceLevel.floating
-                        ? 30
-                        : 22,
-                    offset: Offset(
-                      0,
-                      useLiquidGlass
-                          ? 3
-                          : level == GlassSurfaceLevel.floating
-                          ? 12
-                          : 8,
-                    ),
+    final surface = DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: radius,
+        boxShadow: shadow
+            ? [
+                BoxShadow(
+                  color: palette.ink.withValues(
+                    alpha:
+                        style.shadowOpacity *
+                        shadowStrength *
+                        (useLiquidGlass ? 0.55 : 1),
                   ),
-                ]
-              : const [],
-        ),
-        child: ClipRRect(
-          borderRadius: radius,
-          clipBehavior: clipBehavior,
-          child: content,
-        ),
+                  blurRadius: useLiquidGlass
+                      ? 8
+                      : level == GlassSurfaceLevel.floating
+                      ? 30
+                      : 22,
+                  offset: Offset(
+                    0,
+                    useLiquidGlass
+                        ? 3
+                        : level == GlassSurfaceLevel.floating
+                        ? 12
+                        : 8,
+                  ),
+                ),
+              ]
+            : const [],
+      ),
+      child: ClipRRect(
+        borderRadius: radius,
+        clipBehavior: clipBehavior,
+        child: content,
       ),
     );
+    return repaintBoundary ? RepaintBoundary(child: surface) : surface;
   }
 }
 

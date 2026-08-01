@@ -2,7 +2,7 @@
 
 Flutter 重建后的移动端工程，首期目标：
 
-- Android 手机与平板优先
+- 支持 Android、iOS（iPhone / iPad）和 macOS；iPad 使用宽屏平板布局
 - 统一正文阅读器支持 `TXT / EPUB / FB2 / MOBI`，CBZ 使用统一图片分页，PDF 使用内置 PDF 阅读器
 - 登录、书架、阅读器、目录、批注、书签、阅读设置、账号页
 - 支持整本下载、断网冷启动和离线阅读；离线期间的进度、书签与批注会在联网后自动同步
@@ -40,7 +40,7 @@ Flutter 重建后的移动端工程，首期目标：
 ## 本地运行
 
 1. 先启动后端 `http://localhost:8080`
-2. 准备 Flutter / Android 环境
+2. 准备 Flutter 环境
 3. 进入 `mobile/`
 4. 拉依赖并运行
 
@@ -61,7 +61,24 @@ flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8080
 
 - Android 模拟器默认使用 `http://10.0.2.2:8080`
 - 真机调试时请改成宿主机局域网地址，例如 `http://192.168.1.10:8080`
+- macOS 使用 `http://localhost:8080`；iPhone / iPad 真机请使用宿主机局域网地址
 - 代理配置不要写进仓库，只在本机终端里临时设置
+
+### Apple 平台
+
+iOS 原生工程已启用 iPhone 与 iPad（设备族 `1,2`），并支持 iPad 横竖屏；界面会在宽度达到 `768` 逻辑像素时使用平板布局。macOS 原生工程使用桌面宽屏布局，并允许沙盒应用访问后端服务。
+
+在 macOS 本机调试：
+
+```bash
+flutter run -d macos --dart-define=API_BASE_URL=http://localhost:8080
+```
+
+构建 macOS 应用：
+
+```bash
+flutter build macos --debug --dart-define=API_BASE_URL=http://localhost:8080
+```
 
 ## 校验命令
 

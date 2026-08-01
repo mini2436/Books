@@ -444,6 +444,33 @@ class OfflineBookCacheService {
           );
   }
 
+  /// 一次读取当前离线书库的全部阅读进度，避免书架初始化时逐本查询。
+  Future<List<ReadingProgressView>> loadProgresses(
+    String serverKey,
+    int userId,
+  ) async {
+    final List<Map<String, Object?>> rows;
+    if (kIsWeb) {
+      rows = await _webStore.listBooks(serverKey: serverKey, userId: userId);
+    } else {
+      rows = await (await _database).query(
+        'offline_books',
+        columns: ['progress_json'],
+        where: 'server_key = ? AND user_id = ? AND progress_json IS NOT NULL',
+        whereArgs: [serverKey, userId],
+      );
+    }
+    return rows
+        .map((row) => row['progress_json'])
+        .whereType<String>()
+        .map(
+          (value) => ReadingProgressView.fromJson(
+            jsonDecode(value) as Map<String, dynamic>,
+          ),
+        )
+        .toList(growable: false);
+  }
+
   Future<void> saveReaderState({
     required String serverKey,
     required int userId,

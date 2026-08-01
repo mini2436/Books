@@ -61,6 +61,8 @@ class BookshelfController extends ChangeNotifier {
   int _pendingCount = 0;
   Set<int> _cachedBookIds = <int>{};
   final Map<int, Uint8List> _offlineCoverBytes = <int, Uint8List>{};
+  final Map<int, Future<Uint8List?>> _offlineCoverLoads =
+      <int, Future<Uint8List?>>{};
   final Set<int> _downloadingBookIds = <int>{};
   int _offlineLibrarySizeBytes = 0;
   List<ReadingProgressView> _readingProgresses = const [];
@@ -68,78 +70,25 @@ class BookshelfController extends ChangeNotifier {
   String _selectedFilterKey = bookshelfFilterAll;
   String? _activeScopeKey;
   int _pendingCountRequestId = 0;
+  List<String> _groupNames = const [];
+  Map<String, List<BookSummary>> _groupedBooks = const {};
+  List<BookshelfFilterOption> _filterOptions = const [
+    BookshelfFilterOption(key: bookshelfFilterAll, label: '全部书籍'),
+    BookshelfFilterOption(key: bookshelfFilterRead, label: '已读书籍'),
+    BookshelfFilterOption(key: bookshelfFilterUnread, label: '未读书籍'),
+  ];
+  List<BookSummary> _filteredBooks = const [];
+  List<BookSummary> _recentBooks = const [];
+  Map<int, ReadingProgressView> _progressByBookId = const {};
+  Map<int, String> _searchCorpusByBookId = const {};
 
   List<BookSummary> get books => _books;
   String get selectedFilterKey => _selectedFilterKey;
-  List<String> get groupNames {
-    final groups = _books
-        .map((book) => book.groupName?.trim())
-        .whereType<String>()
-        .where((group) => group.isNotEmpty)
-        .toSet()
-        .toList();
-    groups.sort((left, right) => left.compareTo(right));
-    return groups;
-  }
-
-  Map<String, List<BookSummary>> get groupedBooks {
-    final result = <String, List<BookSummary>>{};
-    for (final book in _books) {
-      final name = book.groupName?.trim();
-      result
-          .putIfAbsent(
-            name == null || name.isEmpty ? '未分组' : name,
-            () => <BookSummary>[],
-          )
-          .add(book);
-    }
-    return result;
-  }
-
-  List<BookshelfFilterOption> get filterOptions => [
-    const BookshelfFilterOption(key: bookshelfFilterAll, label: '全部书籍'),
-    const BookshelfFilterOption(key: bookshelfFilterRead, label: '已读书籍'),
-    const BookshelfFilterOption(key: bookshelfFilterUnread, label: '未读书籍'),
-    ...groupNames.map(
-      (group) => BookshelfFilterOption(
-        key: '$_bookshelfFilterGroupPrefix$group',
-        label: '分类 · $group',
-      ),
-    ),
-  ];
-
-  List<BookSummary> get filteredBooks => switch (_selectedFilterKey) {
-    bookshelfFilterRead =>
-      _books.where((book) => _hasBeenRead(book.id)).toList(),
-    bookshelfFilterUnread =>
-      _books.where((book) => !_hasBeenRead(book.id)).toList(),
-    final key when key.startsWith(_bookshelfFilterGroupPrefix) =>
-      _books
-          .where(
-            (book) =>
-                book.groupName?.trim() ==
-                key.substring(_bookshelfFilterGroupPrefix.length),
-          )
-          .toList(),
-    _ => _books,
-  };
-  List<BookSummary> get recentBooks {
-    final booksById = {for (final book in _books) book.id: book};
-    final lastReadByBook = <int, String>{
-      for (final history in _readingHistories)
-        history.bookId: history.lastReadAt,
-    };
-    for (final progress in _readingProgresses) {
-      lastReadByBook.putIfAbsent(progress.bookId, () => progress.updatedAt);
-    }
-    final entries = lastReadByBook.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    return entries
-        .map((entry) => booksById[entry.key])
-        .whereType<BookSummary>()
-        .take(10)
-        .toList();
-  }
+  List<String> get groupNames => _groupNames;
+  Map<String, List<BookSummary>> get groupedBooks => _groupedBooks;
+  List<BookshelfFilterOption> get filterOptions => _filterOptions;
+  List<BookSummary> get filteredBooks => _filteredBooks;
+  List<BookSummary> get recentBooks => _recentBooks;
 
   bool get isLoading => _isLoading;
   String? get error => _error;
@@ -150,16 +99,43 @@ class BookshelfController extends ChangeNotifier {
   bool get isOfflineGuest => _authController.isOfflineGuest;
   bool isBookCached(int bookId) => _cachedBookIds.contains(bookId);
   bool isBookDownloading(int bookId) => _downloadingBookIds.contains(bookId);
-  Uint8List? offlineCoverForBook(int bookId) => _offlineCoverBytes[bookId];
-  String get serviceBaseUrl => _apiClient.baseUrl;
-  ReadingProgressView? progressForBook(int bookId) {
-    for (final progress in _readingProgresses) {
-      if (progress.bookId == bookId) {
-        return progress;
-      }
+  Future<Uint8List?>? offlineCoverForBook(int bookId) {
+    if (!_cachedBookIds.contains(bookId)) return null;
+    final existingLoad = _offlineCoverLoads[bookId];
+    if (existingLoad != null) return existingLoad;
+    final cached = _offlineCoverBytes[bookId];
+    if (cached != null) {
+      return _offlineCoverLoads.putIfAbsent(
+        bookId,
+        () => Future<Uint8List?>.value(cached),
+      );
     }
-    return null;
+    final serverKey = _authController.activeServerKey;
+    final userId = _authController.activeUserId;
+    if (serverKey == null || userId == null) return null;
+    return _offlineCoverLoads.putIfAbsent(bookId, () async {
+      Uint8List? bytes;
+      try {
+        bytes = await _offlineBookCacheService.loadCover(
+          serverKey,
+          userId,
+          bookId,
+        );
+      } catch (_) {
+        return null;
+      }
+      if (_authController.activeServerKey == serverKey &&
+          _authController.activeUserId == userId &&
+          _cachedBookIds.contains(bookId) &&
+          bytes != null) {
+        _offlineCoverBytes[bookId] = bytes;
+      }
+      return bytes;
+    });
   }
+
+  String get serviceBaseUrl => _apiClient.baseUrl;
+  ReadingProgressView? progressForBook(int bookId) => _progressByBookId[bookId];
 
   ReadingProgressView? progressFor(int bookId) => progressForBook(bookId);
 
@@ -210,6 +186,7 @@ class BookshelfController extends ChangeNotifier {
               : book,
         )
         .toList();
+    _rebuildDerivedState();
     notifyListeners();
   }
 
@@ -237,6 +214,7 @@ class BookshelfController extends ChangeNotifier {
         '$_bookshelfFilterGroupPrefix$normalizedOldName') {
       _selectedFilterKey = '$_bookshelfFilterGroupPrefix$normalizedNewName';
     }
+    _rebuildDerivedState();
     notifyListeners();
     return updatedBooks;
   }
@@ -247,6 +225,7 @@ class BookshelfController extends ChangeNotifier {
       return;
     }
     _selectedFilterKey = key;
+    _rebuildFilteredBooks();
     notifyListeners();
   }
 
@@ -256,7 +235,11 @@ class BookshelfController extends ChangeNotifier {
       return const [];
     }
     return _books
-        .where((book) => _matchesSearch(book, normalizedQuery))
+        .where(
+          (book) =>
+              _searchCorpusByBookId[book.id]?.contains(normalizedQuery) ??
+              false,
+        )
         .toList();
   }
 
@@ -271,41 +254,38 @@ class BookshelfController extends ChangeNotifier {
       _selectedFilterKey = bookshelfFilterAll;
       _pendingCount = 0;
       _error = null;
+      _clearOfflineCoverCache();
+      _rebuildDerivedState();
       notifyListeners();
       return;
     }
 
     var localProgresses = <ReadingProgressView>[];
+    var cachedBooks = <BookSummary>[];
+    var offlineStateLoaded = false;
     try {
-      final cachedBooks = await _offlineBookCacheService.loadCachedBooks(
+      cachedBooks = await _offlineBookCacheService.loadCachedBooks(
         serverKey,
         userId,
       );
       if (_books.isEmpty) _books = cachedBooks;
-      _cachedBookIds = await _offlineBookCacheService.cachedBookIds(
-        serverKey,
-        userId,
-      );
-      await _loadOfflineCovers(serverKey, userId);
+      _cachedBookIds = {for (final book in cachedBooks) book.id};
+      _pruneOfflineCoverCache();
       _offlineLibrarySizeBytes = await _offlineBookCacheService.totalSizeBytes(
         serverKey,
         userId,
       );
-      final localProgressBookIds = <int>{
-        ...cachedBooks.map((book) => book.id),
-        ..._books.map((book) => book.id),
-      };
-      localProgresses = (await Future.wait(
-        localProgressBookIds.map(
-          (bookId) =>
-              _offlineBookCacheService.loadProgress(serverKey, userId, bookId),
-        ),
-      )).whereType<ReadingProgressView>().toList();
+      localProgresses = await _offlineBookCacheService.loadProgresses(
+        serverKey,
+        userId,
+      );
       _readingProgresses = _mergeProgresses(
         _readingProgresses,
         localProgresses,
       );
+      _rebuildDerivedState();
       await _refreshPendingCount(serverKey, userId);
+      offlineStateLoaded = true;
     } catch (error, stackTrace) {
       developer.log(
         'Failed to load offline bookshelf',
@@ -316,10 +296,8 @@ class BookshelfController extends ChangeNotifier {
     }
 
     if (_authController.isOfflineGuest) {
-      _books = await _offlineBookCacheService.loadCachedBooks(
-        serverKey,
-        userId,
-      );
+      _books = cachedBooks;
+      _rebuildDerivedState();
       _error = null;
       _isLoading = false;
       notifyListeners();
@@ -352,21 +330,25 @@ class BookshelfController extends ChangeNotifier {
         );
       }
       _books = nextBooks;
-      _cachedBookIds = await _offlineBookCacheService.cachedBookIds(
-        serverKey,
-        userId,
-      );
-      await _loadOfflineCovers(serverKey, userId);
-      _offlineLibrarySizeBytes = await _offlineBookCacheService.totalSizeBytes(
-        serverKey,
-        userId,
-      );
+      if (!offlineStateLoaded) {
+        _cachedBookIds = await _offlineBookCacheService.cachedBookIds(
+          serverKey,
+          userId,
+        );
+        _pruneOfflineCoverCache();
+        _offlineLibrarySizeBytes = await _offlineBookCacheService
+            .totalSizeBytes(serverKey, userId);
+      }
       _readingProgresses = nextProgresses;
       _readingHistories = nextHistories;
-      if (!filterOptions.any((option) => option.key == _selectedFilterKey)) {
+      _rebuildDerivedState();
+      if (!_filterOptions.any((option) => option.key == _selectedFilterKey)) {
         _selectedFilterKey = bookshelfFilterAll;
+        _rebuildFilteredBooks();
       }
-      await _refreshPendingCount(serverKey, userId);
+      if (!offlineStateLoaded) {
+        await _refreshPendingCount(serverKey, userId);
+      }
     } catch (error, stackTrace) {
       if (error is ApiException && error.isNetworkFailure) {
         _authController.markServerUnavailable();
@@ -509,7 +491,10 @@ class BookshelfController extends ChangeNotifier {
         sizeBytes: sizeBytes,
       );
       _cachedBookIds.add(summary.id);
-      if (coverBytes != null) _offlineCoverBytes[summary.id] = coverBytes;
+      if (coverBytes != null) {
+        _offlineCoverBytes[summary.id] = coverBytes;
+        _offlineCoverLoads[summary.id] = Future<Uint8List?>.value(coverBytes);
+      }
       _offlineLibrarySizeBytes = await _offlineBookCacheService.totalSizeBytes(
         serverKey,
         user.id,
@@ -539,6 +524,7 @@ class BookshelfController extends ChangeNotifier {
     await _offlineBookCacheService.deleteBook(serverKey, user.id, bookId);
     _cachedBookIds.remove(bookId);
     _offlineCoverBytes.remove(bookId);
+    _offlineCoverLoads.remove(bookId);
     _offlineLibrarySizeBytes = await _offlineBookCacheService.totalSizeBytes(
       serverKey,
       user.id,
@@ -560,18 +546,18 @@ class BookshelfController extends ChangeNotifier {
     }
   }
 
-  Future<void> _loadOfflineCovers(String serverKey, int userId) async {
-    for (final bookId in _cachedBookIds) {
-      final bytes = await _offlineBookCacheService.loadCover(
-        serverKey,
-        userId,
-        bookId,
-      );
-      if (bytes != null) _offlineCoverBytes[bookId] = bytes;
-    }
+  void _pruneOfflineCoverCache() {
     _offlineCoverBytes.removeWhere(
       (bookId, _) => !_cachedBookIds.contains(bookId),
     );
+    _offlineCoverLoads.removeWhere(
+      (bookId, _) => !_cachedBookIds.contains(bookId),
+    );
+  }
+
+  void _clearOfflineCoverCache() {
+    _offlineCoverBytes.clear();
+    _offlineCoverLoads.clear();
   }
 
   List<ReadingProgressView> _mergeProgresses(
@@ -631,6 +617,8 @@ class BookshelfController extends ChangeNotifier {
         : '$serverKey\u0000$userId';
     if (_activeScopeKey == scopeKey) return;
     _activeScopeKey = scopeKey;
+    _cachedBookIds = <int>{};
+    _clearOfflineCoverCache();
     if (scopeKey != null) {
       refresh();
     } else {
@@ -641,11 +629,13 @@ class BookshelfController extends ChangeNotifier {
       _selectedFilterKey = bookshelfFilterAll;
       _pendingCount = 0;
       _error = null;
+      _clearOfflineCoverCache();
+      _rebuildDerivedState();
       notifyListeners();
     }
   }
 
-  bool _matchesSearch(BookSummary book, String normalizedQuery) {
+  String _searchCorpus(BookSummary book) {
     final candidates = [
       book.title,
       book.author,
@@ -657,7 +647,7 @@ class BookshelfController extends ChangeNotifier {
     return candidates
         .whereType<String>()
         .map(_normalizeForSearch)
-        .any((candidate) => candidate.contains(normalizedQuery));
+        .join('\u0000');
   }
 
   bool _hasBeenRead(int bookId) {
@@ -667,4 +657,75 @@ class BookshelfController extends ChangeNotifier {
 
   String _normalizeForSearch(String input) =>
       input.toLowerCase().replaceAll(RegExp(r'\s+'), '');
+
+  void _rebuildDerivedState() {
+    final grouped = <String, List<BookSummary>>{};
+    for (final book in _books) {
+      final name = book.groupName?.trim();
+      grouped
+          .putIfAbsent(
+            name == null || name.isEmpty ? '未分组' : name,
+            () => <BookSummary>[],
+          )
+          .add(book);
+    }
+    final groupNames = grouped.keys.where((name) => name != '未分组').toList()
+      ..sort((left, right) => left.compareTo(right));
+    _groupNames = List<String>.unmodifiable(groupNames);
+    _groupedBooks = Map<String, List<BookSummary>>.unmodifiable({
+      for (final entry in grouped.entries)
+        entry.key: List<BookSummary>.unmodifiable(entry.value),
+    });
+    _filterOptions = List<BookshelfFilterOption>.unmodifiable([
+      const BookshelfFilterOption(key: bookshelfFilterAll, label: '全部书籍'),
+      const BookshelfFilterOption(key: bookshelfFilterRead, label: '已读书籍'),
+      const BookshelfFilterOption(key: bookshelfFilterUnread, label: '未读书籍'),
+      ...groupNames.map(
+        (group) => BookshelfFilterOption(
+          key: '$_bookshelfFilterGroupPrefix$group',
+          label: '分类 · $group',
+        ),
+      ),
+    ]);
+    _progressByBookId = Map<int, ReadingProgressView>.unmodifiable({
+      for (final progress in _readingProgresses) progress.bookId: progress,
+    });
+    _searchCorpusByBookId = Map<int, String>.unmodifiable({
+      for (final book in _books) book.id: _searchCorpus(book),
+    });
+
+    final booksById = {for (final book in _books) book.id: book};
+    final lastReadByBook = <int, String>{
+      for (final history in _readingHistories)
+        history.bookId: history.lastReadAt,
+    };
+    for (final progress in _readingProgresses) {
+      lastReadByBook.putIfAbsent(progress.bookId, () => progress.updatedAt);
+    }
+    final recentEntries = lastReadByBook.entries.toList()
+      ..sort((left, right) => right.value.compareTo(left.value));
+    _recentBooks = List<BookSummary>.unmodifiable(
+      recentEntries
+          .map((entry) => booksById[entry.key])
+          .whereType<BookSummary>()
+          .take(10),
+    );
+    _rebuildFilteredBooks();
+  }
+
+  void _rebuildFilteredBooks() {
+    _filteredBooks = List<BookSummary>.unmodifiable(
+      switch (_selectedFilterKey) {
+        bookshelfFilterRead => _books.where((book) => _hasBeenRead(book.id)),
+        bookshelfFilterUnread => _books.where((book) => !_hasBeenRead(book.id)),
+        final key when key.startsWith(_bookshelfFilterGroupPrefix) =>
+          _books.where(
+            (book) =>
+                book.groupName?.trim() ==
+                key.substring(_bookshelfFilterGroupPrefix.length),
+          ),
+        _ => _books,
+      },
+    );
+  }
 }

@@ -177,6 +177,53 @@ void main() {
     expect(mapped.version, 1);
     expect(mapped.noteText, '离线暂存');
   });
+
+  test('reading progresses are loaded in one scoped batch', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'private-reader-progress-batch-',
+    );
+    final service = OfflineBookCacheService(
+      databasePathOverride: p.join(directory.path, 'books.db'),
+    );
+    addTearDown(() async {
+      await service.close();
+      await directory.delete(recursive: true);
+    });
+
+    for (var id = 1; id <= 1000; id++) {
+      final summary = _summary('批量图书 $id', id: id);
+      await service.saveDownloadedBook(
+        serverKey: _server1,
+        userId: 7,
+        summary: summary,
+        detail: _detail(summary),
+        annotations: const [],
+        bookmarks: const [],
+        progress: ReadingProgressView(
+          bookId: id,
+          location: 'chapter-$id',
+          progressPercent: id / 10,
+          updatedAt: '2026-07-28T00:00:00Z',
+        ),
+        sizeBytes: 0,
+      );
+    }
+    await _saveBook(service, serverKey: _server2, title: '其他服务器');
+
+    final progresses = await service.loadProgresses(_server1, 7);
+
+    expect(progresses, hasLength(1000));
+    expect(
+      progresses.map((item) => item.bookId).toSet(),
+      containsAll([1, 1000]),
+    );
+    expect(
+      progresses.every(
+        (item) => item.bookId != 11 || item.location == 'chapter-11',
+      ),
+      isTrue,
+    );
+  });
 }
 
 const _server1 = 'http://server-1:8080';
@@ -200,8 +247,8 @@ Future<void> _saveBook(
   );
 }
 
-BookSummary _summary(String title) => BookSummary(
-  id: 11,
+BookSummary _summary(String title, {int id = 11}) => BookSummary(
+  id: id,
   title: title,
   author: null,
   groupName: null,

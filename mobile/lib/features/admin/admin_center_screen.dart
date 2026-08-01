@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import '../../data/models/admin_models.dart';
 import '../../data/models/user_role.dart';
 import '../../shared/theme/reader_theme_extension.dart';
+import '../../shared/utils/image_decode_size.dart';
 import '../../shared/utils/responsive.dart';
 import '../../shared/widgets/centered_scale_dialog.dart';
 import '../../shared/widgets/change_password_dialog.dart';
@@ -212,7 +213,31 @@ class AdminCenterScreen extends ConsumerWidget {
                   hasScrollBody: false,
                   child: Center(child: CircularProgressIndicator()),
                 )
-              else
+              else if (controller.selectedSection == AdminSection.books) ...[
+                SliverPadding(
+                  padding: EdgeInsets.fromLTRB(
+                    tablet ? 24 : 16,
+                    8,
+                    tablet ? 24 : 16,
+                    14,
+                  ),
+                  sliver: SliverToBoxAdapter(
+                    child: _ContentSwapTransition(
+                      transitionKey: controller.selectedSection,
+                      child: _BookManagementSection(controller: controller),
+                    ),
+                  ),
+                ),
+                SliverPadding(
+                  padding: EdgeInsets.fromLTRB(
+                    tablet ? 24 : 16,
+                    0,
+                    tablet ? 24 : 16,
+                    24 + Responsive.shellBottomClearance(context),
+                  ),
+                  sliver: _BookManagementGrid(controller: controller),
+                ),
+              ] else
                 SliverPadding(
                   padding: EdgeInsets.fromLTRB(
                     tablet ? 24 : 16,
@@ -643,24 +668,16 @@ class _RoleManagementSection extends ConsumerWidget {
   }
 }
 
-class _BookManagementSection extends ConsumerWidget {
+class _BookManagementSection extends StatelessWidget {
   const _BookManagementSection({required this.controller});
 
   final AdminCenterController controller;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final palette = AppReaderPalette.of(context);
-    final auth = ref.watch(authControllerProvider);
     final filteredBooks = controller.filteredBooks;
     final isTablet = Responsive.isTablet(context);
-    final isDesktop = Responsive.isDesktop(context);
-    final bookTileMaxWidth = isDesktop ? 176.0 : (isTablet ? 168.0 : 156.0);
-    final double? bookTileHeight = isDesktop
-        ? 266
-        : isTablet
-        ? 256
-        : null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -845,56 +862,69 @@ class _BookManagementSection extends ConsumerWidget {
             ],
           ),
         ),
-        const SizedBox(height: 14),
-        _ContentSwapTransition(
-          transitionKey: controller.selectedBookGroup,
-          child: controller.books.isEmpty
-              ? const _EmptyPanel(
-                  title: '还没有可管理的书籍',
-                  body: '先导入一本图书，这里会自动切到封面管理视图。',
-                )
-              : filteredBooks.isEmpty
-              ? const _EmptyPanel(
-                  title: '没有找到匹配图书',
-                  body: '试试更换搜索词，或切换到其他分组查看。',
-                )
-              : GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: filteredBooks.length,
-                  gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: bookTileMaxWidth,
-                    mainAxisExtent: bookTileHeight,
-                    childAspectRatio: isTablet || isDesktop ? 1 : 0.55,
-                    mainAxisSpacing: isTablet ? 16 : 12,
-                    crossAxisSpacing: isTablet ? 16 : 12,
-                  ),
-                  itemBuilder: (context, index) {
-                    final book = filteredBooks[index];
-                    return _AdminBookTile(
-                      book: book,
-                      selected: controller.selectedBookIds.contains(book.id),
-                      imageUrl: auth.accessToken == null
-                          ? null
-                          : ref
-                                .read(apiClientProvider)
-                                .buildBookCoverUrl(
-                                  book.id,
-                                  version: book.coverVersion,
-                                ),
-                      headers: auth.accessToken == null
-                          ? null
-                          : ref
-                                .read(apiClientProvider)
-                                .coverHeaders(auth.accessToken!),
-                      onTap: () => context.push('/admin/books/${book.id}'),
-                      onSelectionToggle: () =>
-                          controller.toggleBookSelection(book.id),
-                    );
-                  },
-                ),
-        ),
       ],
+    );
+  }
+}
+
+class _BookManagementGrid extends ConsumerWidget {
+  const _BookManagementGrid({required this.controller});
+
+  final AdminCenterController controller;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (controller.books.isEmpty) {
+      return const SliverToBoxAdapter(
+        child: _EmptyPanel(title: '还没有可管理的书籍', body: '先导入一本图书，这里会自动切到封面管理视图。'),
+      );
+    }
+
+    final books = controller.filteredBooks;
+    if (books.isEmpty) {
+      return const SliverToBoxAdapter(
+        child: _EmptyPanel(title: '没有找到匹配图书', body: '试试更换搜索词，或切换到其他分组查看。'),
+      );
+    }
+
+    final auth = ref.watch(authControllerProvider);
+    final apiClient = ref.read(apiClientProvider);
+    final headers = auth.accessToken == null
+        ? null
+        : apiClient.coverHeaders(auth.accessToken!);
+    final isTablet = Responsive.isTablet(context);
+    final isDesktop = Responsive.isDesktop(context);
+    final bookTileMaxWidth = isDesktop ? 176.0 : (isTablet ? 168.0 : 156.0);
+    final double? bookTileHeight = isDesktop
+        ? 266
+        : isTablet
+        ? 256
+        : null;
+
+    return SliverGrid(
+      gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: bookTileMaxWidth,
+        mainAxisExtent: bookTileHeight,
+        childAspectRatio: isTablet || isDesktop ? 1 : 0.55,
+        mainAxisSpacing: isTablet ? 16 : 12,
+        crossAxisSpacing: isTablet ? 16 : 12,
+      ),
+      delegate: SliverChildBuilderDelegate((context, index) {
+        final book = books[index];
+        return _AdminBookTile(
+          book: book,
+          selected: controller.selectedBookIds.contains(book.id),
+          imageUrl: auth.accessToken == null
+              ? null
+              : apiClient.buildBookCoverUrl(
+                  book.id,
+                  version: book.coverVersion,
+                ),
+          headers: headers,
+          onTap: () => context.push('/admin/books/${book.id}'),
+          onSelectionToggle: () => controller.toggleBookSelection(book.id),
+        );
+      }, childCount: books.length),
     );
   }
 }
@@ -926,6 +956,10 @@ class _AdminBookTile extends StatelessWidget {
     final titleLineHeight =
         MediaQuery.textScalerOf(context).scale(titleFontSize) *
         (titleStyle?.height ?? 1.3);
+    final decodeWidth = quantizedImageDecodeWidth(
+      logicalWidth: 176,
+      devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+    );
 
     return GlassCard(
       onTap: onTap,
@@ -966,6 +1000,7 @@ class _AdminBookTile extends StatelessWidget {
                                   child: Image.network(
                                     imageUrl!,
                                     headers: headers,
+                                    cacheWidth: decodeWidth,
                                     fit: BoxFit.cover,
                                     errorBuilder:
                                         (context, error, stackTrace) =>
@@ -1585,6 +1620,10 @@ class _AdminMiniBookCover extends ConsumerWidget {
     final headers = auth.accessToken == null
         ? null
         : ref.read(apiClientProvider).coverHeaders(auth.accessToken!);
+    final decodeWidth = quantizedImageDecodeWidth(
+      logicalWidth: 68,
+      devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+    );
 
     return SizedBox(
       width: 68,
@@ -1605,6 +1644,7 @@ class _AdminMiniBookCover extends ConsumerWidget {
                 child: Image.network(
                   imageUrl,
                   headers: headers,
+                  cacheWidth: decodeWidth,
                   fit: BoxFit.cover,
                   errorBuilder: (context, error, stackTrace) =>
                       _AdminBookFallback(title: book?.title ?? '未命名书籍'),

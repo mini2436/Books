@@ -1388,13 +1388,15 @@ class _SelectableTextWithActions extends StatefulWidget {
 
 class _SelectableTextWithActionsState
     extends State<_SelectableTextWithActions> {
+  static _SelectableTextWithActionsState? _activeToolbarOwner;
+
   final LayerLink _toolbarLink = LayerLink();
   OverlayEntry? _toolbarEntry;
   TextSelection? _selection;
 
   @override
   void dispose() {
-    _removeToolbar();
+    _clearSelectionAndToolbar();
     super.dispose();
   }
 
@@ -1419,15 +1421,18 @@ class _SelectableTextWithActionsState
     SelectionChangedCause? cause,
   ) {
     if (!selection.isValid || selection.isCollapsed) {
-      _selection = null;
-      _removeToolbar();
+      _clearSelectionAndToolbar();
       return;
     }
     final selectedText = selection.textInside(widget.text).trim();
     if (selectedText.isEmpty) {
-      _selection = null;
-      _removeToolbar();
+      _clearSelectionAndToolbar();
       return;
+    }
+    final previousOwner = _activeToolbarOwner;
+    if (!identical(previousOwner, this)) {
+      previousOwner?._clearSelectionAndToolbar();
+      _activeToolbarOwner = this;
     }
     _selection = selection;
     if (_toolbarEntry == null) {
@@ -1499,15 +1504,23 @@ class _SelectableTextWithActionsState
     if (selection == null) {
       return;
     }
+    _clearSelectionAndToolbar();
     await Clipboard.setData(
       ClipboardData(text: selection.textInside(widget.text)),
     );
-    _removeToolbar();
   }
 
   Future<void> _runAction(Future<void> Function() action) async {
-    _removeToolbar();
+    _clearSelectionAndToolbar();
     await action();
+  }
+
+  void _clearSelectionAndToolbar() {
+    _selection = null;
+    _removeToolbar();
+    if (identical(_activeToolbarOwner, this)) {
+      _activeToolbarOwner = null;
+    }
   }
 
   void _removeToolbar() {

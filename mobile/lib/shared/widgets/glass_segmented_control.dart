@@ -15,6 +15,7 @@ class GlassSegmentedControl<T> extends StatelessWidget {
     this.emptySelectionAllowed = false,
     this.style,
     this.expandedInsets,
+    this.blur = true,
   });
 
   final List<ButtonSegment<T>> segments;
@@ -25,6 +26,7 @@ class GlassSegmentedControl<T> extends StatelessWidget {
   final bool emptySelectionAllowed;
   final ButtonStyle? style;
   final EdgeInsets? expandedInsets;
+  final bool blur;
 
   @override
   Widget build(BuildContext context) {
@@ -37,6 +39,7 @@ class GlassSegmentedControl<T> extends StatelessWidget {
       padding: platform.isPhone
           ? const EdgeInsets.symmetric(horizontal: 4)
           : const EdgeInsets.all(4),
+      blur: blur,
       child: SegmentedButton<T>(
         segments: segments,
         selected: selected,

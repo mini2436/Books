@@ -112,7 +112,12 @@ class AdminCenterController extends ChangeNotifier {
   Set<int> _rebuildingBookIds = <int>{};
   Set<int> _selectedBookIds = <int>{};
   String _bookSearchQuery = '';
+  String _appliedBookSearchQuery = '';
   String _selectedBookGroup = allBookGroupsLabel;
+  List<String> _availableBookGroups = const [allBookGroupsLabel];
+  List<AdminBookSummary> _filteredBooks = const [];
+  Map<int, String> _bookSearchCorpus = const {};
+  Timer? _bookSearchDebounce;
   bool _isLoading = false;
   bool _isWorking = false;
   String? _error;
@@ -176,45 +181,15 @@ class AdminCenterController extends ChangeNotifier {
   int get selectedBookCount => _selectedBookIds.length;
   bool get hasBookSelection => _selectedBookIds.isNotEmpty;
 
-  List<String> get availableBookGroups {
-    final groups =
-        _books
-            .map((book) => book.groupName?.trim())
-            .whereType<String>()
-            .where((group) => group.isNotEmpty)
-            .toSet()
-            .toList()
-          ..sort();
-    return [allBookGroupsLabel, ...groups];
-  }
+  List<String> get availableBookGroups => _availableBookGroups;
 
-  List<AdminBookSummary> get filteredBooks {
-    final normalizedQuery = _bookSearchQuery.trim().toLowerCase();
-    return _books.where((book) {
-      final groupMatches =
-          _selectedBookGroup == allBookGroupsLabel ||
-          (book.groupName?.trim() ?? '') == _selectedBookGroup;
-      if (!groupMatches) {
-        return false;
-      }
-      if (normalizedQuery.isEmpty) {
-        return true;
-      }
-      final haystacks = [
-        book.title,
-        book.author ?? '',
-        book.groupName ?? '',
-      ].map((value) => value.toLowerCase());
-      return haystacks.any((value) => value.contains(normalizedQuery));
-    }).toList();
-  }
+  List<AdminBookSummary> get filteredBooks => _filteredBooks;
 
   bool get areAllVisibleBooksSelected {
-    final visibleIds = filteredBooks.map((book) => book.id).toSet();
-    if (visibleIds.isEmpty) {
+    if (_filteredBooks.isEmpty) {
       return false;
     }
-    return visibleIds.every(_selectedBookIds.contains);
+    return _filteredBooks.every((book) => _selectedBookIds.contains(book.id));
   }
 
   List<AdminRoleSummary> get roleSummaries {
@@ -271,6 +246,7 @@ class AdminCenterController extends ChangeNotifier {
       ]);
 
       _books = results[0] as List<AdminBookSummary>;
+      _rebuildBookDerivedData();
       _annotations = results[1] as List<AdminAnnotationView>;
       _grantableUsers = results[2] as List<AdminUserView>;
       _librarySources = results[3] as List<AdminLibrarySourceView>;
@@ -832,7 +808,12 @@ class AdminCenterController extends ChangeNotifier {
       return;
     }
     _bookSearchQuery = value;
-    notifyListeners();
+    _bookSearchDebounce?.cancel();
+    _bookSearchDebounce = Timer(const Duration(milliseconds: 160), () {
+      _appliedBookSearchQuery = _bookSearchQuery;
+      _rebuildFilteredBooks();
+      notifyListeners();
+    });
   }
 
   void setBookGroupFilter(String value) {
@@ -840,6 +821,7 @@ class AdminCenterController extends ChangeNotifier {
       return;
     }
     _selectedBookGroup = value;
+    _rebuildFilteredBooks();
     notifyListeners();
   }
 
@@ -853,7 +835,7 @@ class AdminCenterController extends ChangeNotifier {
   }
 
   void toggleSelectAllVisibleBooks() {
-    final visibleIds = filteredBooks.map((book) => book.id).toSet();
+    final visibleIds = _filteredBooks.map((book) => book.id).toSet();
     if (visibleIds.isEmpty) {
       return;
     }
@@ -1359,6 +1341,7 @@ class AdminCenterController extends ChangeNotifier {
                 : book,
           )
           .toList();
+      _rebuildBookDerivedData();
       _notice = updated.groupName == null || updated.groupName!.isEmpty
           ? '已清空图书分组'
           : '已将图书分组更新为 ${updated.groupName}';
@@ -1400,6 +1383,7 @@ class AdminCenterController extends ChangeNotifier {
                 : book,
           )
           .toList();
+      _rebuildBookDerivedData();
       _notice = '已更新《${updated.title}》的书籍信息';
     });
   }
@@ -1424,6 +1408,7 @@ class AdminCenterController extends ChangeNotifier {
                   : book,
             )
             .toList();
+        _rebuildBookDerivedData();
         _notice = '已重新生成《${updated.title}》的结构化正文';
       });
     } finally {
@@ -1444,6 +1429,7 @@ class AdminCenterController extends ChangeNotifier {
       );
       final idSet = targetIds.toSet();
       _books = _books.where((book) => !idSet.contains(book.id)).toList();
+      _rebuildBookDerivedData();
       _bookDetails = Map<int, AdminBookDetail>.from(_bookDetails)
         ..removeWhere((bookId, _) => idSet.contains(bookId));
       _bookViewers = Map<int, List<BookViewerView>>.from(_bookViewers)
@@ -1619,8 +1605,45 @@ class AdminCenterController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _bookSearchDebounce?.cancel();
     _authController.removeListener(_handleAuthChanged);
     super.dispose();
+  }
+
+  void _rebuildBookDerivedData() {
+    final groups =
+        _books
+            .map((book) => book.groupName?.trim())
+            .whereType<String>()
+            .where((group) => group.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
+    _availableBookGroups = List.unmodifiable([allBookGroupsLabel, ...groups]);
+    if (!_availableBookGroups.contains(_selectedBookGroup)) {
+      _selectedBookGroup = allBookGroupsLabel;
+    }
+    _bookSearchCorpus = Map.unmodifiable({
+      for (final book in _books)
+        book.id: '${book.title}\n${book.author ?? ''}\n${book.groupName ?? ''}'
+            .toLowerCase(),
+    });
+    _rebuildFilteredBooks();
+  }
+
+  void _rebuildFilteredBooks() {
+    final normalizedQuery = _appliedBookSearchQuery.trim().toLowerCase();
+    _filteredBooks = List.unmodifiable(
+      _books.where((book) {
+        final groupMatches =
+            _selectedBookGroup == allBookGroupsLabel ||
+            (book.groupName?.trim() ?? '') == _selectedBookGroup;
+        return groupMatches &&
+            (normalizedQuery.isEmpty ||
+                (_bookSearchCorpus[book.id]?.contains(normalizedQuery) ??
+                    false));
+      }),
+    );
   }
 
   void _handleAuthChanged() {
@@ -1657,7 +1680,12 @@ class AdminCenterController extends ChangeNotifier {
     _rebuildingBookIds = <int>{};
     _selectedBookIds = <int>{};
     _bookSearchQuery = '';
+    _appliedBookSearchQuery = '';
     _selectedBookGroup = allBookGroupsLabel;
+    _availableBookGroups = const [allBookGroupsLabel];
+    _filteredBooks = const [];
+    _bookSearchCorpus = const {};
+    _bookSearchDebounce?.cancel();
     _error = null;
     _notice = null;
     _bookImportProgress = null;

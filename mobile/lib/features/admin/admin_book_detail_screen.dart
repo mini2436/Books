@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/models/admin_models.dart';
 import '../../shared/theme/reader_theme_extension.dart';
+import '../../shared/utils/image_decode_size.dart';
 import '../../shared/utils/responsive.dart';
 import '../../shared/widgets/glass_action_button.dart';
 import '../../shared/widgets/glass_dialog.dart';
@@ -201,6 +202,10 @@ class _BookProfileCard extends ConsumerWidget {
     final headers = accessToken == null
         ? null
         : ref.read(apiClientProvider).coverHeaders(accessToken!);
+    final decodeWidth = quantizedImageDecodeWidth(
+      logicalWidth: 384,
+      devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
+    );
 
     return GlassCard(
       borderRadius: BorderRadius.circular(24),
@@ -233,6 +238,7 @@ class _BookProfileCard extends ConsumerWidget {
                             child: Image.network(
                               imageUrl,
                               headers: headers,
+                              cacheWidth: decodeWidth,
                               fit: BoxFit.cover,
                               errorBuilder: (context, error, stackTrace) =>
                                   _DetailCoverFallback(title: title),

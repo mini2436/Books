@@ -122,6 +122,23 @@ class ReaderSettingsPanelContent extends ConsumerWidget {
               controller.setLineHeight(selection.first),
         ),
         SizedBox(height: sectionGap),
+        _SectionTitle(title: '页面布局', bottomSpacing: compact ? 8 : 12),
+        GlassSegmentedControl<ReaderColumnLayout>(
+          style: segmentedStyle,
+          showSelectedIcon: false,
+          segments: ReaderColumnLayout.values
+              .map(
+                (layout) => ButtonSegment<ReaderColumnLayout>(
+                  value: layout,
+                  label: Text(layout.label),
+                ),
+              )
+              .toList(growable: false),
+          selected: {preferences.columnLayout},
+          onSelectionChanged: (selection) =>
+              controller.setColumnLayout(selection.first),
+        ),
+        SizedBox(height: sectionGap),
         _SectionTitle(title: '主题', bottomSpacing: compact ? 8 : 12),
         Wrap(
           spacing: themeSpacing,

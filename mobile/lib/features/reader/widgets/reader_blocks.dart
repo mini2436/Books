@@ -93,10 +93,7 @@ class ReaderBlocksView extends StatelessWidget {
                       block.resourceId == null ||
                       failedImageResourceIds.contains(block.resourceId),
                   constrainToViewport: constrainImagesToViewport,
-                  maxImageHeight:
-                      pagedColumnHeight != null && pagedColumnCount == 2
-                      ? math.max(220, pagedColumnHeight! * 0.78)
-                      : null,
+                  maxImageHeight: _pagedMaximumImageHeight(block),
                   onRetry: failedImageResourceIds.contains(block.resourceId)
                       ? onRetryImages
                       : null,
@@ -564,6 +561,22 @@ class ReaderBlocksView extends StatelessWidget {
     height: preferences.lineHeight / 1.4,
   );
 
+  double? _pagedMaximumImageHeight(BookContentBlock block) {
+    final columnHeight = pagedColumnHeight;
+    if (columnHeight == null) {
+      return null;
+    }
+    final hasCaption = (block.imageCaption ?? block.imageAlt ?? '')
+        .trim()
+        .isNotEmpty;
+    final reservedHeight = hasCaption ? 60.0 : 18.0;
+    final availableHeight = math.max(1.0, columnHeight - reservedHeight);
+    if (pagedColumnCount == 2) {
+      return math.min(availableHeight, math.max(220.0, columnHeight * 0.78));
+    }
+    return availableHeight;
+  }
+
   double _measurePagedTextHeight(
     BuildContext context,
     String text,
@@ -675,18 +688,25 @@ class ReaderBlocksView extends StatelessWidget {
                 block.imageHeight! > 0
             ? (block.imageWidth! / block.imageHeight!).clamp(0.35, 3.2)
             : null;
+        final captionHeight =
+            (block.imageCaption ?? block.imageAlt ?? '').trim().isEmpty
+            ? 0.0
+            : 34.0;
+        final availableImageHeight = math.max(
+          1.0,
+          columnHeight - captionHeight - 18,
+        );
         final maximumImageHeight = columnCount == 2
-            ? math.max(220.0, columnHeight * 0.78)
-            : math.max(220.0, columnHeight);
+            ? math.min(
+                availableImageHeight,
+                math.max(220.0, columnHeight * 0.78),
+              )
+            : availableImageHeight;
         final imageHeight = ratio == null
             ? (hasLoadedImage
                   ? maximumImageHeight
                   : math.min(180.0, maximumImageHeight))
             : math.min(columnWidth / ratio, maximumImageHeight);
-        final captionHeight =
-            (block.imageCaption ?? block.imageAlt ?? '').trim().isEmpty
-            ? 0.0
-            : 34.0;
         return imageHeight + captionHeight + 18;
       default:
         return columnHeight;
@@ -833,7 +853,7 @@ class _ImageBlockView extends StatelessWidget {
             ),
           );
 
-    if (constrainToViewport && imageBytes != null) {
+    if (constrainToViewport) {
       final effectiveMaxImageHeight =
           maxImageHeight ??
           (MediaQuery.sizeOf(context).height - 164).clamp(
@@ -849,6 +869,8 @@ class _ImageBlockView extends StatelessWidget {
                   availableWidth.isFinite &&
                   availableWidth > 0
               ? availableWidth / aspectRatio
+              : imageBytes == null
+              ? math.min(180.0, effectiveMaxImageHeight)
               : effectiveMaxImageHeight;
           final resolvedHeight = math.min(
             effectiveMaxImageHeight,
@@ -869,7 +891,7 @@ class _ImageBlockView extends StatelessWidget {
       children: [
         if (aspectRatio == null)
           image
-        else if (constrainToViewport && imageBytes != null)
+        else if (constrainToViewport)
           image
         else
           AspectRatio(aspectRatio: aspectRatio, child: image),

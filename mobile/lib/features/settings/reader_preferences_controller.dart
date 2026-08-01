@@ -16,6 +16,8 @@ enum ReaderFontFamilyPreference {
 
 enum TabletPageTurnAnimation { smooth }
 
+enum ReaderColumnLayout { single, double }
+
 extension ReaderThemePreferenceX on ReaderThemeMode {
   String get storageValue => name;
 
@@ -113,6 +115,22 @@ extension TabletPageTurnAnimationX on TabletPageTurnAnimation {
   }
 }
 
+extension ReaderColumnLayoutX on ReaderColumnLayout {
+  String get storageValue => name;
+
+  String get label => switch (this) {
+    ReaderColumnLayout.single => '单栏',
+    ReaderColumnLayout.double => '双栏',
+  };
+
+  static ReaderColumnLayout fromStorage(String? value) {
+    return ReaderColumnLayout.values.firstWhere(
+      (item) => item.name == value,
+      orElse: () => ReaderColumnLayout.double,
+    );
+  }
+}
+
 @immutable
 class ReaderPreferences {
   const ReaderPreferences({
@@ -121,6 +139,7 @@ class ReaderPreferences {
     required this.lineHeight,
     required this.fontFamily,
     required this.tabletPageTurnAnimation,
+    this.columnLayout = ReaderColumnLayout.double,
     this.glassMaterialMode = GlassMaterialMode.lightweight,
   });
 
@@ -129,6 +148,7 @@ class ReaderPreferences {
   final double lineHeight;
   final ReaderFontFamilyPreference fontFamily;
   final TabletPageTurnAnimation tabletPageTurnAnimation;
+  final ReaderColumnLayout columnLayout;
   final GlassMaterialMode glassMaterialMode;
 
   ReaderPreferences copyWith({
@@ -137,6 +157,7 @@ class ReaderPreferences {
     double? lineHeight,
     ReaderFontFamilyPreference? fontFamily,
     TabletPageTurnAnimation? tabletPageTurnAnimation,
+    ReaderColumnLayout? columnLayout,
     GlassMaterialMode? glassMaterialMode,
   }) {
     return ReaderPreferences(
@@ -146,6 +167,7 @@ class ReaderPreferences {
       fontFamily: fontFamily ?? this.fontFamily,
       tabletPageTurnAnimation:
           tabletPageTurnAnimation ?? this.tabletPageTurnAnimation,
+      columnLayout: columnLayout ?? this.columnLayout,
       glassMaterialMode: glassMaterialMode ?? this.glassMaterialMode,
     );
   }
@@ -173,6 +195,7 @@ class ReaderPreferencesController extends ChangeNotifier {
     lineHeight: 1.8,
     fontFamily: ReaderFontFamilyPreference.system,
     tabletPageTurnAnimation: TabletPageTurnAnimation.smooth,
+    columnLayout: ReaderColumnLayout.double,
     glassMaterialMode: GlassMaterialMode.lightweight,
   );
 
@@ -183,6 +206,7 @@ class ReaderPreferencesController extends ChangeNotifier {
   ReaderFontFamilyPreference get fontFamily => _preferences.fontFamily;
   TabletPageTurnAnimation get tabletPageTurnAnimation =>
       _preferences.tabletPageTurnAnimation;
+  ReaderColumnLayout get columnLayout => _preferences.columnLayout;
   GlassMaterialMode get glassMaterialMode => _preferences.glassMaterialMode;
 
   Future<void> setThemeMode(ReaderThemeMode mode) async {
@@ -211,6 +235,12 @@ class ReaderPreferencesController extends ChangeNotifier {
 
   Future<void> setTabletPageTurnAnimation(TabletPageTurnAnimation value) async {
     _preferences = _preferences.copyWith(tabletPageTurnAnimation: value);
+    notifyListeners();
+    await _settingsStorage.save(_preferences);
+  }
+
+  Future<void> setColumnLayout(ReaderColumnLayout value) async {
+    _preferences = _preferences.copyWith(columnLayout: value);
     notifyListeners();
     await _settingsStorage.save(_preferences);
   }

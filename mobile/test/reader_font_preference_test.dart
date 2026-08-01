@@ -87,4 +87,25 @@ void main() {
     final restored = await SettingsStorage().read();
     expect(restored.glassMaterialMode, GlassMaterialMode.liquid);
   });
+
+  test('reader column layout persists and defaults to two columns', () async {
+    SharedPreferences.setMockInitialValues({});
+
+    final defaults = await SettingsStorage().read();
+    expect(defaults.columnLayout, ReaderColumnLayout.double);
+
+    await SettingsStorage().save(
+      const ReaderPreferences(
+        themeMode: ReaderThemeMode.paper,
+        fontScale: 1,
+        lineHeight: 1.8,
+        fontFamily: ReaderFontFamilyPreference.system,
+        tabletPageTurnAnimation: TabletPageTurnAnimation.smooth,
+        columnLayout: ReaderColumnLayout.single,
+      ),
+    );
+
+    final restored = await SettingsStorage().read();
+    expect(restored.columnLayout, ReaderColumnLayout.single);
+  });
 }

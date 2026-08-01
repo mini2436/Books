@@ -133,128 +133,147 @@ void main() {
     debugDefaultTargetPlatformOverride = null;
   });
 
-  testWidgets('paged Flutter reader flows left page into right page', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(1200, 700);
-    tester.view.devicePixelRatio = 1;
-    debugDefaultTargetPlatformOverride = TargetPlatform.linux;
-    addTearDown(() {
-      tester.view.resetPhysicalSize();
-      tester.view.resetDevicePixelRatio();
-      debugDefaultTargetPlatformOverride = null;
-    });
+  testWidgets(
+    'paged Flutter reader follows drag, rebounds, and keeps its page',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 700);
+      tester.view.devicePixelRatio = 1;
+      debugDefaultTargetPlatformOverride = TargetPlatform.linux;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+        debugDefaultTargetPlatformOverride = null;
+      });
 
-    final pageTexts = <String>[];
-    final blocks = <BookContentBlock>[];
-    final resources = <String, Uint8List>{};
-    for (var index = 0; index < 4; index += 1) {
-      final caption = '连续页 ${index + 1}';
-      final resourceId = 'image-$index';
-      pageTexts.add(caption);
-      blocks.add(
-        BookContentBlock(
-          blockIndex: index,
-          type: 'image',
-          anchor: 'chapter-0-page-$index-image',
-          text: '',
-          plainText: '',
-          meta: {
-            'resourceId': resourceId,
-            'mediaType': 'image/png',
-            'width': 1,
-            'height': 1,
-            'caption': caption,
-          },
-        ),
-      );
-    }
-    final palette = AppReaderPalette.resolve(ReaderThemeMode.paper);
-    final tapZoneVersion = ValueNotifier<int>(0);
-    addTearDown(tapZoneVersion.dispose);
+      final pageTexts = <String>[];
+      final blocks = <BookContentBlock>[];
+      final resources = <String, Uint8List>{};
+      for (var index = 0; index < 4; index += 1) {
+        final caption = '连续页 ${index + 1}';
+        final resourceId = 'image-$index';
+        pageTexts.add(caption);
+        blocks.add(
+          BookContentBlock(
+            blockIndex: index,
+            type: 'image',
+            anchor: 'chapter-0-page-$index-image',
+            text: '',
+            plainText: '',
+            meta: {
+              'resourceId': resourceId,
+              'mediaType': 'image/png',
+              'width': 1,
+              'height': 1,
+              'caption': caption,
+            },
+          ),
+        );
+      }
+      final palette = AppReaderPalette.resolve(ReaderThemeMode.paper);
+      final dualColumn = ValueNotifier<bool>(true);
+      addTearDown(dualColumn.dispose);
 
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: ThemeData(extensions: [palette]),
-        home: Scaffold(
-          body: ValueListenableBuilder<int>(
-            valueListenable: tapZoneVersion,
-            builder: (context, version, _) => ReaderHtmlView(
-              chapter: BookContentChapter(
-                bookId: 1,
-                contentModel: 'structured',
-                contentVersionId: 1,
-                hasStructuredContent: true,
-                chapterIndex: 0,
-                title: '漫画章节',
-                anchor: 'chapter-0',
-                blocks: blocks,
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(extensions: [palette]),
+          home: Scaffold(
+            body: ValueListenableBuilder<bool>(
+              valueListenable: dualColumn,
+              builder: (context, useDualColumn, _) => ReaderHtmlView(
+                chapter: BookContentChapter(
+                  bookId: 1,
+                  contentModel: 'structured',
+                  contentVersionId: 1,
+                  hasStructuredContent: true,
+                  chapterIndex: 0,
+                  title: '漫画章节',
+                  anchor: 'chapter-0',
+                  blocks: blocks,
+                ),
+                imageResources: resources,
+                failedImageResourceIds: const {},
+                annotations: const <AnnotationView>[],
+                preferences: _preferences,
+                palette: palette,
+                uiVisible: true,
+                autoScrollEnabled: false,
+                autoScrollPixelsPerSecond: 0,
+                pagedMode: true,
+                dualColumn: useDualColumn,
+                anchorJumpVersion: 0,
+                onHighlight: (_, _) async {},
+                onAnnotate: (_, _) async {},
+                onSaveAnnotation:
+                    (
+                      _,
+                      _, {
+                      required noteText,
+                      required color,
+                      required underlineStyle,
+                    }) async {},
+                onOpenAnnotations: (_) async {},
+                onRetryImages: () async {},
+                onVisibleAnchorChanged: (_) {},
+                onPageBoundaryPrevious: () async {},
+                onPageBoundaryNext: () async {},
+                onToggleUi: () {},
+                onMenuRequest: () {},
+                onAutoScrollInterrupted: () {},
+                onAutoScrollBoundaryNext: () async {},
+                viewportTapZoneVersion: 0,
               ),
-              imageResources: resources,
-              failedImageResourceIds: const {},
-              annotations: const <AnnotationView>[],
-              preferences: _preferences,
-              palette: palette,
-              uiVisible: true,
-              autoScrollEnabled: false,
-              autoScrollPixelsPerSecond: 0,
-              pagedMode: true,
-              dualColumn: true,
-              anchorJumpVersion: 0,
-              onHighlight: (_, _) async {},
-              onAnnotate: (_, _) async {},
-              onSaveAnnotation:
-                  (
-                    _,
-                    _, {
-                    required noteText,
-                    required color,
-                    required underlineStyle,
-                  }) async {},
-              onOpenAnnotations: (_) async {},
-              onRetryImages: () async {},
-              onVisibleAnchorChanged: (_) {},
-              onPageBoundaryPrevious: () async {},
-              onPageBoundaryNext: () async {},
-              onToggleUi: () {},
-              onMenuRequest: () {},
-              onAutoScrollInterrupted: () {},
-              onAutoScrollBoundaryNext: () async {},
-              viewportTapZoneVersion: version,
-              viewportTapZone: version == 0 ? null : 'right',
             ),
           ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    final firstPage = find.text(pageTexts[0]);
-    final secondPage = find.text(pageTexts[1]);
-    final thirdPage = find.text(pageTexts[2]);
-    final initialFirstPosition = tester.getTopLeft(firstPage);
-    final initialSecondPosition = tester.getTopLeft(secondPage);
-    final initialThirdPosition = tester.getTopLeft(thirdPage);
+      final firstPage = find.text(pageTexts[0]);
+      final secondPage = find.text(pageTexts[1]);
+      final thirdPage = find.text(pageTexts[2]);
+      final initialFirstPosition = tester.getTopLeft(firstPage);
+      final initialSecondPosition = tester.getTopLeft(secondPage);
+      final initialThirdPosition = tester.getTopLeft(thirdPage);
 
-    expect(initialSecondPosition.dx, greaterThan(initialFirstPosition.dx));
-    expect(initialSecondPosition.dy, initialFirstPosition.dy);
-    expect(initialThirdPosition.dx, greaterThan(initialSecondPosition.dx));
-    expect(initialThirdPosition.dy, initialFirstPosition.dy);
+      expect(initialSecondPosition.dx, greaterThan(initialFirstPosition.dx));
+      expect(initialSecondPosition.dy, initialFirstPosition.dy);
+      expect(initialThirdPosition.dx, greaterThan(initialSecondPosition.dx));
+      expect(initialThirdPosition.dy, initialFirstPosition.dy);
 
-    tapZoneVersion.value += 1;
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 75));
+      final shortDrag = await tester.startGesture(const Offset(600, 350));
+      await shortDrag.moveBy(const Offset(-20, 0));
+      await shortDrag.moveBy(const Offset(-20, 0));
+      await tester.pump();
+      expect(
+        tester.getTopLeft(firstPage).dx,
+        lessThan(initialFirstPosition.dx),
+      );
+      await shortDrag.up();
+      await tester.pumpAndSettle();
+      expect(tester.getTopLeft(firstPage).dx, initialFirstPosition.dx);
 
-    final exitingPosition = tester.getTopLeft(firstPage);
-    expect(exitingPosition.dx, lessThan(initialFirstPosition.dx));
-    expect(exitingPosition.dy, initialFirstPosition.dy);
+      final committedDrag = await tester.startGesture(const Offset(700, 350));
+      await committedDrag.moveBy(const Offset(-20, 0));
+      await committedDrag.moveBy(const Offset(-160, 0));
+      await tester.pump();
+      expect(
+        tester.getTopLeft(firstPage).dx,
+        lessThan(initialFirstPosition.dx),
+      );
+      await committedDrag.up();
+      await tester.pumpAndSettle();
+      final nextSpreadPosition = tester.getTopLeft(thirdPage);
+      expect(nextSpreadPosition.dx, initialFirstPosition.dx);
+      expect(nextSpreadPosition.dy, initialFirstPosition.dy);
 
-    await tester.pumpAndSettle();
-    final nextSpreadPosition = tester.getTopLeft(thirdPage);
-    expect(nextSpreadPosition.dx, initialFirstPosition.dx);
-    expect(nextSpreadPosition.dy, initialFirstPosition.dy);
-    debugDefaultTargetPlatformOverride = null;
-  });
+      dualColumn.value = false;
+      await tester.pumpAndSettle();
+      final positionAfterColumnSwitch = tester.getTopLeft(thirdPage);
+      expect(positionAfterColumnSwitch.dx, inInclusiveRange(0, 1200));
+      expect(positionAfterColumnSwitch.dy, inInclusiveRange(0, 700));
+      debugDefaultTargetPlatformOverride = null;
+    },
+  );
 
   testWidgets('restores the focused spread after comic images finish loading', (
     tester,

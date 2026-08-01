@@ -12,6 +12,7 @@ class SettingsStorage {
       'reader.tabletPageTurnAxis';
   static const String _tabletPageTurnAnimationKey =
       'reader.tabletPageTurnAnimation';
+  static const String _columnLayoutKey = 'reader.columnLayout';
   static const String _glassMaterialModeKey = 'ui.glassMaterialMode';
 
   Future<ReaderPreferences> read() async {
@@ -27,6 +28,9 @@ class SettingsStorage {
       ),
       tabletPageTurnAnimation: TabletPageTurnAnimationX.fromStorage(
         preferences.getString(_tabletPageTurnAnimationKey),
+      ),
+      columnLayout: ReaderColumnLayoutX.fromStorage(
+        preferences.getString(_columnLayoutKey),
       ),
       glassMaterialMode: GlassMaterialModeX.fromStorage(
         preferences.getString(_glassMaterialModeKey),
@@ -44,6 +48,10 @@ class SettingsStorage {
     await preferences.setString(
       _tabletPageTurnAnimationKey,
       value.tabletPageTurnAnimation.storageValue,
+    );
+    await preferences.setString(
+      _columnLayoutKey,
+      value.columnLayout.storageValue,
     );
     await preferences.setString(
       _glassMaterialModeKey,

@@ -209,6 +209,9 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
   int _fallbackPageTurnDirection = 1;
   bool _fallbackPageEntering = false;
   bool _fallbackPageTurnInProgress = false;
+  double? _fallbackDragStartPixels;
+  double _fallbackDragDistance = 0;
+  double _fallbackDragOverscroll = 0;
   bool _fallbackAnchorRestorePending = false;
   Timer? _blankPageGuard;
   Timer? _fallbackAnchorReportTimer;
@@ -362,6 +365,17 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
       unawaited(_ensureEmbeddedFontLoaded());
     }
     final chapterChanged = oldWidget.chapter.anchor != widget.chapter.anchor;
+    final fallbackLayoutChanged =
+        !chapterChanged &&
+        (oldWidget.pagedMode != widget.pagedMode ||
+            oldWidget.dualColumn != widget.dualColumn ||
+            oldWidget.preferences.fontScale != widget.preferences.fontScale ||
+            oldWidget.preferences.lineHeight != widget.preferences.lineHeight ||
+            oldWidget.preferences.fontFamily != widget.preferences.fontFamily);
+    final fallbackViewportSnapshot =
+        _useFlutterFallback && fallbackLayoutChanged
+        ? _captureFallbackViewportSnapshot(wasPaged: oldWidget.pagedMode)
+        : null;
     if (_useWindowsWebView &&
         !_useFlutterFallback &&
         _hasUnregisteredWindowsImageResources) {
@@ -388,7 +402,12 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
           anchorTargetChanged ||
           (_fallbackAnchorRestorePending &&
               _fallbackFocusedAnchorLayoutSettled);
-      if (shouldRestoreAnchor) {
+      if (fallbackViewportSnapshot != null && !anchorTargetChanged) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          unawaited(_restoreFallbackViewportSnapshot(fallbackViewportSnapshot));
+          _syncFallbackAutoScroll();
+        });
+      } else if (shouldRestoreAnchor) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           unawaited(_restoreFallbackFocusedAnchor(force: true));
           _syncFallbackAutoScroll();
@@ -535,6 +554,19 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
               details.localPosition.dx,
               constraints.maxWidth,
             ),
+            onHorizontalDragStart: widget.pagedMode
+                ? _handleFallbackHorizontalDragStart
+                : null,
+            onHorizontalDragUpdate: widget.pagedMode
+                ? _handleFallbackHorizontalDragUpdate
+                : null,
+            onHorizontalDragEnd: widget.pagedMode
+                ? (details) =>
+                      unawaited(_handleFallbackHorizontalDragEnd(details))
+                : null,
+            onHorizontalDragCancel: widget.pagedMode
+                ? () => unawaited(_cancelFallbackHorizontalDrag())
+                : null,
             child: NotificationListener<UserScrollNotification>(
               onNotification: (notification) {
                 if (widget.autoScrollEnabled &&
@@ -1149,6 +1181,9 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
     if (!widget.pagedMode || viewportWidth <= 0) {
       return 0;
     }
+    if (_fallbackDragStartPixels != null) {
+      return _fallbackDragOverscroll;
+    }
     final progress = Curves.easeOutCubic.transform(
       _fallbackPageTurnController.value,
     );
@@ -1156,6 +1191,178 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
       return _fallbackPageTurnDirection * viewportWidth * (1 - progress);
     }
     return -_fallbackPageTurnDirection * viewportWidth * progress;
+  }
+
+  _FallbackViewportSnapshot? _captureFallbackViewportSnapshot({
+    required bool wasPaged,
+  }) {
+    final controller = wasPaged
+        ? _fallbackPagedScrollController
+        : _fallbackScrollController;
+    if (!controller.hasClients) {
+      return null;
+    }
+    final position = controller.position;
+    final scrollableExtent =
+        position.maxScrollExtent - position.minScrollExtent;
+    final ratio = scrollableExtent <= 0
+        ? 0.0
+        : ((position.pixels - position.minScrollExtent) / scrollableExtent)
+              .clamp(0.0, 1.0);
+    return _FallbackViewportSnapshot(
+      progressRatio: ratio,
+      visibleAnchor: _currentFallbackVisibleAnchor(),
+    );
+  }
+
+  Future<void> _restoreFallbackViewportSnapshot(
+    _FallbackViewportSnapshot snapshot,
+  ) async {
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted || !_useFlutterFallback) {
+      return;
+    }
+    final controller = widget.pagedMode
+        ? _fallbackPagedScrollController
+        : _fallbackScrollController;
+    if (!controller.hasClients) {
+      return;
+    }
+    final visibleAnchor = snapshot.visibleAnchor;
+    if (visibleAnchor != null &&
+        visibleAnchor.isNotEmpty &&
+        await _scrollFallbackToAnchor(visibleAnchor)) {
+      _reportFallbackVisibleAnchor();
+      return;
+    }
+    final position = controller.position;
+    final scrollableExtent =
+        position.maxScrollExtent - position.minScrollExtent;
+    var target =
+        position.minScrollExtent + scrollableExtent * snapshot.progressRatio;
+    if (widget.pagedMode) {
+      final pageStep = math.max(1.0, position.viewportDimension + 28);
+      target = (target / pageStep).roundToDouble() * pageStep;
+    }
+    controller.jumpTo(
+      target.clamp(position.minScrollExtent, position.maxScrollExtent),
+    );
+    _reportFallbackVisibleAnchor();
+  }
+
+  void _handleFallbackHorizontalDragStart(DragStartDetails details) {
+    if (!widget.pagedMode || _fallbackPageTurnInProgress) {
+      return;
+    }
+    final controller = _fallbackPagedScrollController;
+    if (!controller.hasClients) {
+      return;
+    }
+    _fallbackAnchorRestorePending = false;
+    _fallbackDragStartPixels = controller.position.pixels;
+    _fallbackDragDistance = 0;
+    _fallbackDragOverscroll = 0;
+  }
+
+  void _handleFallbackHorizontalDragUpdate(DragUpdateDetails details) {
+    final startPixels = _fallbackDragStartPixels;
+    final primaryDelta = details.primaryDelta;
+    final controller = _fallbackPagedScrollController;
+    if (startPixels == null || primaryDelta == null || !controller.hasClients) {
+      return;
+    }
+    _fallbackDragDistance += primaryDelta;
+    final position = controller.position;
+    final rawTarget = startPixels - _fallbackDragDistance;
+    final target = rawTarget.clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    controller.jumpTo(target);
+    final overscroll = (target - rawTarget) * 0.28;
+    if ((_fallbackDragOverscroll - overscroll).abs() > 0.1 && mounted) {
+      setState(() => _fallbackDragOverscroll = overscroll);
+    }
+  }
+
+  Future<void> _handleFallbackHorizontalDragEnd(DragEndDetails details) async {
+    final velocity = details.primaryVelocity ?? 0;
+    await _settleFallbackHorizontalDrag(velocity: velocity);
+  }
+
+  Future<void> _cancelFallbackHorizontalDrag() =>
+      _settleFallbackHorizontalDrag(velocity: 0, cancelled: true);
+
+  Future<void> _settleFallbackHorizontalDrag({
+    required double velocity,
+    bool cancelled = false,
+  }) async {
+    final startPixels = _fallbackDragStartPixels;
+    final controller = _fallbackPagedScrollController;
+    if (startPixels == null || !controller.hasClients) {
+      _resetFallbackHorizontalDrag();
+      return;
+    }
+    final position = controller.position;
+    final pageStep = math.max(1.0, position.viewportDimension + 28);
+    final threshold = math.min(96.0, position.viewportDimension * 0.16);
+    final distancePassed = _fallbackDragDistance.abs() >= threshold;
+    final flingPassed =
+        velocity.abs() >= 650 && _fallbackDragDistance.abs() >= 18;
+    final shouldCommit = !cancelled && (distancePassed || flingPassed);
+    final direction = _fallbackDragDistance == 0
+        ? (velocity < 0 ? 1 : -1)
+        : (_fallbackDragDistance < 0 ? 1 : -1);
+    final unclampedTarget = shouldCommit
+        ? startPixels + direction * pageStep
+        : startPixels;
+    final target = unclampedTarget.clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    final crossedChapterBoundary =
+        shouldCommit &&
+        (unclampedTarget < position.minScrollExtent ||
+            unclampedTarget > position.maxScrollExtent);
+
+    _fallbackPageTurnInProgress = true;
+    if (mounted) {
+      setState(() => _fallbackDragOverscroll = 0);
+    }
+    try {
+      final reduceMotion =
+          MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+      if (reduceMotion) {
+        controller.jumpTo(target);
+      } else {
+        await controller.animateTo(
+          target,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+        );
+      }
+    } finally {
+      _fallbackPageTurnInProgress = false;
+      _resetFallbackHorizontalDrag();
+    }
+    _reportFallbackVisibleAnchor();
+    if (crossedChapterBoundary) {
+      if (direction < 0) {
+        await widget.onPageBoundaryPrevious();
+      } else {
+        await widget.onPageBoundaryNext();
+      }
+    }
+  }
+
+  void _resetFallbackHorizontalDrag() {
+    _fallbackDragStartPixels = null;
+    _fallbackDragDistance = 0;
+    if (_fallbackDragOverscroll != 0 && mounted) {
+      setState(() => _fallbackDragOverscroll = 0);
+    } else {
+      _fallbackDragOverscroll = 0;
+    }
   }
 
   bool get _hasFallbackFocusedAnchorTarget {
@@ -1228,7 +1435,17 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
     }
     _lastAnchorJumpVersion = widget.anchorJumpVersion;
 
-    final rawAnchor = widget.focusedAnchor ?? '';
+    return _scrollFallbackToAnchor(widget.focusedAnchor ?? '');
+  }
+
+  Future<bool> _scrollFallbackToAnchor(String rawAnchor) async {
+    final scrollController = widget.pagedMode
+        ? _fallbackPagedScrollController
+        : _fallbackScrollController;
+    if (!_useFlutterFallback || !scrollController.hasClients) {
+      return false;
+    }
+
     if (rawAnchor == readerChapterEndMarker) {
       scrollController.jumpTo(scrollController.position.maxScrollExtent);
       return true;
@@ -1292,10 +1509,17 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
     if (!_useFlutterFallback || !mounted || _fallbackAnchorRestorePending) {
       return;
     }
+    final bestAnchor = _currentFallbackVisibleAnchor();
+    if (bestAnchor != null && bestAnchor.isNotEmpty) {
+      widget.onVisibleAnchorChanged(bestAnchor);
+    }
+  }
+
+  String? _currentFallbackVisibleAnchor() {
     final viewportBox =
         _fallbackViewportKey.currentContext?.findRenderObject() as RenderBox?;
     if (viewportBox == null || !viewportBox.hasSize) {
-      return;
+      return null;
     }
     final viewportLeft = viewportBox.localToGlobal(Offset.zero).dx;
     final viewportRight = viewportLeft + viewportBox.size.width;
@@ -1331,9 +1555,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
       }
     }
 
-    if (bestAnchor != null && bestAnchor.isNotEmpty) {
-      widget.onVisibleAnchorChanged(bestAnchor);
-    }
+    return bestAnchor;
   }
 
   Future<void> _handlePageReady() async {
@@ -2167,6 +2389,8 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
       let touchStartAt = 0;
       let touchMoved = false;
       let touchTracking = false;
+      let touchAxis = '';
+      let touchPageDelta = 0;
       let lastTouchHandledAt = 0;
       let selectionRefreshTimer = null;
       let lastToolbarTouchActionAt = 0;
@@ -2626,6 +2850,65 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
         return goToPage(targetPage, true);
       }
 
+      function applyPagedTouchDrag(delta) {
+        if (!pagedMode || !root || pageAnimationBusy) {
+          return;
+        }
+        const atPreviousBoundary = currentPage <= 0 && delta > 0;
+        const atNextBoundary = currentPage >= pageCount - 1 && delta < 0;
+        const effectiveDelta = atPreviousBoundary || atNextBoundary
+          ? delta * 0.28
+          : delta;
+        root.style.transition = 'none';
+        root.style.transform = 'translate3d(' + (-currentOffset + effectiveDelta) + 'px,0,0)';
+        if (turnShadow) {
+          const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1;
+          turnShadow.style.transition = 'none';
+          turnShadow.style.opacity = String(Math.min(0.16, Math.abs(effectiveDelta) / viewportWidth * 0.22));
+          turnShadow.style.background = effectiveDelta < 0
+            ? 'linear-gradient(90deg, transparent 70%, rgba(0,0,0,0.16))'
+            : 'linear-gradient(270deg, transparent 70%, rgba(0,0,0,0.16))';
+        }
+      }
+
+      function settlePagedTouchDrag(delta, duration, cancelled) {
+        if (!pagedMode || !root) {
+          return;
+        }
+        const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1;
+        const threshold = Math.min(96, viewportWidth * 0.16);
+        const velocity = duration > 0 ? Math.abs(delta) / duration : 0;
+        const shouldCommit = !cancelled &&
+          (Math.abs(delta) >= threshold || (velocity >= 0.65 && Math.abs(delta) >= 18));
+        const direction = delta < 0 ? 1 : -1;
+        const targetPage = currentPage + direction;
+        const targetInRange = targetPage >= 0 && targetPage < pageCount;
+        const commitPage = shouldCommit && targetInRange;
+        const crossedChapterBoundary = shouldCommit && !targetInRange;
+        const bounds = pageBounds();
+        const targetOffset = commitPage
+          ? Math.min(bounds.maxOffset, targetPage * pageSpan)
+          : currentOffset;
+
+        pageAnimationBusy = true;
+        root.style.transition = 'transform 220ms cubic-bezier(0.16, 1, 0.3, 1)';
+        root.style.transform = 'translate3d(' + (-targetOffset) + 'px,0,0)';
+        clearTurnShadow();
+        window.setTimeout(function() {
+          root.style.transition = 'none';
+          if (commitPage) {
+            currentPage = targetPage;
+            currentOffset = targetOffset;
+          }
+          applyPagedOffset();
+          pageAnimationBusy = false;
+          scheduleViewportAnchorReport(100);
+          if (crossedChapterBoundary) {
+            send({ type: direction < 0 ? 'previousChapter' : 'nextChapter' });
+          }
+        }, 230);
+      }
+
       function renderSelectionOverlay(data) {
         if (!overlay) return;
         overlay.replaceChildren();
@@ -3001,6 +3284,10 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
         }
         cancelNativeSelectionClear();
         cancelSelectionRefresh();
+        if (pageAnimationBusy) {
+          touchTracking = false;
+          return;
+        }
         const touch = event.touches && event.touches.length > 0 ? event.touches[0] : null;
         if (!touch) {
           touchTracking = false;
@@ -3009,6 +3296,8 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
         }
         touchTracking = true;
         touchMoved = false;
+        touchAxis = '';
+        touchPageDelta = 0;
         touchStartX = touch.clientX;
         touchStartY = touch.clientY;
         touchStartAt = Date.now();
@@ -3022,13 +3311,34 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
         if (!touch) {
           return;
         }
-        if (Math.abs(touch.clientX - touchStartX) > 12 || Math.abs(touch.clientY - touchStartY) > 12) {
+        const deltaX = touch.clientX - touchStartX;
+        const deltaY = touch.clientY - touchStartY;
+        if (!touchAxis && (Math.abs(deltaX) > 8 || Math.abs(deltaY) > 8)) {
+          touchAxis = Math.abs(deltaX) > Math.abs(deltaY) * 1.15
+            ? 'horizontal'
+            : 'vertical';
+        }
+        if (touchAxis === 'horizontal' && pagedMode &&
+            !currentSelection && !hasActiveDomSelection() &&
+            !toolbarContainsTarget(event.target)) {
+          touchMoved = true;
+          touchPageDelta = deltaX;
+          applyPagedTouchDrag(deltaX);
+          event.preventDefault();
+          return;
+        }
+        if (Math.abs(deltaX) > 12 || Math.abs(deltaY) > 12) {
           touchMoved = true;
         }
-      }, { passive: true });
+      }, { passive: false });
       document.addEventListener('touchcancel', function() {
+        if (touchAxis === 'horizontal' && pagedMode) {
+          settlePagedTouchDrag(touchPageDelta, 0, true);
+        }
         touchTracking = false;
         touchMoved = false;
+        touchAxis = '';
+        touchPageDelta = 0;
         touchStartAt = 0;
       }, { passive: true });
       document.addEventListener('touchend', function(event) {
@@ -3044,6 +3354,17 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
         const touchDuration = touchStartAt > 0 ? Date.now() - touchStartAt : 0;
         const selectionGesture = touchDuration >= 280;
         const domSelectionActive = hasActiveDomSelection();
+        if (touchTracking && touchAxis === 'horizontal' && pagedMode &&
+            !currentSelection && !domSelectionActive) {
+          lastTouchHandledAt = Date.now();
+          settlePagedTouchDrag(touchPageDelta, touchDuration, false);
+          touchTracking = false;
+          touchMoved = false;
+          touchAxis = '';
+          touchPageDelta = 0;
+          touchStartAt = 0;
+          return;
+        }
         scheduleSelectionRefresh(selectionGesture ? 20 : 60);
         if (!currentSelection && !domSelectionActive && !selectionGesture) {
           if (touchTracking && touch) {
@@ -3061,6 +3382,8 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
           }
           touchTracking = false;
           touchMoved = false;
+          touchAxis = '';
+          touchPageDelta = 0;
           touchStartAt = 0;
           return;
         }
@@ -3069,6 +3392,8 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
         }
         touchTracking = false;
         touchMoved = false;
+        touchAxis = '';
+        touchPageDelta = 0;
         touchStartAt = 0;
       }, { passive: true });
       document.addEventListener('mouseup', function() {
@@ -3205,11 +3530,15 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
         const maxScroll = stage
           ? Math.max(0, stage.scrollHeight - stage.clientHeight)
           : 0;
+        const pagedBounds = pagedMode ? pageBounds() : null;
         return JSON.stringify({
           pagedMode: pagedMode,
           currentPage: currentPage,
           currentOffset: currentOffset,
           pageCount: pageCount,
+          contentRatio: !pagedBounds || pagedBounds.maxOffset <= 0
+            ? 0
+            : currentOffset / pagedBounds.maxOffset,
           scrollTop: stage ? stage.scrollTop : 0,
           scrollRatio: maxScroll <= 0 || !stage ? 0 : stage.scrollTop / maxScroll,
           visibleAnchor: currentViewportAnchor()
@@ -3229,15 +3558,19 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
           return;
         }
         updatePagedMetrics();
-        if (restoreViewportAnchor(snapshot.visibleAnchor)) {
-          return;
-        }
         if (pagedMode) {
-          const targetPage = Number.isFinite(snapshot.currentPage)
-            ? snapshot.currentPage
-            : 0;
+          const bounds = pageBounds();
+          const ratio = Number.isFinite(snapshot.contentRatio)
+            ? Math.max(0, Math.min(1, snapshot.contentRatio))
+            : null;
+          const targetPage = ratio === null
+            ? (Number.isFinite(snapshot.currentPage) ? snapshot.currentPage : 0)
+            : Math.floor((ratio * bounds.maxOffset) / Math.max(pageSpan, 1));
           goToPage(targetPage, false);
           scheduleViewportAnchorReport(120);
+          return;
+        }
+        if (restoreViewportAnchor(snapshot.visibleAnchor)) {
           return;
         }
         if (!stage) {
@@ -3819,6 +4152,16 @@ class _ReaderLoadingBar extends StatelessWidget {
       ),
     );
   }
+}
+
+class _FallbackViewportSnapshot {
+  const _FallbackViewportSnapshot({
+    required this.progressRatio,
+    required this.visibleAnchor,
+  });
+
+  final double progressRatio;
+  final String? visibleAnchor;
 }
 
 class _SelectionIntent {

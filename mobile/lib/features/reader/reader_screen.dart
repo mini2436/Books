@@ -31,6 +31,12 @@ bool readerUsesPagedMode({
 }) => wideReader || !autoScrollEnabled;
 
 @visibleForTesting
+bool readerUsesDualColumn({
+  required bool wideReader,
+  required ReaderColumnLayout columnLayout,
+}) => wideReader && columnLayout == ReaderColumnLayout.double;
+
+@visibleForTesting
 bool readerShowsInitializationOverlay({required bool isLoading}) => isLoading;
 
 class ReaderScreen extends ConsumerStatefulWidget {
@@ -251,7 +257,10 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
             autoScrollEnabled: mobileAutoScroll,
             autoScrollPixelsPerSecond: _autoScrollSpeed,
             pagedMode: readerPagedMode,
-            dualColumn: wideReader,
+            dualColumn: readerUsesDualColumn(
+              wideReader: wideReader,
+              columnLayout: preferences.columnLayout,
+            ),
             focusedAnchor: controller.focusedAnchor,
             anchorJumpVersion: controller.anchorJumpVersion,
             onHighlight: (selection, existingAnnotation) async {

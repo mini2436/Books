@@ -94,41 +94,38 @@ class _AnnotationCenterScreenState
                             ),
                           ),
                           const SizedBox(width: 12),
-                          Semantics(
-                            label: '导出批注',
-                            button: true,
-                            child: FilledButton(
-                              onPressed:
-                                  controller.bookGroups.isEmpty || _isExporting
-                                  ? null
-                                  : () => _exportAnnotations(
-                                      controller.bookGroups,
+                          IconButton(
+                            tooltip: context.tr('导出批注'),
+                            onPressed:
+                                controller.bookGroups.isEmpty || _isExporting
+                                ? null
+                                : () =>
+                                      _exportAnnotations(controller.bookGroups),
+                            icon: _isExporting
+                                ? const SizedBox.square(
+                                    dimension: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
                                     ),
-                              style: const ButtonStyle(
-                                fixedSize: WidgetStatePropertyAll(Size(48, 48)),
-                                padding: WidgetStatePropertyAll(
-                                  EdgeInsets.zero,
-                                ),
-                                shape: WidgetStatePropertyAll(CircleBorder()),
-                              ),
-                              child: _isExporting
-                                  ? const SizedBox.square(
-                                      dimension: 20,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                  : const Icon(Icons.download_outlined),
-                            ),
+                                  )
+                                : const Icon(Icons.download_outlined),
                           ),
                           const SizedBox(width: 4),
-                          IconButton(
+                          IconButton.filledTonal(
+                            tooltip: context.tr('刷新批注'),
                             onPressed: controller.isLoading
                                 ? null
                                 : () => ref
                                       .read(annotationCenterControllerProvider)
                                       .refresh(),
-                            icon: const Icon(Icons.refresh),
+                            icon: controller.isLoading
+                                ? const SizedBox.square(
+                                    dimension: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.refresh_rounded),
                           ),
                         ],
                       ),

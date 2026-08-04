@@ -167,6 +167,48 @@ class BookshelfController extends ChangeNotifier {
       ..sort((left, right) => right.updatedAt.compareTo(left.updatedAt));
   }
 
+  /// Loads only the structured-reader chapter summaries used by the book dialog.
+  ///
+  /// The content endpoint does not include chapter bodies, so opening the
+  /// dialog never starts a potentially expensive chapter download. A missing
+  /// or unavailable content index is treated as no chapter navigation.
+  Future<List<BookContentChapterSummary>> loadChapterSummaries(
+    int bookId,
+  ) async {
+    BookContent? content;
+    try {
+      content = await _authController.runAuthorized(
+        (accessToken) => _apiClient.getStructuredContent(accessToken, bookId),
+      );
+    } catch (_) {
+      final userId = _authController.activeUserId;
+      final serverKey = _authController.activeServerKey;
+      if (userId == null ||
+          serverKey == null ||
+          !await _offlineBookCacheService.isBookCached(
+            serverKey,
+            userId,
+            bookId,
+          )) {
+        return const [];
+      }
+      try {
+        content = await _offlineBookCacheService.loadContent(
+          serverKey,
+          userId,
+          bookId,
+        );
+      } catch (_) {
+        return const [];
+      }
+    }
+
+    if (content == null || !content.hasStructuredContent) return const [];
+    return content.chapters
+        .where((chapter) => chapter.anchor.trim().isNotEmpty)
+        .toList(growable: false);
+  }
+
   Future<void> updateBookGroup(int bookId, String? groupName) async {
     final normalized = groupName?.trim();
     final updated = await _authController.runAuthorized(

@@ -1,6 +1,8 @@
 import 'dart:typed_data';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cached_network_image_platform_interface/cached_network_image_platform_interface.dart'
+    show ImageRenderMethodForWeb;
 import 'package:flutter/material.dart' hide Text;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:private_reader_mobile/shared/localization/localized_text.dart';
@@ -1260,6 +1262,7 @@ class _BookCover extends StatelessWidget {
             : CachedNetworkImage(
                 imageUrl: imageUrl!,
                 httpHeaders: headers,
+                imageRenderMethodForWeb: ImageRenderMethodForWeb.HttpGet,
                 fit: BoxFit.cover,
                 memCacheWidth: cacheWidth,
                 useOldImageOnUrlChange: true,
@@ -2142,6 +2145,7 @@ class _BookDetailsDialogStateV2 extends State<_BookDetailsDialog> {
   static const _createGroupSelection = '__create_group__';
 
   late final Future<List<AnnotationView>> _annotations;
+  late final Future<List<BookContentChapterSummary>> _chapters;
   late final TextEditingController _newGroupController;
   late String _groupSelection;
   String? _currentGroup;
@@ -2151,6 +2155,7 @@ class _BookDetailsDialogStateV2 extends State<_BookDetailsDialog> {
   void initState() {
     super.initState();
     _annotations = widget.controller.loadAnnotations(widget.book.id);
+    _chapters = widget.controller.loadChapterSummaries(widget.book.id);
     _currentGroup = widget.book.groupName?.trim();
     if (_currentGroup?.isEmpty == true) _currentGroup = null;
     _groupSelection = _currentGroup ?? _ungroupedSelection;
@@ -2392,61 +2397,83 @@ class _BookDetailsDialogStateV2 extends State<_BookDetailsDialog> {
 
   Widget _buildWorkspace(BuildContext context) {
     final palette = AppReaderPalette.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
+    return FutureBuilder<List<BookContentChapterSummary>>(
+      future: _chapters,
+      builder: (context, chapterSnapshot) {
+        // The chapter index is optional: do not reserve space while it is
+        // loading or when this book has not been initialized yet.
+        final chapters = chapterSnapshot.hasData
+            ? chapterSnapshot.data!
+            : const <BookContentChapterSummary>[];
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              '批注',
-              style: Theme.of(
-                context,
-              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(width: 9),
-            Text(
-              '点击即可定位到原文',
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: palette.inkTertiary),
-            ),
-            const Spacer(),
-            if (MediaQuery.sizeOf(context).width >= 780)
-              IconButton(
-                tooltip: context.tr('关闭'),
-                onPressed: () => Navigator.of(context).pop(),
-                icon: const Icon(Icons.close_rounded),
-              ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        Expanded(child: _buildAnnotationList(context)),
-        if (!widget.controller.isOfflineGuest) ...[
-          Divider(height: 28, color: palette.line),
-          _buildGroupSelector(context),
-        ],
-        const SizedBox(height: 18),
-        Row(
-          children: [
-            TextButton.icon(
-              onPressed: () => Navigator.of(context).pop(),
-              icon: const Icon(Icons.close_rounded),
-              label: const Text('关闭'),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: FilledButton.icon(
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(50),
+            if (chapters.isNotEmpty) ...[
+              _buildChapterSection(context, chapters),
+              const SizedBox(height: 18),
+            ],
+            _buildAnnotationHeader(context, showCloseButton: chapters.isEmpty),
+            const SizedBox(height: 10),
+            Expanded(child: _buildAnnotationList(context)),
+            if (!widget.controller.isOfflineGuest) ...[
+              Divider(height: 28, color: palette.line),
+              _buildGroupSelector(context),
+            ],
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                TextButton.icon(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.close_rounded),
+                  label: const Text('关闭'),
                 ),
-                onPressed: () =>
-                    Navigator.of(context).pop(const _BookDialogResult()),
-                icon: const Icon(Icons.menu_book_rounded),
-                label: const Text('开始阅读'),
-              ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(50),
+                    ),
+                    onPressed: () =>
+                        Navigator.of(context).pop(const _BookDialogResult()),
+                    icon: const Icon(Icons.menu_book_rounded),
+                    label: const Text('开始阅读'),
+                  ),
+                ),
+              ],
             ),
           ],
+        );
+      },
+    );
+  }
+
+  Widget _buildAnnotationHeader(
+    BuildContext context, {
+    required bool showCloseButton,
+  }) {
+    final palette = AppReaderPalette.of(context);
+    return Row(
+      children: [
+        Text(
+          '批注',
+          style: Theme.of(
+            context,
+          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
         ),
+        const SizedBox(width: 9),
+        Text(
+          '点击即可定位到原文',
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: palette.inkTertiary),
+        ),
+        const Spacer(),
+        if (showCloseButton && MediaQuery.sizeOf(context).width >= 780)
+          IconButton(
+            tooltip: context.tr('关闭'),
+            onPressed: () => Navigator.of(context).pop(),
+            icon: const Icon(Icons.close_rounded),
+          ),
       ],
     );
   }
@@ -2468,7 +2495,7 @@ class _BookDetailsDialogStateV2 extends State<_BookDetailsDialog> {
             ),
           );
         }
-        final annotations = snapshot.data ?? const [];
+        final annotations = snapshot.data ?? const <AnnotationView>[];
         if (annotations.isEmpty) {
           return Center(
             child: Column(
@@ -2485,41 +2512,179 @@ class _BookDetailsDialogStateV2 extends State<_BookDetailsDialog> {
             ),
           );
         }
-        return ListView.separated(
+        return ListView.builder(
           itemCount: annotations.length,
-          separatorBuilder: (_, _) => Divider(color: palette.line),
-          itemBuilder: (context, index) {
-            final annotation = annotations[index];
-            return ListTile(
-              dense: true,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-              leading: Icon(
-                Icons.format_quote_rounded,
-                color: _annotationColor(annotation, palette.accent),
-              ),
-              title: Text(
-                annotation.quoteText?.trim().isNotEmpty == true
-                    ? annotation.quoteText!
-                    : (annotation.noteText ?? '未命名批注'),
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-              ),
-              subtitle: annotation.noteText?.trim().isNotEmpty == true
-                  ? Text(
-                      annotation.noteText!,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    )
-                  : null,
-              trailing: const Icon(Icons.arrow_forward_rounded, size: 18),
-              onTap: () => Navigator.of(
-                context,
-              ).pop(_BookDialogResult(anchor: annotation.anchor)),
-            );
-          },
+          itemBuilder: (context, index) => _buildAnnotationTile(
+            context,
+            annotations[index],
+            index == annotations.length - 1,
+          ),
         );
       },
     );
+  }
+
+  Widget _buildChapterSection(
+    BuildContext context,
+    List<BookContentChapterSummary> chapters,
+  ) {
+    final palette = AppReaderPalette.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              '章节',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(width: 9),
+            Text(
+              '${chapters.length} 章',
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: palette.inkTertiary),
+            ),
+            const Spacer(),
+            if (MediaQuery.sizeOf(context).width >= 780)
+              IconButton(
+                tooltip: context.tr('关闭'),
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(Icons.close_rounded),
+              ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 104,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final maxPillWidth = constraints.maxWidth < 520
+                  ? constraints.maxWidth * 0.72
+                  : 250.0;
+              return SingleChildScrollView(
+                primary: false,
+                padding: EdgeInsets.zero,
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: chapters
+                      .map(
+                        (chapter) => _buildChapterPill(
+                          context,
+                          chapter,
+                          maxWidth: maxPillWidth,
+                        ),
+                      )
+                      .toList(growable: false),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildChapterPill(
+    BuildContext context,
+    BookContentChapterSummary chapter, {
+    required double maxWidth,
+  }) {
+    final palette = AppReaderPalette.of(context);
+    final radius = BorderRadius.circular(999);
+    return Tooltip(
+      message: chapter.title,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: maxWidth, minHeight: 48),
+        child: GlassSurface(
+          level: GlassSurfaceLevel.subtle,
+          borderRadius: radius,
+          blur: false,
+          shadow: false,
+          enableLiquidGlass: false,
+          repaintBoundary: false,
+          child: Material(
+            type: MaterialType.transparency,
+            child: InkWell(
+              borderRadius: radius,
+              onTap: () => Navigator.of(
+                context,
+              ).pop(_BookDialogResult(anchor: chapter.anchor)),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 13),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.subject_rounded,
+                      size: 16,
+                      color: palette.accent,
+                    ),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        chapter.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: palette.ink,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAnnotationTile(
+    BuildContext context,
+    AnnotationView annotation,
+    bool isLast,
+  ) {
+    final palette = AppReaderPalette.of(context);
+    final tile = ListTile(
+      dense: true,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+      leading: Icon(
+        Icons.format_quote_rounded,
+        color: _annotationColor(annotation, palette.accent),
+      ),
+      title: Text(
+        annotation.quoteText?.trim().isNotEmpty == true
+            ? annotation.quoteText!
+            : (annotation.noteText ?? '未命名批注'),
+        maxLines: 3,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: annotation.noteText?.trim().isNotEmpty == true
+          ? Text(
+              annotation.noteText!,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            )
+          : null,
+      trailing: const Icon(Icons.arrow_forward_rounded, size: 18),
+      onTap: () => Navigator.of(
+        context,
+      ).pop(_BookDialogResult(anchor: annotation.anchor)),
+    );
+    return isLast
+        ? tile
+        : Column(
+            children: [
+              tile,
+              Divider(color: palette.line),
+            ],
+          );
   }
 
   Widget _buildGroupSelector(BuildContext context) {

@@ -402,6 +402,8 @@ class AppLocalizations {
     '搜索你的藏书': 'Search your library',
     '搜索藏书': 'Search library',
     '刷新书架': 'Refresh library',
+    '刷新批注': 'Refresh annotations',
+    '刷新后台': 'Refresh admin',
     '搜索书名、作者或格式': 'Search by title, author, or format',
     '全部': 'All',
     '最近阅读': 'Recently read',

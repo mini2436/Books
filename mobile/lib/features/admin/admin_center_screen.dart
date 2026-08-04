@@ -93,13 +93,21 @@ class AdminCenterScreen extends ConsumerWidget {
                               ],
                             ),
                           ),
-                          IconButton(
+                          IconButton.filledTonal(
+                            tooltip: context.tr('刷新后台'),
                             onPressed: controller.isLoading
                                 ? null
                                 : () => ref
                                       .read(adminCenterControllerProvider)
                                       .refresh(),
-                            icon: const Icon(Icons.refresh),
+                            icon: controller.isLoading
+                                ? const SizedBox.square(
+                                    dimension: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.refresh_rounded),
                           ),
                         ],
                       ),

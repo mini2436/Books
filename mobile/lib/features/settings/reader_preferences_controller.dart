@@ -18,6 +18,25 @@ enum TabletPageTurnAnimation { smooth }
 
 enum ReaderColumnLayout { single, double }
 
+enum ReaderRenderingEngine { flutter, webView }
+
+bool supportsReaderRenderingEngineSelection(TargetPlatform platform) =>
+    platform == TargetPlatform.android || platform == TargetPlatform.windows;
+
+bool usesFlutterReaderOnPlatform({
+  required bool isWeb,
+  required TargetPlatform platform,
+  required ReaderRenderingEngine preference,
+}) {
+  if (isWeb ||
+      platform == TargetPlatform.linux ||
+      platform == TargetPlatform.macOS) {
+    return true;
+  }
+  return supportsReaderRenderingEngineSelection(platform) &&
+      preference == ReaderRenderingEngine.flutter;
+}
+
 extension ReaderThemePreferenceX on ReaderThemeMode {
   String get storageValue => name;
 
@@ -131,6 +150,17 @@ extension ReaderColumnLayoutX on ReaderColumnLayout {
   }
 }
 
+extension ReaderRenderingEngineX on ReaderRenderingEngine {
+  String get storageValue => name;
+
+  static ReaderRenderingEngine fromStorage(String? value) {
+    return ReaderRenderingEngine.values.firstWhere(
+      (item) => item.name == value,
+      orElse: () => ReaderRenderingEngine.flutter,
+    );
+  }
+}
+
 @immutable
 class ReaderPreferences {
   const ReaderPreferences({
@@ -141,6 +171,8 @@ class ReaderPreferences {
     required this.tabletPageTurnAnimation,
     this.columnLayout = ReaderColumnLayout.double,
     this.glassMaterialMode = GlassMaterialMode.lightweight,
+    this.renderingEngine = ReaderRenderingEngine.flutter,
+    this.pageMarginScale = 1,
   });
 
   final ReaderThemeMode themeMode;
@@ -150,6 +182,8 @@ class ReaderPreferences {
   final TabletPageTurnAnimation tabletPageTurnAnimation;
   final ReaderColumnLayout columnLayout;
   final GlassMaterialMode glassMaterialMode;
+  final ReaderRenderingEngine renderingEngine;
+  final double pageMarginScale;
 
   ReaderPreferences copyWith({
     ReaderThemeMode? themeMode,
@@ -159,6 +193,8 @@ class ReaderPreferences {
     TabletPageTurnAnimation? tabletPageTurnAnimation,
     ReaderColumnLayout? columnLayout,
     GlassMaterialMode? glassMaterialMode,
+    ReaderRenderingEngine? renderingEngine,
+    double? pageMarginScale,
   }) {
     return ReaderPreferences(
       themeMode: themeMode ?? this.themeMode,
@@ -169,6 +205,8 @@ class ReaderPreferences {
           tabletPageTurnAnimation ?? this.tabletPageTurnAnimation,
       columnLayout: columnLayout ?? this.columnLayout,
       glassMaterialMode: glassMaterialMode ?? this.glassMaterialMode,
+      renderingEngine: renderingEngine ?? this.renderingEngine,
+      pageMarginScale: pageMarginScale ?? this.pageMarginScale,
     );
   }
 }
@@ -208,6 +246,8 @@ class ReaderPreferencesController extends ChangeNotifier {
       _preferences.tabletPageTurnAnimation;
   ReaderColumnLayout get columnLayout => _preferences.columnLayout;
   GlassMaterialMode get glassMaterialMode => _preferences.glassMaterialMode;
+  ReaderRenderingEngine get renderingEngine => _preferences.renderingEngine;
+  double get pageMarginScale => _preferences.pageMarginScale;
 
   Future<void> setThemeMode(ReaderThemeMode mode) async {
     _preferences = _preferences.copyWith(themeMode: mode);
@@ -247,6 +287,20 @@ class ReaderPreferencesController extends ChangeNotifier {
 
   Future<void> setGlassMaterialMode(GlassMaterialMode value) async {
     _preferences = _preferences.copyWith(glassMaterialMode: value);
+    notifyListeners();
+    await _settingsStorage.save(_preferences);
+  }
+
+  Future<void> setRenderingEngine(ReaderRenderingEngine value) async {
+    _preferences = _preferences.copyWith(renderingEngine: value);
+    notifyListeners();
+    await _settingsStorage.save(_preferences);
+  }
+
+  Future<void> setPageMarginScale(double value) async {
+    _preferences = _preferences.copyWith(
+      pageMarginScale: value.clamp(0.5, 1.5),
+    );
     notifyListeners();
     await _settingsStorage.save(_preferences);
   }

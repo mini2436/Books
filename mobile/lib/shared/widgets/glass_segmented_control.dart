@@ -36,9 +36,7 @@ class GlassSegmentedControl<T> extends StatelessWidget {
     return GlassSurface(
       level: GlassSurfaceLevel.subtle,
       borderRadius: radius,
-      padding: platform.isPhone
-          ? const EdgeInsets.symmetric(horizontal: 4)
-          : const EdgeInsets.all(4),
+      padding: const EdgeInsets.all(4),
       blur: blur,
       child: SegmentedButton<T>(
         segments: segments,

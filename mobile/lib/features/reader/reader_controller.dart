@@ -244,6 +244,12 @@ class ReaderController extends ChangeNotifier {
             bookId,
           )) {
         await _loadOffline();
+        unawaited(
+          _refreshCachedAnnotationsFromServer(
+            serverKey: serverKey,
+            userId: userId,
+          ),
+        );
         return;
       }
       final loadedDetail = await _authController.runAuthorized(
@@ -594,6 +600,68 @@ class ReaderController extends ChangeNotifier {
       anchorJumpVersion += 1;
     }
     await openChapter(currentChapterIndex, persistProgress: false);
+  }
+
+  Future<void> _refreshCachedAnnotationsFromServer({
+    required String serverKey,
+    required int userId,
+  }) async {
+    try {
+      final results = await Future.wait([
+        _authController.runAuthorized(
+          (accessToken) => _apiClient.listAnnotations(accessToken, bookId),
+        ),
+        _offlineQueueService.loadPending(serverKey: serverKey, userId: userId),
+      ]);
+      final remote = (results[0] as List<AnnotationView>)
+          .where((item) => !item.deleted)
+          .toList(growable: false);
+      final pending = (results[1] as List<PendingOperation>)
+          .where(
+            (operation) =>
+                operation.entityType == PendingEntityType.annotation &&
+                (operation.payload['bookId'] as num?)?.toInt() == bookId,
+          )
+          .toList(growable: false);
+      final pendingIds = pending
+          .map((operation) => operation.payload['annotationId'] as num?)
+          .whereType<num>()
+          .map((id) => id.toInt())
+          .toSet();
+      final pendingDeleteIds = pending
+          .where(
+            (operation) =>
+                (operation.payload['action'] as String?)?.toUpperCase() ==
+                'DELETE',
+          )
+          .map((operation) => operation.payload['annotationId'] as num?)
+          .whereType<num>()
+          .map((id) => id.toInt())
+          .toSet();
+      final localById = {for (final item in annotations) item.id: item};
+      final merged = <int, AnnotationView>{};
+      for (final item in remote) {
+        if (pendingDeleteIds.contains(item.id)) continue;
+        final local = localById[item.id];
+        merged[item.id] = local != null && pendingIds.contains(item.id)
+            ? local
+            : item;
+      }
+      for (final local in annotations) {
+        if (!pendingDeleteIds.contains(local.id)) {
+          merged.putIfAbsent(local.id, () => local);
+        }
+      }
+      annotations = merged.values.toList()
+        ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      await _persistReaderState();
+      _authController.markServerReachable();
+      notifyListeners();
+    } catch (caught) {
+      if (caught is ApiException && caught.isNetworkFailure) {
+        _authController.markServerUnavailable();
+      }
+    }
   }
 
   Future<void> openChapter(

@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart' hide Text;
+import 'package:flutter/rendering.dart';
 import 'package:private_reader_mobile/shared/localization/localized_text.dart';
 import 'package:flutter/services.dart';
 
@@ -14,6 +15,26 @@ import '../../../shared/theme/reader_theme_extension.dart';
 import '../../../shared/theme/glass_theme.dart';
 import '../../../shared/widgets/glass_surface.dart';
 import '../models/annotation_anchor.dart';
+
+@visibleForTesting
+int readerAdjustedPagedSplit({
+  required int sourceOffset,
+  required int proposedLocalEnd,
+  required List<AnnotationTextRange> annotationRanges,
+  required bool Function(AnnotationTextRange range) fitsFreshColumn,
+}) {
+  final proposedSourceEnd = sourceOffset + proposedLocalEnd;
+  for (final range in annotationRanges) {
+    final cutsAnnotation =
+        proposedSourceEnd > range.start && proposedSourceEnd < range.end;
+    if (cutsAnnotation &&
+        range.start > sourceOffset &&
+        fitsFreshColumn(range)) {
+      return range.start - sourceOffset;
+    }
+  }
+  return proposedLocalEnd;
+}
 
 class ReaderBlocksView extends StatelessWidget {
   const ReaderBlocksView({
@@ -28,6 +49,7 @@ class ReaderBlocksView extends StatelessWidget {
     required this.onHighlight,
     required this.onAnnotate,
     required this.onOpenAnnotations,
+    this.onAnnotationPointerHandled,
     this.onRetryImages,
     this.twoColumnContent = false,
     this.pagedViewportWidth,
@@ -57,6 +79,7 @@ class ReaderBlocksView extends StatelessWidget {
   onAnnotate;
   final Future<void> Function(List<AnnotationView> annotations)
   onOpenAnnotations;
+  final ValueChanged<int>? onAnnotationPointerHandled;
   final Future<void> Function()? onRetryImages;
   final bool twoColumnContent;
   final double? pagedViewportWidth;
@@ -156,6 +179,7 @@ class ReaderBlocksView extends StatelessWidget {
                       onHighlight: onHighlight,
                       onAnnotate: onAnnotate,
                       onOpenAnnotations: onOpenAnnotations,
+                      onAnnotationPointerHandled: onAnnotationPointerHandled,
                     ),
                   ),
                 ),
@@ -180,6 +204,7 @@ class ReaderBlocksView extends StatelessWidget {
                     onHighlight: onHighlight,
                     onAnnotate: onAnnotate,
                     onOpenAnnotations: onOpenAnnotations,
+                    onAnnotationPointerHandled: onAnnotationPointerHandled,
                   ),
                 ),
               );
@@ -192,10 +217,15 @@ class ReaderBlocksView extends StatelessWidget {
               )
               .toList(growable: false);
           if (legacyBlockAnnotations.isNotEmpty) {
-            blockView = GestureDetector(
+            blockView = Listener(
               behavior: HitTestBehavior.opaque,
-              onTap: () => onOpenAnnotations(legacyBlockAnnotations),
-              child: blockView,
+              onPointerDown: (event) =>
+                  onAnnotationPointerHandled?.call(event.pointer),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => onOpenAnnotations(legacyBlockAnnotations),
+                child: blockView,
+              ),
             );
           }
           return KeyedSubtree(
@@ -361,6 +391,17 @@ class ReaderBlocksView extends StatelessWidget {
       }
 
       final blockAnnotations = _annotationsForBlock(block, orderedBlockAnchors);
+      final blockAnnotationRanges = blockAnnotations
+          .map(
+            (annotation) => ResolvedAnnotation.fromAnnotation(
+              annotation,
+              sourceText,
+              currentBlockAnchor: block.anchor,
+              orderedBlockAnchors: orderedBlockAnchors,
+            )?.range,
+          )
+          .whereType<AnnotationTextRange>()
+          .toList(growable: false);
       final highlightColor = _blockHighlightColor(blockAnnotations, palette);
       final paragraphStyle = _resolvedPagedParagraphStyle(context, palette);
       final textWidth = math.max(
@@ -421,6 +462,25 @@ class ReaderBlocksView extends StatelessWidget {
           paragraphStyle,
           textWidth,
           fittingTextHeight,
+        );
+        localEnd = readerAdjustedPagedSplit(
+          sourceOffset: sourceOffset,
+          proposedLocalEnd: localEnd,
+          annotationRanges: blockAnnotationRanges,
+          fitsFreshColumn: (range) {
+            final annotationText = sourceText.substring(
+              range.start.clamp(0, sourceText.length),
+              range.end.clamp(0, sourceText.length),
+            );
+            return _measurePagedTextHeight(
+                      context,
+                      annotationText,
+                      paragraphStyle,
+                      textWidth,
+                    ) +
+                    frameHeight <=
+                columnHeight;
+          },
         );
         if (localEnd <= 0) {
           if (currentColumn.isNotEmpty) {
@@ -527,6 +587,7 @@ class ReaderBlocksView extends StatelessWidget {
           onHighlight: onHighlight,
           onAnnotate: onAnnotate,
           onOpenAnnotations: onOpenAnnotations,
+          onAnnotationPointerHandled: onAnnotationPointerHandled,
         ),
       ),
     );
@@ -537,10 +598,15 @@ class ReaderBlocksView extends StatelessWidget {
         )
         .toList(growable: false);
     if (legacyAnnotations.isNotEmpty) {
-      fragment = GestureDetector(
+      fragment = Listener(
         behavior: HitTestBehavior.opaque,
-        onTap: () => onOpenAnnotations(legacyAnnotations),
-        child: fragment,
+        onPointerDown: (event) =>
+            onAnnotationPointerHandled?.call(event.pointer),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => onOpenAnnotations(legacyAnnotations),
+          child: fragment,
+        ),
       );
     }
     return KeyedSubtree(
@@ -1087,6 +1153,7 @@ class _SelectableBlockText extends StatelessWidget {
     required this.onHighlight,
     required this.onAnnotate,
     required this.onOpenAnnotations,
+    this.onAnnotationPointerHandled,
   });
 
   final String text;
@@ -1109,6 +1176,7 @@ class _SelectableBlockText extends StatelessWidget {
   onAnnotate;
   final Future<void> Function(List<AnnotationView> annotations)
   onOpenAnnotations;
+  final ValueChanged<int>? onAnnotationPointerHandled;
 
   @override
   Widget build(BuildContext context) {
@@ -1166,80 +1234,40 @@ class _SelectableBlockText extends StatelessWidget {
       textWidthBasis: textWidthBasis,
       annotations: resolvedAnnotations,
       onOpenAnnotations: onOpenAnnotations,
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: IgnorePointer(
-              child: CustomPaint(
-                painter: _AnnotationPainter(
-                  text: text,
-                  style: baseStyle,
-                  textDirection: textDirection,
-                  textScaler: textScaler,
-                  locale: locale,
-                  strutStyle: strutStyle,
-                  textHeightBehavior: textHeightBehavior,
-                  textWidthBasis: textWidthBasis,
-                  annotations: resolvedAnnotations,
-                  drawBackgrounds: true,
-                  drawUnderlines: false,
-                ),
-              ),
-            ),
-          ),
-          _SelectableTextWithActions(
-            text,
-            style: baseStyle,
-            textDirection: textDirection,
-            textScaler: textScaler,
-            strutStyle: strutStyle,
-            textHeightBehavior: textHeightBehavior,
-            textWidthBasis: textWidthBasis,
-            onHighlight: (selection) async {
-              final normalizedSelection = _normalizeSelection(selection);
-              if (normalizedSelection == null) {
-                return;
-              }
-              final intent = _resolveSelectionIntent(
-                normalizedSelection,
-                completeResolvedAnnotations,
-                completeText,
-              );
-              await onHighlight(intent.selection, intent.existingAnnotation);
-            },
-            onAnnotate: (selection) async {
-              final normalizedSelection = _normalizeSelection(selection);
-              if (normalizedSelection == null) {
-                return;
-              }
-              final intent = _resolveSelectionIntent(
-                normalizedSelection,
-                completeResolvedAnnotations,
-                completeText,
-              );
-              await onAnnotate(intent.selection, intent.existingAnnotation);
-            },
-          ),
-          Positioned.fill(
-            child: IgnorePointer(
-              child: CustomPaint(
-                painter: _AnnotationPainter(
-                  text: text,
-                  style: baseStyle,
-                  textDirection: textDirection,
-                  textScaler: textScaler,
-                  locale: locale,
-                  strutStyle: strutStyle,
-                  textHeightBehavior: textHeightBehavior,
-                  textWidthBasis: textWidthBasis,
-                  annotations: resolvedAnnotations,
-                  drawBackgrounds: false,
-                  drawUnderlines: true,
-                ),
-              ),
-            ),
-          ),
-        ],
+      onAnnotationPointerHandled: onAnnotationPointerHandled,
+      child: _SelectableTextWithActions(
+        text,
+        annotations: resolvedAnnotations,
+        style: baseStyle,
+        textDirection: textDirection,
+        textScaler: textScaler,
+        strutStyle: strutStyle,
+        textHeightBehavior: textHeightBehavior,
+        textWidthBasis: textWidthBasis,
+        onHighlight: (selection) async {
+          final normalizedSelection = _normalizeSelection(selection);
+          if (normalizedSelection == null) {
+            return;
+          }
+          final intent = _resolveSelectionIntent(
+            normalizedSelection,
+            completeResolvedAnnotations,
+            completeText,
+          );
+          await onHighlight(intent.selection, intent.existingAnnotation);
+        },
+        onAnnotate: (selection) async {
+          final normalizedSelection = _normalizeSelection(selection);
+          if (normalizedSelection == null) {
+            return;
+          }
+          final intent = _resolveSelectionIntent(
+            normalizedSelection,
+            completeResolvedAnnotations,
+            completeText,
+          );
+          await onAnnotate(intent.selection, intent.existingAnnotation);
+        },
       ),
     );
   }
@@ -1335,6 +1363,7 @@ class _AnnotationTapRegion extends StatefulWidget {
     required this.textWidthBasis,
     required this.annotations,
     required this.onOpenAnnotations,
+    this.onAnnotationPointerHandled,
     required this.child,
   });
 
@@ -1349,6 +1378,7 @@ class _AnnotationTapRegion extends StatefulWidget {
   final List<ResolvedAnnotation> annotations;
   final Future<void> Function(List<AnnotationView> annotations)
   onOpenAnnotations;
+  final ValueChanged<int>? onAnnotationPointerHandled;
   final Widget child;
 
   @override
@@ -1386,23 +1416,45 @@ class _AnnotationTapRegionState extends State<_AnnotationTapRegion> {
           final hadStart = _pointerStarts.remove(event.pointer) != null;
           final moved = _movedPointers.remove(event.pointer);
           if (!hadStart || moved) return;
-          _openAnnotationsAt(
+          final handled = _openAnnotationsAt(
             context,
             event.localPosition,
+            event.position,
             constraints.maxWidth,
           );
+          if (handled) {
+            widget.onAnnotationPointerHandled?.call(event.pointer);
+          }
         },
         child: widget.child,
       ),
     );
   }
 
-  void _openAnnotationsAt(
+  bool _openAnnotationsAt(
     BuildContext context,
     Offset localPosition,
+    Offset globalPosition,
     double maximumWidth,
   ) {
-    if (widget.annotations.isEmpty || !maximumWidth.isFinite) return;
+    if (widget.annotations.isEmpty || !maximumWidth.isFinite) return false;
+    final actualTextOffset = _textOffsetAt(context, globalPosition);
+    if (actualTextOffset != null) {
+      final matches = <int, AnnotationView>{};
+      for (final annotation in widget.annotations) {
+        if (actualTextOffset >= annotation.range.start &&
+            actualTextOffset <= annotation.range.end) {
+          matches[annotation.annotation.id] = annotation.annotation;
+        }
+      }
+      if (matches.isNotEmpty) {
+        unawaited(
+          widget.onOpenAnnotations(matches.values.toList(growable: false)),
+        );
+        return true;
+      }
+      return false;
+    }
     final textPainter = TextPainter(
       text: TextSpan(text: widget.text, style: widget.style),
       textAlign: TextAlign.justify,
@@ -1429,13 +1481,33 @@ class _AnnotationTapRegionState extends State<_AnnotationTapRegion> {
       unawaited(
         widget.onOpenAnnotations(matches.values.toList(growable: false)),
       );
+      return true;
     }
+    return false;
+  }
+
+  int? _textOffsetAt(BuildContext context, Offset globalPosition) {
+    RenderEditable? editable;
+    void findEditable(RenderObject child) {
+      if (child is RenderEditable) {
+        editable = child;
+        return;
+      }
+      if (editable == null) {
+        child.visitChildren(findEditable);
+      }
+    }
+
+    final renderObject = context.findRenderObject();
+    renderObject?.visitChildren(findEditable);
+    return editable?.getPositionForPoint(globalPosition).offset;
   }
 }
 
 class _SelectableTextWithActions extends StatefulWidget {
   const _SelectableTextWithActions(
     this.text, {
+    required this.annotations,
     required this.style,
     required this.textDirection,
     required this.textScaler,
@@ -1447,6 +1519,7 @@ class _SelectableTextWithActions extends StatefulWidget {
   });
 
   final String text;
+  final List<ResolvedAnnotation> annotations;
   final TextStyle style;
   final TextDirection textDirection;
   final TextScaler textScaler;
@@ -1479,8 +1552,8 @@ class _SelectableTextWithActionsState
   Widget build(BuildContext context) {
     return CompositedTransformTarget(
       link: _toolbarLink,
-      child: SelectableText(
-        widget.text,
+      child: SelectableText.rich(
+        TextSpan(children: _annotationSpans()),
         textAlign: TextAlign.justify,
         textDirection: widget.textDirection,
         textScaler: widget.textScaler,
@@ -1493,6 +1566,54 @@ class _SelectableTextWithActionsState
         // below so Android, desktop and fallback readers share one toolbar.
         contextMenuBuilder: (_, _) => const SizedBox.shrink(),
       ),
+    );
+  }
+
+  List<InlineSpan> _annotationSpans() {
+    if (widget.annotations.isEmpty || widget.text.isEmpty) {
+      return <InlineSpan>[TextSpan(text: widget.text)];
+    }
+    final boundaries = <int>{0, widget.text.length};
+    for (final annotation in widget.annotations) {
+      boundaries
+        ..add(annotation.range.start.clamp(0, widget.text.length))
+        ..add(annotation.range.end.clamp(0, widget.text.length));
+    }
+    final sorted = boundaries.toList()..sort();
+    return List<InlineSpan>.generate(sorted.length - 1, (index) {
+      final start = sorted[index];
+      final end = sorted[index + 1];
+      final matches = widget.annotations.where(
+        (annotation) =>
+            annotation.range.start < end && annotation.range.end > start,
+      );
+      final annotation = matches.isEmpty ? null : matches.first;
+      return TextSpan(
+        text: widget.text.substring(start, end),
+        style: annotation == null ? null : _annotationStyle(annotation),
+      );
+    });
+  }
+
+  TextStyle _annotationStyle(ResolvedAnnotation annotation) {
+    final colorValue = annotation.annotation.color;
+    final lineColor = colorValue == null || colorValue.isEmpty
+        ? const Color(0xFFC3924A)
+        : Color(int.parse('0xFF${colorValue.substring(1)}'));
+    final underlineStyle = annotation.anchor.underlineStyle;
+    return TextStyle(
+      backgroundColor: lineColor.withValues(alpha: 0.30),
+      decoration: underlineStyle == AnnotationUnderlineStyle.none
+          ? TextDecoration.none
+          : TextDecoration.underline,
+      decorationColor: lineColor,
+      decorationStyle: switch (underlineStyle) {
+        AnnotationUnderlineStyle.none ||
+        AnnotationUnderlineStyle.solid => TextDecorationStyle.solid,
+        AnnotationUnderlineStyle.dotted => TextDecorationStyle.dotted,
+        AnnotationUnderlineStyle.wavy => TextDecorationStyle.wavy,
+      },
+      decorationThickness: 1.35,
     );
   }
 
@@ -1646,6 +1767,8 @@ class _SelectionIntent {
   final AnnotationView? existingAnnotation;
 }
 
+// Retained as a fallback reference for the legacy canvas renderer.
+// ignore: unused_element
 class _AnnotationPainter extends CustomPainter {
   const _AnnotationPainter({
     required this.text,
@@ -1718,8 +1841,8 @@ class _AnnotationPainter extends CustomPainter {
       final highlightColor =
           annotation.annotation.color == null ||
               annotation.annotation.color!.isEmpty
-          ? const Color(0x33C3924A)
-          : lineColor.withValues(alpha: 0.22);
+          ? const Color(0x4DC3924A)
+          : lineColor.withValues(alpha: 0.30);
 
       if (drawBackgrounds) {
         final paint = Paint()..color = highlightColor;

@@ -14,6 +14,8 @@ class SettingsStorage {
       'reader.tabletPageTurnAnimation';
   static const String _columnLayoutKey = 'reader.columnLayout';
   static const String _glassMaterialModeKey = 'ui.glassMaterialMode';
+  static const String _renderingEngineKey = 'reader.renderingEngine';
+  static const String _pageMarginScaleKey = 'reader.pageMarginScale';
 
   Future<ReaderPreferences> read() async {
     final preferences = await SharedPreferences.getInstance();
@@ -35,6 +37,12 @@ class SettingsStorage {
       glassMaterialMode: GlassMaterialModeX.fromStorage(
         preferences.getString(_glassMaterialModeKey),
       ),
+      renderingEngine: ReaderRenderingEngineX.fromStorage(
+        preferences.getString(_renderingEngineKey),
+      ),
+      pageMarginScale: (preferences.getDouble(_pageMarginScaleKey) ?? 1)
+          .clamp(0.5, 1.5)
+          .toDouble(),
     );
   }
 
@@ -57,5 +65,10 @@ class SettingsStorage {
       _glassMaterialModeKey,
       value.glassMaterialMode.storageValue,
     );
+    await preferences.setString(
+      _renderingEngineKey,
+      value.renderingEngine.storageValue,
+    );
+    await preferences.setDouble(_pageMarginScaleKey, value.pageMarginScale);
   }
 }

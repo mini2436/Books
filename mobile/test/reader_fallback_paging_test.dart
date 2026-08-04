@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:private_reader_mobile/data/models/book_models.dart';
 import 'package:private_reader_mobile/data/models/sync_models.dart';
+import 'package:private_reader_mobile/features/reader/models/annotation_anchor.dart';
+import 'package:private_reader_mobile/features/reader/widgets/reader_blocks.dart';
 import 'package:private_reader_mobile/features/reader/widgets/reader_html_view.dart';
 import 'package:private_reader_mobile/features/settings/reader_preferences_controller.dart';
 import 'package:private_reader_mobile/shared/theme/reader_theme_extension.dart';
@@ -43,6 +45,75 @@ void main() {
       expect(visibleInsets, hiddenInsets);
       expect(visibleInsets, const EdgeInsets.symmetric(vertical: 12));
     }
+  });
+
+  test('wide Flutter reader caps and scales horizontal page margins', () {
+    expect(
+      readerPagedHorizontalMargin(
+        viewportWidth: 1600,
+        twoColumnContent: true,
+        scale: 1,
+      ),
+      210,
+    );
+    expect(
+      readerPagedHorizontalMargin(
+        viewportWidth: 1920,
+        twoColumnContent: true,
+        scale: 1,
+      ),
+      220,
+    );
+    expect(
+      readerPagedHorizontalMargin(
+        viewportWidth: 1920,
+        twoColumnContent: true,
+        scale: 0.5,
+      ),
+      110,
+    );
+    expect(
+      readerPagedHorizontalMargin(
+        viewportWidth: 400,
+        twoColumnContent: false,
+        scale: 1,
+      ),
+      12,
+    );
+  });
+
+  test('paged text moves a fitting annotation wholly to the next page', () {
+    const annotation = AnnotationTextRange(start: 8, end: 24);
+
+    expect(
+      readerAdjustedPagedSplit(
+        sourceOffset: 0,
+        proposedLocalEnd: 14,
+        annotationRanges: const [annotation],
+        fitsFreshColumn: (_) => true,
+      ),
+      8,
+    );
+    expect(
+      readerAdjustedPagedSplit(
+        sourceOffset: 8,
+        proposedLocalEnd: 6,
+        annotationRanges: const [annotation],
+        fitsFreshColumn: (_) => true,
+      ),
+      6,
+      reason: 'an annotation already starting this page may still be split',
+    );
+    expect(
+      readerAdjustedPagedSplit(
+        sourceOffset: 0,
+        proposedLocalEnd: 14,
+        annotationRanges: const [annotation],
+        fitsFreshColumn: (_) => false,
+      ),
+      14,
+      reason: 'annotations taller than a page must remain splittable',
+    );
   });
 
   testWidgets('tapping selectable Flutter text toggles reader chrome', (
@@ -133,6 +204,110 @@ void main() {
     debugDefaultTargetPlatformOverride = null;
   });
 
+  testWidgets('tapping a Flutter annotation does not also turn the page', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 600);
+    tester.view.devicePixelRatio = 1;
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+      debugDefaultTargetPlatformOverride = null;
+    });
+
+    const paragraphText = '点击这段批注只应打开编辑窗口';
+    const blockAnchor = 'chapter-0-annotation';
+    final annotation = AnnotationView(
+      id: 9,
+      bookId: 1,
+      quoteText: paragraphText,
+      noteText: '批注内容',
+      color: '#7A4A24',
+      anchor: const AnnotationAnchor(
+        blockAnchor: blockAnchor,
+        startOffset: 0,
+        endOffset: paragraphText.length,
+        underlineStyle: AnnotationUnderlineStyle.wavy,
+      ).serialize(),
+      version: 1,
+      deleted: false,
+      updatedAt: '',
+    );
+    var openedCount = 0;
+    var toggleCount = 0;
+    var boundaryTurnCount = 0;
+    final palette = AppReaderPalette.resolve(ReaderThemeMode.paper);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(extensions: [palette]),
+        home: Scaffold(
+          body: ReaderHtmlView(
+            chapter: const BookContentChapter(
+              bookId: 1,
+              contentModel: 'structured',
+              contentVersionId: 1,
+              hasStructuredContent: true,
+              chapterIndex: 0,
+              title: '批注点击测试',
+              anchor: 'chapter-0',
+              blocks: <BookContentBlock>[
+                BookContentBlock(
+                  blockIndex: 0,
+                  type: 'paragraph',
+                  anchor: blockAnchor,
+                  text: paragraphText,
+                  plainText: paragraphText,
+                  meta: {},
+                ),
+              ],
+            ),
+            imageResources: const {},
+            failedImageResourceIds: const {},
+            annotations: [annotation],
+            preferences: _preferences,
+            palette: palette,
+            uiVisible: false,
+            autoScrollEnabled: false,
+            autoScrollPixelsPerSecond: 0,
+            pagedMode: true,
+            dualColumn: false,
+            anchorJumpVersion: 0,
+            onHighlight: (_, _) async {},
+            onAnnotate: (_, _) async {},
+            onSaveAnnotation:
+                (
+                  _,
+                  _, {
+                  required noteText,
+                  required color,
+                  required underlineStyle,
+                }) async {},
+            onOpenAnnotations: (_) async => openedCount += 1,
+            onRetryImages: () async {},
+            onVisibleAnchorChanged: (_) {},
+            onPageBoundaryPrevious: () async => boundaryTurnCount += 1,
+            onPageBoundaryNext: () async => boundaryTurnCount += 1,
+            onToggleUi: () => toggleCount += 1,
+            onMenuRequest: () {},
+            onAutoScrollInterrupted: () {},
+            onAutoScrollBoundaryNext: () async {},
+            viewportTapZoneVersion: 0,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text(paragraphText));
+    await tester.pumpAndSettle();
+
+    expect(openedCount, 1);
+    expect(toggleCount, 0);
+    expect(boundaryTurnCount, 0);
+    debugDefaultTargetPlatformOverride = null;
+  });
+
   testWidgets('wide text chapters use a two-column spread', (tester) async {
     tester.view.physicalSize = const Size(1200, 700);
     tester.view.devicePixelRatio = 1;
@@ -218,6 +393,107 @@ void main() {
     final secondPosition = tester.getTopLeft(fragments.at(1));
     expect(secondPosition.dx, greaterThan(firstPosition.dx));
     expect(secondPosition.dy, closeTo(firstPosition.dy, 1));
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('chapter boundaries animate out and settle the next chapter', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(800, 600);
+    tester.view.devicePixelRatio = 1;
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+      debugDefaultTargetPlatformOverride = null;
+    });
+
+    final chapterIndex = ValueNotifier<int>(0);
+    addTearDown(chapterIndex.dispose);
+    final palette = AppReaderPalette.resolve(ReaderThemeMode.paper);
+    BookContentChapter chapter(int index) {
+      final text = index == 0 ? '第一章唯一一页' : '第二章第一页';
+      return BookContentChapter(
+        bookId: 1,
+        contentModel: 'structured',
+        contentVersionId: 1,
+        hasStructuredContent: true,
+        chapterIndex: index,
+        title: '第 ${index + 1} 章',
+        anchor: 'chapter-$index',
+        blocks: [
+          BookContentBlock(
+            blockIndex: 0,
+            type: 'paragraph',
+            anchor: 'chapter-$index-paragraph',
+            text: text,
+            plainText: text,
+            meta: const {},
+          ),
+        ],
+      );
+    }
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(extensions: [palette]),
+        home: Scaffold(
+          body: ValueListenableBuilder<int>(
+            valueListenable: chapterIndex,
+            builder: (context, index, _) => ReaderHtmlView(
+              chapter: chapter(index),
+              imageResources: const {},
+              failedImageResourceIds: const {},
+              annotations: const <AnnotationView>[],
+              preferences: _preferences,
+              palette: palette,
+              uiVisible: true,
+              autoScrollEnabled: false,
+              autoScrollPixelsPerSecond: 0,
+              pagedMode: true,
+              dualColumn: false,
+              anchorJumpVersion: index,
+              onHighlight: (_, _) async {},
+              onAnnotate: (_, _) async {},
+              onSaveAnnotation:
+                  (
+                    _,
+                    _, {
+                    required noteText,
+                    required color,
+                    required underlineStyle,
+                  }) async {},
+              onOpenAnnotations: (_) async {},
+              onRetryImages: () async {},
+              onVisibleAnchorChanged: (_) {},
+              onPageBoundaryPrevious: () async {},
+              onPageBoundaryNext: () async => chapterIndex.value = 1,
+              onToggleUi: () {},
+              onMenuRequest: () {},
+              onAutoScrollInterrupted: () {},
+              onAutoScrollBoundaryNext: () async {},
+              viewportTapZoneVersion: 0,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final firstChapter = find.text('第一章唯一一页');
+    final initialPosition = tester.getTopLeft(firstChapter);
+    final boundaryDrag = await tester.startGesture(const Offset(700, 300));
+    await boundaryDrag.moveBy(const Offset(-180, 0));
+    await tester.pump();
+    expect(tester.getTopLeft(firstChapter).dx, lessThan(initialPosition.dx));
+    await boundaryDrag.up();
+    await tester.pump(const Duration(milliseconds: 75));
+    expect(tester.getTopLeft(firstChapter).dx, lessThan(initialPosition.dx));
+
+    await tester.pumpAndSettle();
+    final secondChapter = find.text('第二章第一页');
+    expect(secondChapter, findsOneWidget);
+    expect(tester.getTopLeft(secondChapter).dx, closeTo(initialPosition.dx, 1));
     debugDefaultTargetPlatformOverride = null;
   });
 

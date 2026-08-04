@@ -359,6 +359,12 @@ class AppLocalizations {
     '待同步': 'Pending sync',
     '阅读设置': 'Reading settings',
     '主题、字号、字体与行高': 'Theme, text size, font, and line spacing',
+    '主题、字号、字体、行高与页面边距':
+        'Theme, text size, font, line spacing, and page margins',
+    '页面边距': 'Page margins',
+    'Flutter 原生阅读': 'Flutter native reader',
+    '当前使用 Flutter；关闭后改用 WebView': 'Using Flutter now; turn off to use WebView',
+    '当前使用 WebView；开启后改用 Flutter': 'Using WebView now; turn on to use Flutter',
     '修改密码': 'Change password',
     '验证当前密码后更新登录密码': 'Verify your current password before changing it',
     '夜间模式': 'Dark mode',

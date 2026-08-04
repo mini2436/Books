@@ -28,6 +28,20 @@ void main() {
     expect(english.tr('book（现在系统中的用户）'), 'book (user in current system)');
     expect(english.tr('导出批注'), 'Export annotations');
     expect(english.tr('液态玻璃效果'), 'Liquid Glass effects');
+    expect(english.tr('Flutter 原生阅读'), 'Flutter native reader');
+    expect(english.tr('页面边距'), 'Page margins');
+    expect(
+      english.tr('主题、字号、字体、行高与页面边距'),
+      'Theme, text size, font, line spacing, and page margins',
+    );
+    expect(
+      english.tr('当前使用 Flutter；关闭后改用 WebView'),
+      'Using Flutter now; turn off to use WebView',
+    );
+    expect(
+      english.tr('当前使用 WebView；开启后改用 Flutter'),
+      'Using WebView now; turn on to use Flutter',
+    );
     expect(
       english.tr('全局切换卡片、导航、弹窗与阅读工具栏材质'),
       'Switch cards, navigation, dialogs, and reader toolbars globally',

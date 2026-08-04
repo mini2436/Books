@@ -40,6 +40,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final isNightMode = preferences.themeMode == ReaderThemeMode.night;
     final usesLiquidGlass =
         preferences.glassMaterialMode == GlassMaterialMode.liquid;
+    final supportsRenderingEngineSelection =
+        !kIsWeb &&
+        supportsReaderRenderingEngineSelection(defaultTargetPlatform);
+    final usesFlutterReader =
+        preferences.renderingEngine == ReaderRenderingEngine.flutter;
     final appLanguage = ref
         .watch(appLocaleControllerProvider)
         .effectiveLanguage(context);
@@ -197,13 +202,42 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             _ActionTile(
               icon: Icons.tune,
               title: '阅读设置',
-              subtitle: '主题、字号、字体与行高',
+              subtitle: '主题、字号、字体、行高与页面边距',
               onTap: () => showModalBottomSheet<void>(
                 context: context,
                 isScrollControlled: true,
                 builder: (context) => const ReaderSettingsSheet(),
               ),
             ),
+            if (supportsRenderingEngineSelection)
+              _ActionTile(
+                icon: Icons.auto_stories_rounded,
+                title: 'Flutter 原生阅读',
+                subtitle: usesFlutterReader
+                    ? '当前使用 Flutter；关闭后改用 WebView'
+                    : '当前使用 WebView；开启后改用 Flutter',
+                trailing: Switch(
+                  value: usesFlutterReader,
+                  onChanged: (value) {
+                    ref
+                        .read(readerPreferencesControllerProvider)
+                        .setRenderingEngine(
+                          value
+                              ? ReaderRenderingEngine.flutter
+                              : ReaderRenderingEngine.webView,
+                        );
+                  },
+                ),
+                onTap: () {
+                  ref
+                      .read(readerPreferencesControllerProvider)
+                      .setRenderingEngine(
+                        usesFlutterReader
+                            ? ReaderRenderingEngine.webView
+                            : ReaderRenderingEngine.flutter,
+                      );
+                },
+              ),
             _ActionTile(
               icon: Icons.language_rounded,
               title: '语言',

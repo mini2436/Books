@@ -80,6 +80,32 @@ EdgeInsets readerPagedContentInsets({
 }
 
 @visibleForTesting
+double readerPagedHorizontalMargin({
+  required double viewportWidth,
+  required bool twoColumnContent,
+  required double scale,
+}) {
+  if (viewportWidth <= 0) return 0;
+  final minimumInset = viewportWidth >= 600 ? 20.0 : 12.0;
+  final referenceContentWidth = twoColumnContent
+      ? Responsive.desktopContentMaxWidth
+      : Responsive.readerMaxWidth;
+  var defaultMargin = math.max(
+    minimumInset,
+    (viewportWidth - referenceContentWidth) / 2,
+  );
+  if (twoColumnContent) {
+    // Preserve the current tablet composition, but stop desktop margins from
+    // growing forever as a maximized window becomes wider.
+    defaultMargin = math.min(defaultMargin, 220.0);
+  }
+  return (defaultMargin * scale.clamp(0.5, 1.5)).clamp(
+    minimumInset * 0.5,
+    math.max(minimumInset * 0.5, viewportWidth * 0.42),
+  );
+}
+
+@visibleForTesting
 String windowsReaderImageFileName(BookContentBlock block) {
   final resourceId = block.resourceId ?? 'missing';
   final safePrefix = resourceId
@@ -211,6 +237,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
   int _fallbackPageTurnDirection = 1;
   bool _fallbackPageEntering = false;
   bool _fallbackPageTurnInProgress = false;
+  int? _pendingFallbackBoundaryAnimationDirection;
   double? _fallbackDragStartPixels;
   double _fallbackDragDistance = 0;
   double _fallbackDragOverscroll = 0;
@@ -218,6 +245,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
   final Map<int, Timer> _fallbackPointerLongPressTimers = <int, Timer>{};
   final Set<int> _fallbackMovedPointers = <int>{};
   final Set<int> _fallbackLongPressPointers = <int>{};
+  final Set<int> _fallbackAnnotationPointers = <int>{};
   bool _fallbackAnchorRestorePending = false;
   Timer? _blankPageGuard;
   Timer? _fallbackAnchorReportTimer;
@@ -233,15 +261,18 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
   bool _embeddedFontReloadPending = false;
 
   bool get _useWindowsWebView =>
-      !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+      !kIsWeb &&
+      defaultTargetPlatform == TargetPlatform.windows &&
+      !_forceFlutterReader;
 
   bool get _useAndroidAssetFont =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
-  bool get _forceFlutterReader =>
-      kIsWeb ||
-      defaultTargetPlatform == TargetPlatform.linux ||
-      defaultTargetPlatform == TargetPlatform.macOS;
+  bool get _forceFlutterReader => usesFlutterReaderOnPlatform(
+    isWeb: kIsWeb,
+    platform: defaultTargetPlatform,
+    preference: widget.preferences.renderingEngine,
+  );
 
   bool get _allowFlutterFallback =>
       _forceFlutterReader || _useWindowsWebView || !widget.pagedMode;
@@ -371,13 +402,18 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
       unawaited(_ensureEmbeddedFontLoaded());
     }
     final chapterChanged = oldWidget.chapter.anchor != widget.chapter.anchor;
+    final fallbackBoundaryAnimationDirection = chapterChanged
+        ? _pendingFallbackBoundaryAnimationDirection
+        : null;
     final fallbackLayoutChanged =
         !chapterChanged &&
         (oldWidget.pagedMode != widget.pagedMode ||
             oldWidget.dualColumn != widget.dualColumn ||
             oldWidget.preferences.fontScale != widget.preferences.fontScale ||
             oldWidget.preferences.lineHeight != widget.preferences.lineHeight ||
-            oldWidget.preferences.fontFamily != widget.preferences.fontFamily);
+            oldWidget.preferences.fontFamily != widget.preferences.fontFamily ||
+            oldWidget.preferences.pageMarginScale !=
+                widget.preferences.pageMarginScale);
     final fallbackViewportSnapshot =
         _useFlutterFallback && fallbackLayoutChanged
         ? _captureFallbackViewportSnapshot(wasPaged: oldWidget.pagedMode)
@@ -408,7 +444,16 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
           anchorTargetChanged ||
           (_fallbackAnchorRestorePending &&
               _fallbackFocusedAnchorLayoutSettled);
-      if (fallbackViewportSnapshot != null && !anchorTargetChanged) {
+      if (fallbackBoundaryAnimationDirection != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          unawaited(
+            _completeFallbackBoundaryPageTurn(
+              fallbackBoundaryAnimationDirection,
+            ),
+          );
+          _syncFallbackAutoScroll();
+        });
+      } else if (fallbackViewportSnapshot != null && !anchorTargetChanged) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           unawaited(_restoreFallbackViewportSnapshot(fallbackViewportSnapshot));
           _syncFallbackAutoScroll();
@@ -467,24 +512,32 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
         builder: (context, constraints) {
           final twoColumnContent =
               widget.dualColumn && constraints.maxWidth >= 900;
-          final maximumReaderWidth = twoColumnContent
-              ? Responsive.desktopContentMaxWidth
-              : Responsive.readerMaxWidth;
-          final horizontalPageInset = constraints.maxWidth >= 600 ? 20.0 : 12.0;
+          final horizontalPageInset = readerPagedHorizontalMargin(
+            viewportWidth: constraints.maxWidth,
+            twoColumnContent: twoColumnContent,
+            scale: widget.preferences.pageMarginScale,
+          );
           final contentViewportWidth = math.max(
             0.0,
-            math.min(
-              constraints.maxWidth - horizontalPageInset * 2,
-              maximumReaderWidth,
-            ),
+            constraints.maxWidth - horizontalPageInset * 2,
           );
           final pageInsets = readerPagedContentInsets(
             uiVisible: widget.uiVisible,
             twoColumnContent: twoColumnContent,
           );
+          // SelectableText can consume one extra line of vertical space on
+          // Android because EditableText applies strut and glyph rounding
+          // differently from the TextPainter used for pagination. Reserve a
+          // complete line (plus paragraph spacing), otherwise the mismatch
+          // accumulates across short blocks and exposes a RenderFlex stripe.
+          final androidTextLayout =
+              !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+          final overflowGuard = androidTextLayout
+              ? math.max(48.0, 40.0 * MediaQuery.textScalerOf(context).scale(1))
+              : 8.0;
           final pagedColumnHeight = math.max(
             0.0,
-            constraints.maxHeight - pageInsets.vertical,
+            constraints.maxHeight - pageInsets.vertical - overflowGuard,
           );
           final readerContent = widget.pagedMode
               ? Center(
@@ -519,6 +572,8 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
                             onHighlight: widget.onHighlight,
                             onAnnotate: widget.onAnnotate,
                             onOpenAnnotations: widget.onOpenAnnotations,
+                            onAnnotationPointerHandled:
+                                _handleFallbackAnnotationPointer,
                             onRetryImages: widget.onRetryImages,
                             pagedViewportWidth: contentViewportWidth,
                             pagedColumnHeight: pagedColumnHeight,
@@ -531,7 +586,12 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
                 )
               : SingleChildScrollView(
                   controller: _fallbackScrollController,
-                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 28),
+                  padding: EdgeInsets.fromLTRB(
+                    20 * widget.preferences.pageMarginScale,
+                    24,
+                    20 * widget.preferences.pageMarginScale,
+                    28,
+                  ),
                   child: Center(
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(
@@ -548,6 +608,8 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
                         onHighlight: widget.onHighlight,
                         onAnnotate: widget.onAnnotate,
                         onOpenAnnotations: widget.onOpenAnnotations,
+                        onAnnotationPointerHandled:
+                            _handleFallbackAnnotationPointer,
                         onRetryImages: widget.onRetryImages,
                       ),
                     ),
@@ -1000,6 +1062,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
 
   void _handleFallbackPointerDown(PointerDownEvent event) {
     if (event.buttons != kPrimaryButton) return;
+    _fallbackAnnotationPointers.remove(event.pointer);
     _fallbackPointerStarts[event.pointer] = event.localPosition;
     _fallbackMovedPointers.remove(event.pointer);
     _fallbackLongPressPointers.remove(event.pointer);
@@ -1035,8 +1098,13 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
     _fallbackPointerLongPressTimers.remove(event.pointer)?.cancel();
     final moved = _fallbackMovedPointers.remove(event.pointer);
     final longPressed = _fallbackLongPressPointers.remove(event.pointer);
-    if (start == null || moved || longPressed) return;
+    final annotationHandled = _fallbackAnnotationPointers.remove(event.pointer);
+    if (start == null || moved || longPressed || annotationHandled) return;
     _handleFallbackViewportTap(event.localPosition.dx, viewportWidth);
+  }
+
+  void _handleFallbackAnnotationPointer(int pointer) {
+    _fallbackAnnotationPointers.add(pointer);
   }
 
   void _clearFallbackPointer(int pointer) {
@@ -1044,6 +1112,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
     _fallbackPointerLongPressTimers.remove(pointer)?.cancel();
     _fallbackMovedPointers.remove(pointer);
     _fallbackLongPressPointers.remove(pointer);
+    _fallbackAnnotationPointers.remove(pointer);
   }
 
   Future<void> _handleFallbackTapZone(String zone) async {
@@ -1176,11 +1245,7 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
         ? _fallbackPagedScrollController
         : _fallbackScrollController;
     if (!scrollController.hasClients) {
-      if (direction < 0) {
-        await widget.onPageBoundaryPrevious();
-      } else {
-        await widget.onPageBoundaryNext();
-      }
+      await _turnFallbackChapterBoundary(direction);
       return;
     }
 
@@ -1188,12 +1253,12 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
     const boundaryTolerance = 4.0;
     if (direction < 0 &&
         position.pixels <= position.minScrollExtent + boundaryTolerance) {
-      await widget.onPageBoundaryPrevious();
+      await _turnFallbackChapterBoundary(direction);
       return;
     }
     if (direction > 0 &&
         position.pixels >= position.maxScrollExtent - boundaryTolerance) {
-      await widget.onPageBoundaryNext();
+      await _turnFallbackChapterBoundary(direction);
       return;
     }
 
@@ -1236,6 +1301,86 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
       }
     }
     _reportFallbackVisibleAnchor();
+  }
+
+  Future<void> _turnFallbackChapterBoundary(
+    int direction, {
+    double initialProgress = 0,
+  }) async {
+    if (_fallbackPageTurnInProgress) return;
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    final onBoundary = direction < 0
+        ? widget.onPageBoundaryPrevious
+        : widget.onPageBoundaryNext;
+    if (reduceMotion || !widget.pagedMode) {
+      await onBoundary();
+      return;
+    }
+
+    final sourceChapterAnchor = widget.chapter.anchor;
+    _fallbackPageTurnInProgress = true;
+    _fallbackPageTurnDirection = direction;
+    _fallbackPageEntering = false;
+    try {
+      await _fallbackPageTurnController.forward(
+        from: initialProgress.clamp(0.0, 0.85),
+      );
+      if (!mounted) return;
+      _pendingFallbackBoundaryAnimationDirection = direction;
+      await onBoundary();
+      if (!mounted) return;
+      WidgetsBinding.instance.scheduleFrame();
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return;
+      if (_pendingFallbackBoundaryAnimationDirection == direction &&
+          widget.chapter.anchor == sourceChapterAnchor) {
+        _resetFallbackPageTurnAnimation();
+      }
+    } catch (_) {
+      _resetFallbackPageTurnAnimation();
+      rethrow;
+    }
+  }
+
+  Future<void> _completeFallbackBoundaryPageTurn(int direction) async {
+    if (!mounted ||
+        _pendingFallbackBoundaryAnimationDirection != direction ||
+        !_useFlutterFallback ||
+        !widget.pagedMode) {
+      _resetFallbackPageTurnAnimation();
+      return;
+    }
+    await _restoreFallbackFocusedAnchor(force: true);
+    if (!mounted || _pendingFallbackBoundaryAnimationDirection != direction) {
+      return;
+    }
+    _pendingFallbackBoundaryAnimationDirection = null;
+    setState(() {
+      _fallbackPageTurnDirection = direction;
+      _fallbackPageEntering = true;
+      _fallbackPageTurnController.value = 0;
+    });
+    try {
+      await _fallbackPageTurnController.forward();
+    } finally {
+      _resetFallbackPageTurnAnimation();
+    }
+    _reportFallbackVisibleAnchor();
+  }
+
+  void _resetFallbackPageTurnAnimation() {
+    _pendingFallbackBoundaryAnimationDirection = null;
+    _fallbackPageTurnInProgress = false;
+    if (!mounted) {
+      _fallbackPageEntering = false;
+      _fallbackPageTurnController.value = 0;
+      return;
+    }
+    setState(() {
+      _fallbackPageEntering = false;
+      _fallbackPageTurnController.value = 0;
+    });
   }
 
   double _fallbackPageHorizontalOffset(double viewportWidth) {
@@ -1386,6 +1531,19 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
         (unclampedTarget < position.minScrollExtent ||
             unclampedTarget > position.maxScrollExtent);
 
+    if (crossedChapterBoundary) {
+      final initialProgress =
+          (_fallbackDragOverscroll.abs() /
+                  math.max(1.0, position.viewportDimension))
+              .clamp(0.0, 0.35);
+      _resetFallbackHorizontalDrag();
+      await _turnFallbackChapterBoundary(
+        direction,
+        initialProgress: initialProgress,
+      );
+      return;
+    }
+
     _fallbackPageTurnInProgress = true;
     if (mounted) {
       setState(() => _fallbackDragOverscroll = 0);
@@ -1407,13 +1565,6 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
       _resetFallbackHorizontalDrag();
     }
     _reportFallbackVisibleAnchor();
-    if (crossedChapterBoundary) {
-      if (direction < 0) {
-        await widget.onPageBoundaryPrevious();
-      } else {
-        await widget.onPageBoundaryNext();
-      }
-    }
   }
 
   void _resetFallbackHorizontalDrag() {

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:private_reader_mobile/data/services/settings_storage.dart';
 import 'package:private_reader_mobile/features/settings/reader_preferences_controller.dart';
@@ -107,5 +108,106 @@ void main() {
 
     final restored = await SettingsStorage().read();
     expect(restored.columnLayout, ReaderColumnLayout.single);
+  });
+
+  test('reader rendering engine defaults to Flutter and persists', () async {
+    SharedPreferences.setMockInitialValues({});
+
+    final defaults = await SettingsStorage().read();
+    expect(defaults.renderingEngine, ReaderRenderingEngine.flutter);
+
+    await SettingsStorage().save(
+      const ReaderPreferences(
+        themeMode: ReaderThemeMode.paper,
+        fontScale: 1,
+        lineHeight: 1.8,
+        fontFamily: ReaderFontFamilyPreference.system,
+        tabletPageTurnAnimation: TabletPageTurnAnimation.smooth,
+        renderingEngine: ReaderRenderingEngine.webView,
+      ),
+    );
+
+    final restored = await SettingsStorage().read();
+    expect(restored.renderingEngine, ReaderRenderingEngine.webView);
+  });
+
+  test('reader page margin scale defaults safely and persists', () async {
+    SharedPreferences.setMockInitialValues({});
+
+    final defaults = await SettingsStorage().read();
+    expect(defaults.pageMarginScale, 1);
+
+    await SettingsStorage().save(
+      const ReaderPreferences(
+        themeMode: ReaderThemeMode.paper,
+        fontScale: 1,
+        lineHeight: 1.8,
+        fontFamily: ReaderFontFamilyPreference.system,
+        tabletPageTurnAnimation: TabletPageTurnAnimation.smooth,
+        pageMarginScale: 0.75,
+      ),
+    );
+
+    final restored = await SettingsStorage().read();
+    expect(restored.pageMarginScale, 0.75);
+  });
+
+  test('reader rendering engine only switches Android and Windows', () {
+    expect(
+      usesFlutterReaderOnPlatform(
+        isWeb: false,
+        platform: TargetPlatform.android,
+        preference: ReaderRenderingEngine.flutter,
+      ),
+      isTrue,
+    );
+    expect(
+      usesFlutterReaderOnPlatform(
+        isWeb: false,
+        platform: TargetPlatform.android,
+        preference: ReaderRenderingEngine.webView,
+      ),
+      isFalse,
+    );
+    expect(
+      usesFlutterReaderOnPlatform(
+        isWeb: false,
+        platform: TargetPlatform.windows,
+        preference: ReaderRenderingEngine.flutter,
+      ),
+      isTrue,
+    );
+    expect(
+      usesFlutterReaderOnPlatform(
+        isWeb: false,
+        platform: TargetPlatform.windows,
+        preference: ReaderRenderingEngine.webView,
+      ),
+      isFalse,
+    );
+    expect(
+      usesFlutterReaderOnPlatform(
+        isWeb: false,
+        platform: TargetPlatform.iOS,
+        preference: ReaderRenderingEngine.flutter,
+      ),
+      isFalse,
+    );
+    expect(
+      usesFlutterReaderOnPlatform(
+        isWeb: false,
+        platform: TargetPlatform.macOS,
+        preference: ReaderRenderingEngine.webView,
+      ),
+      isTrue,
+    );
+    expect(
+      usesFlutterReaderOnPlatform(
+        isWeb: true,
+        platform: TargetPlatform.android,
+        preference: ReaderRenderingEngine.webView,
+      ),
+      isTrue,
+    );
   });
 }

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' hide Text;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:private_reader_mobile/shared/localization/localized_text.dart';
@@ -44,6 +45,11 @@ class ReaderSettingsPanelContent extends ConsumerWidget {
     final controller = ref.watch(readerPreferencesControllerProvider);
     final preferences = controller.value;
     final palette = AppReaderPalette.of(context);
+    final usesFlutterReader = usesFlutterReaderOnPlatform(
+      isWeb: kIsWeb,
+      platform: defaultTargetPlatform,
+      preference: preferences.renderingEngine,
+    );
     final sectionGap = compact ? 14.0 : 18.0;
     final titleGap = compact ? 12.0 : 16.0;
     final themeSpacing = compact ? 10.0 : 12.0;
@@ -78,6 +84,23 @@ class ReaderSettingsPanelContent extends ConsumerWidget {
             context,
           ).textTheme.bodySmall?.copyWith(color: palette.inkSecondary),
         ),
+        if (usesFlutterReader) ...[
+          SizedBox(height: sectionGap),
+          _SectionTitle(title: '页面边距', bottomSpacing: compact ? 8 : 12),
+          Slider(
+            value: preferences.pageMarginScale,
+            min: 0.5,
+            max: 1.5,
+            divisions: 20,
+            onChanged: (value) => controller.setPageMarginScale(value),
+          ),
+          Text(
+            '${(preferences.pageMarginScale * 100).round()}%',
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: palette.inkSecondary),
+          ),
+        ],
         SizedBox(height: sectionGap),
         _SectionTitle(title: '字体', bottomSpacing: compact ? 8 : 12),
         SingleChildScrollView(

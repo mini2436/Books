@@ -2405,6 +2405,9 @@ class _BookDetailsDialogStateV2 extends State<_BookDetailsDialog> {
         final chapters = chapterSnapshot.hasData
             ? chapterSnapshot.data!
             : const <BookContentChapterSummary>[];
+        if (MediaQuery.sizeOf(context).width < 780) {
+          return _buildCompactWorkspace(context, chapters);
+        }
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -2420,30 +2423,143 @@ class _BookDetailsDialogStateV2 extends State<_BookDetailsDialog> {
               _buildGroupSelector(context),
             ],
             const SizedBox(height: 18),
-            Row(
-              children: [
-                TextButton.icon(
-                  onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(Icons.close_rounded),
-                  label: const Text('关闭'),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(50),
-                    ),
-                    onPressed: () =>
-                        Navigator.of(context).pop(const _BookDialogResult()),
-                    icon: const Icon(Icons.menu_book_rounded),
-                    label: const Text('开始阅读'),
-                  ),
-                ),
-              ],
-            ),
+            _buildWorkspaceActions(context),
           ],
         );
       },
+    );
+  }
+
+  Widget _buildCompactWorkspace(
+    BuildContext context,
+    List<BookContentChapterSummary> chapters,
+  ) {
+    final palette = AppReaderPalette.of(context);
+    return Column(
+      children: [
+        Expanded(
+          child: NestedScrollView(
+            headerSliverBuilder: (context, innerBoxIsScrolled) => [
+              if (chapters.isNotEmpty)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 18),
+                    child: _buildChapterSection(context, chapters),
+                  ),
+                ),
+            ],
+            body: FutureBuilder<List<AnnotationView>>(
+              future: _annotations,
+              builder: (context, snapshot) {
+                final annotations = snapshot.data ?? const <AnnotationView>[];
+                return CustomScrollView(
+                  key: const PageStorageKey('compact-book-annotations'),
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildAnnotationHeader(
+                            context,
+                            showCloseButton: chapters.isEmpty,
+                          ),
+                          const SizedBox(height: 10),
+                        ],
+                      ),
+                    ),
+                    if (snapshot.connectionState == ConnectionState.waiting)
+                      const SliverToBoxAdapter(
+                        child: SizedBox(
+                          height: 120,
+                          child: Center(child: CircularProgressIndicator()),
+                        ),
+                      )
+                    else if (snapshot.hasError)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 28),
+                          child: Text(
+                            '批注加载失败：${snapshot.error}',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: palette.inkSecondary),
+                          ),
+                        ),
+                      )
+                    else if (annotations.isEmpty)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 28),
+                          child: Column(
+                            children: [
+                              Icon(
+                                Icons.format_quote_rounded,
+                                size: 34,
+                                color: palette.inkTertiary,
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                '这本书还没有批注',
+                                style: TextStyle(color: palette.inkSecondary),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    else
+                      SliverList(
+                        delegate: SliverChildBuilderDelegate(
+                          (context, index) => _buildAnnotationTile(
+                            context,
+                            annotations[index],
+                            index == annotations.length - 1,
+                          ),
+                          childCount: annotations.length,
+                        ),
+                      ),
+                    if (!widget.controller.isOfflineGuest)
+                      SliverToBoxAdapter(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Divider(height: 28, color: palette.line),
+                            _buildGroupSelector(context),
+                          ],
+                        ),
+                      ),
+                    const SliverToBoxAdapter(child: SizedBox(height: 12)),
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _buildWorkspaceActions(context),
+      ],
+    );
+  }
+
+  Widget _buildWorkspaceActions(BuildContext context) {
+    return Row(
+      children: [
+        TextButton.icon(
+          onPressed: () => Navigator.of(context).pop(),
+          icon: const Icon(Icons.close_rounded),
+          label: const Text('关闭'),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: FilledButton.icon(
+            style: FilledButton.styleFrom(
+              minimumSize: const Size.fromHeight(50),
+            ),
+            onPressed: () =>
+                Navigator.of(context).pop(const _BookDialogResult()),
+            icon: const Icon(Icons.menu_book_rounded),
+            label: const Text('开始阅读'),
+          ),
+        ),
+      ],
     );
   }
 
@@ -2529,6 +2645,7 @@ class _BookDetailsDialogStateV2 extends State<_BookDetailsDialog> {
     List<BookContentChapterSummary> chapters,
   ) {
     final palette = AppReaderPalette.of(context);
+    final compact = MediaQuery.sizeOf(context).width < 780;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2558,7 +2675,7 @@ class _BookDetailsDialogStateV2 extends State<_BookDetailsDialog> {
         ),
         const SizedBox(height: 10),
         SizedBox(
-          height: 104,
+          height: compact ? 148 : 104,
           child: LayoutBuilder(
             builder: (context, constraints) {
               final maxPillWidth = constraints.maxWidth < 520

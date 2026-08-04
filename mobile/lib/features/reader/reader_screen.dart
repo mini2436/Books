@@ -246,6 +246,9 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
         : chapter == null
         ? const Center(child: CircularProgressIndicator())
         : ReaderHtmlView(
+            key: ValueKey(
+              'reader-rendering-${preferences.renderingEngine.name}',
+            ),
             chapter: chapter,
             imageResources: controller.imageResourceBytes,
             failedImageResourceIds: controller.failedImageResourceIds,
@@ -660,6 +663,58 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
         ? null
         : AnnotationAnchor.parse(annotation.anchor);
     final palette = AppReaderPalette.of(context);
+    final floating = MediaQuery.sizeOf(context).width >= 700;
+    Widget buildComposer() => _AnnotationComposerSheet(
+      floating: floating,
+      selectedText: selection?.selectedText ?? annotation?.quoteText ?? '',
+      annotation: annotation,
+      defaultColor: _defaultAnnotationColor(
+        ref.read(readerPreferencesControllerProvider).themeMode,
+      ),
+      initialUnderlineStyle:
+          existingAnchor?.underlineStyle ?? AnnotationUnderlineStyle.none,
+      onSubmit:
+          ({required noteText, required color, required underlineStyle}) async {
+            if (annotation == null) {
+              if (selection == null) {
+                return;
+              }
+              await controller.addAnnotation(
+                selection: selection,
+                noteText: noteText,
+                color: color,
+                underlineStyle: underlineStyle,
+              );
+            } else {
+              await controller.updateAnnotation(
+                annotation: annotation,
+                noteText: noteText,
+                color: color,
+                selection: selection,
+                underlineStyle: underlineStyle,
+              );
+            }
+          },
+    );
+    if (floating) {
+      await showDialog<void>(
+        context: context,
+        barrierColor: palette.mask,
+        builder: (context) => Dialog(
+          backgroundColor: Colors.transparent,
+          shadowColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 32,
+            vertical: 28,
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 640),
+            child: buildComposer(),
+          ),
+        ),
+      );
+      return;
+    }
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -669,41 +724,7 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (context) => _AnnotationComposerSheet(
-        selectedText: selection?.selectedText ?? annotation?.quoteText ?? '',
-        annotation: annotation,
-        defaultColor: _defaultAnnotationColor(
-          ref.read(readerPreferencesControllerProvider).themeMode,
-        ),
-        initialUnderlineStyle:
-            existingAnchor?.underlineStyle ?? AnnotationUnderlineStyle.none,
-        onSubmit:
-            ({
-              required noteText,
-              required color,
-              required underlineStyle,
-            }) async {
-              if (annotation == null) {
-                if (selection == null) {
-                  return;
-                }
-                await controller.addAnnotation(
-                  selection: selection,
-                  noteText: noteText,
-                  color: color,
-                  underlineStyle: underlineStyle,
-                );
-              } else {
-                await controller.updateAnnotation(
-                  annotation: annotation,
-                  noteText: noteText,
-                  color: color,
-                  selection: selection,
-                  underlineStyle: underlineStyle,
-                );
-              }
-            },
-      ),
+      builder: (context) => buildComposer(),
     );
   }
 
@@ -799,6 +820,7 @@ const List<String> _annotationColors = [
 
 class _AnnotationComposerSheet extends StatefulWidget {
   const _AnnotationComposerSheet({
+    required this.floating,
     required this.selectedText,
     required this.defaultColor,
     required this.initialUnderlineStyle,
@@ -806,6 +828,7 @@ class _AnnotationComposerSheet extends StatefulWidget {
     this.annotation,
   });
 
+  final bool floating;
   final String selectedText;
   final String defaultColor;
   final AnnotationUnderlineStyle initialUnderlineStyle;
@@ -851,174 +874,176 @@ class _AnnotationComposerSheetState extends State<_AnnotationComposerSheet> {
     final maxSheetHeight =
         (mediaQuery.size.height - mediaQuery.padding.top) * 0.88;
 
-    return GlassBottomSheet(
-      child: SafeArea(
-        top: false,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: maxSheetHeight),
-          child: Padding(
-            padding: EdgeInsets.only(
-              left: 20,
-              right: 20,
-              top: 20,
-              bottom:
-                  mediaQuery.viewInsets.bottom + mediaQuery.padding.bottom + 20,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.max,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  widget.annotation == null ? '新增批注' : '编辑批注',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 14),
-                Flexible(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: palette.backgroundSoft,
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: Text(widget.selectedText),
+    final content = SafeArea(
+      top: false,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: widget.floating
+              ? maxSheetHeight.clamp(0, 700)
+              : maxSheetHeight,
+        ),
+        child: Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 20,
+            bottom:
+                mediaQuery.viewInsets.bottom + mediaQuery.padding.bottom + 20,
+          ),
+          child: Column(
+            mainAxisSize: widget.floating ? MainAxisSize.min : MainAxisSize.max,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                widget.annotation == null ? '新增批注' : '编辑批注',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 14),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: palette.backgroundSoft,
+                          borderRadius: BorderRadius.circular(14),
                         ),
-                        const SizedBox(height: 14),
-                        TextField(
-                          controller: _noteController,
-                          minLines: 3,
-                          maxLines: 6,
-                          decoration: InputDecoration(
-                            labelText: context.tr('批注内容'),
-                            alignLabelWithHint: true,
-                          ),
+                        child: Text(widget.selectedText),
+                      ),
+                      const SizedBox(height: 14),
+                      TextField(
+                        controller: _noteController,
+                        minLines: 3,
+                        maxLines: 6,
+                        decoration: InputDecoration(
+                          labelText: context.tr('批注内容'),
+                          alignLabelWithHint: true,
                         ),
-                        const SizedBox(height: 16),
-                        Text(
-                          '颜色',
-                          style: Theme.of(context).textTheme.titleSmall
-                              ?.copyWith(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        '颜色',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
                         ),
-                        const SizedBox(height: 10),
-                        SizedBox(
-                          height: 44,
-                          child: ListView.separated(
-                            scrollDirection: Axis.horizontal,
-                            itemBuilder: (context, index) {
-                              final color = _annotationColors[index];
-                              final selected =
-                                  color.toLowerCase() ==
-                                  _selectedColor.toLowerCase();
-                              return GestureDetector(
-                                onTap: () =>
-                                    setState(() => _selectedColor = color),
-                                child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 160),
-                                  width: 36,
-                                  height: 36,
-                                  decoration: BoxDecoration(
-                                    color: Color(
-                                      int.parse('0xFF${color.substring(1)}'),
-                                    ),
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: selected
-                                          ? Theme.of(
-                                              context,
-                                            ).colorScheme.primary
-                                          : Colors.transparent,
-                                      width: 2.5,
-                                    ),
+                      ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        height: 44,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemBuilder: (context, index) {
+                            final color = _annotationColors[index];
+                            final selected =
+                                color.toLowerCase() ==
+                                _selectedColor.toLowerCase();
+                            return GestureDetector(
+                              onTap: () =>
+                                  setState(() => _selectedColor = color),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 160),
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: Color(
+                                    int.parse('0xFF${color.substring(1)}'),
+                                  ),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: selected
+                                        ? Theme.of(context).colorScheme.primary
+                                        : Colors.transparent,
+                                    width: 2.5,
                                   ),
                                 ),
-                              );
-                            },
-                            separatorBuilder: (_, _) =>
-                                const SizedBox(width: 10),
-                            itemCount: _annotationColors.length,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          '下划线',
-                          style: Theme.of(context).textTheme.titleSmall
-                              ?.copyWith(fontWeight: FontWeight.w700),
-                        ),
-                        const SizedBox(height: 10),
-                        SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child:
-                              GlassSegmentedControl<AnnotationUnderlineStyle>(
-                                showSelectedIcon: false,
-                                segments: AnnotationUnderlineStyle.values
-                                    .map(
-                                      (style) => ButtonSegment(
-                                        value: style,
-                                        label: Text(switch (style) {
-                                          AnnotationUnderlineStyle.none =>
-                                            '无线条',
-                                          AnnotationUnderlineStyle.solid =>
-                                            '直线',
-                                          AnnotationUnderlineStyle.dotted =>
-                                            '点线',
-                                          AnnotationUnderlineStyle.wavy =>
-                                            '波浪线',
-                                        }),
-                                      ),
-                                    )
-                                    .toList(),
-                                selected: {_underlineStyle},
-                                onSelectionChanged: (selection) {
-                                  setState(() {
-                                    _underlineStyle = selection.first;
-                                  });
-                                },
                               ),
+                            );
+                          },
+                          separatorBuilder: (_, _) => const SizedBox(width: 10),
+                          itemCount: _annotationColors.length,
                         ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 18),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: _isSaving
-                            ? null
-                            : () => Navigator.of(context).pop(),
-                        child: const Text('取消'),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: FilledButton(
-                        onPressed: _isSaving ? null : _submit,
-                        child: _isSaving
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
+                      const SizedBox(height: 16),
+                      Text(
+                        '下划线',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: GlassSegmentedControl<AnnotationUnderlineStyle>(
+                          showSelectedIcon: false,
+                          segments: AnnotationUnderlineStyle.values
+                              .map(
+                                (style) => ButtonSegment(
+                                  value: style,
+                                  label: Text(switch (style) {
+                                    AnnotationUnderlineStyle.none => '无线条',
+                                    AnnotationUnderlineStyle.solid => '直线',
+                                    AnnotationUnderlineStyle.dotted => '点线',
+                                    AnnotationUnderlineStyle.wavy => '波浪线',
+                                  }),
                                 ),
                               )
-                            : Text(widget.annotation == null ? '保存批注' : '更新批注'),
+                              .toList(),
+                          selected: {_underlineStyle},
+                          onSelectionChanged: (selection) {
+                            setState(() {
+                              _underlineStyle = selection.first;
+                            });
+                          },
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _isSaving
+                          ? null
+                          : () => Navigator.of(context).pop(),
+                      child: const Text('取消'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: _isSaving ? null : _submit,
+                      child: _isSaving
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Text(widget.annotation == null ? '保存批注' : '更新批注'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
       ),
     );
+    if (widget.floating) {
+      return GlassSurface(
+        level: GlassSurfaceLevel.floating,
+        borderRadius: BorderRadius.circular(28),
+        child: content,
+      );
+    }
+    return GlassBottomSheet(child: content);
   }
 
   Future<void> _submit() async {
@@ -1536,58 +1561,81 @@ class _MobileReaderBottomBar extends StatelessWidget {
       child: GlassSurface(
         level: GlassSurfaceLevel.floating,
         borderRadius: BorderRadius.circular(22),
-        padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
+        padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final textScale = MediaQuery.textScalerOf(context).scale(1);
+            final stackActions = constraints.maxWidth < 350 || textScale > 1.2;
+            final progressDetails = Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '阅读进度 ${progress.toStringAsFixed(1)}%',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 6),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: LinearProgressIndicator(
+                    value: progress / 100,
+                    minHeight: 6,
+                    backgroundColor: palette.backgroundSoft,
+                    color: palette.accent,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  chapterCount <= 0
+                      ? isPdf
+                            ? controller.currentReadingLabel
+                            : '正在计算章节进度'
+                      : '第 $chapterNumber / $chapterCount 章',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: palette.inkSecondary),
+                ),
+              ],
+            );
+            final actions = Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: isPdf
+                      ? controller.previousPdfPage
+                      : controller.previousChapter,
+                  child: Text(isPdf ? '上一页' : '上一章'),
+                ),
+                TextButton(
+                  onPressed: isPdf
+                      ? controller.nextPdfPage
+                      : controller.nextChapter,
+                  child: Text(isPdf ? '下一页' : '下一章'),
+                ),
+              ],
+            );
+            if (stackActions) {
+              return Column(
                 mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(
-                    '阅读进度 ${progress.toStringAsFixed(1)}%',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(999),
-                    child: LinearProgressIndicator(
-                      value: progress / 100,
-                      minHeight: 6,
-                      backgroundColor: palette.backgroundSoft,
-                      color: palette.accent,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    chapterCount <= 0
-                        ? isPdf
-                              ? controller.currentReadingLabel
-                              : '正在计算章节进度'
-                        : '第 $chapterNumber / $chapterCount 章',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: palette.inkSecondary,
-                    ),
-                  ),
+                  progressDetails,
+                  const SizedBox(height: 2),
+                  Align(alignment: Alignment.centerRight, child: actions),
                 ],
-              ),
-            ),
-            const SizedBox(width: 14),
-            TextButton(
-              onPressed: isPdf
-                  ? controller.previousPdfPage
-                  : controller.previousChapter,
-              child: Text(isPdf ? '上一页' : '上一章'),
-            ),
-            TextButton(
-              onPressed: isPdf
-                  ? controller.nextPdfPage
-                  : controller.nextChapter,
-              child: Text(isPdf ? '下一页' : '下一章'),
-            ),
-          ],
+              );
+            }
+            return Row(
+              children: [
+                Expanded(child: progressDetails),
+                const SizedBox(width: 10),
+                actions,
+              ],
+            );
+          },
         ),
       ),
     );

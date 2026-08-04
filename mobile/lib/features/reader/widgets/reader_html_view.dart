@@ -2,8 +2,10 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -212,6 +214,10 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
   double? _fallbackDragStartPixels;
   double _fallbackDragDistance = 0;
   double _fallbackDragOverscroll = 0;
+  final Map<int, Offset> _fallbackPointerStarts = <int, Offset>{};
+  final Map<int, Timer> _fallbackPointerLongPressTimers = <int, Timer>{};
+  final Set<int> _fallbackMovedPointers = <int>{};
+  final Set<int> _fallbackLongPressPointers = <int>{};
   bool _fallbackAnchorRestorePending = false;
   Timer? _blankPageGuard;
   Timer? _fallbackAnchorReportTimer;
@@ -547,35 +553,39 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
                     ),
                   ),
                 );
-          return GestureDetector(
+          return Listener(
             key: _fallbackViewportKey,
             behavior: HitTestBehavior.translucent,
-            onTapUp: (details) => _handleFallbackViewportTap(
-              details.localPosition.dx,
-              constraints.maxWidth,
-            ),
-            onHorizontalDragStart: widget.pagedMode
-                ? _handleFallbackHorizontalDragStart
-                : null,
-            onHorizontalDragUpdate: widget.pagedMode
-                ? _handleFallbackHorizontalDragUpdate
-                : null,
-            onHorizontalDragEnd: widget.pagedMode
-                ? (details) =>
-                      unawaited(_handleFallbackHorizontalDragEnd(details))
-                : null,
-            onHorizontalDragCancel: widget.pagedMode
-                ? () => unawaited(_cancelFallbackHorizontalDrag())
-                : null,
-            child: NotificationListener<UserScrollNotification>(
-              onNotification: (notification) {
-                if (widget.autoScrollEnabled &&
-                    notification.direction != ScrollDirection.idle) {
-                  _stopFallbackAutoScroll(notify: true);
-                }
-                return false;
-              },
-              child: readerContent,
+            onPointerDown: _handleFallbackPointerDown,
+            onPointerMove: _handleFallbackPointerMove,
+            onPointerCancel: _handleFallbackPointerCancel,
+            onPointerUp: (event) =>
+                _handleFallbackPointerUp(event, constraints.maxWidth),
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onHorizontalDragStart: widget.pagedMode
+                  ? _handleFallbackHorizontalDragStart
+                  : null,
+              onHorizontalDragUpdate: widget.pagedMode
+                  ? _handleFallbackHorizontalDragUpdate
+                  : null,
+              onHorizontalDragEnd: widget.pagedMode
+                  ? (details) =>
+                        unawaited(_handleFallbackHorizontalDragEnd(details))
+                  : null,
+              onHorizontalDragCancel: widget.pagedMode
+                  ? () => unawaited(_cancelFallbackHorizontalDrag())
+                  : null,
+              child: NotificationListener<UserScrollNotification>(
+                onNotification: (notification) {
+                  if (widget.autoScrollEnabled &&
+                      notification.direction != ScrollDirection.idle) {
+                    _stopFallbackAutoScroll(notify: true);
+                  }
+                  return false;
+                },
+                child: readerContent,
+              ),
             ),
           );
         },
@@ -703,6 +713,9 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
     _fallbackAnchorReportTimer?.cancel();
     _fallbackAutoScrollTimer?.cancel();
     _webAutoScrollTimer?.cancel();
+    for (final timer in _fallbackPointerLongPressTimers.values) {
+      timer.cancel();
+    }
     unawaited(_windowsWebMessageSubscription?.cancel());
     unawaited(_windowsLoadingSubscription?.cancel());
     unawaited(_disposeWindowsWebView());
@@ -983,6 +996,54 @@ class _ReaderHtmlViewState extends State<ReaderHtmlView>
       return;
     }
     unawaited(_handleFallbackTapZone('center'));
+  }
+
+  void _handleFallbackPointerDown(PointerDownEvent event) {
+    if (event.buttons != kPrimaryButton) return;
+    _fallbackPointerStarts[event.pointer] = event.localPosition;
+    _fallbackMovedPointers.remove(event.pointer);
+    _fallbackLongPressPointers.remove(event.pointer);
+    _fallbackPointerLongPressTimers.remove(event.pointer)?.cancel();
+    _fallbackPointerLongPressTimers[event.pointer] = Timer(
+      kLongPressTimeout,
+      () {
+        _fallbackPointerLongPressTimers.remove(event.pointer);
+        _fallbackLongPressPointers.add(event.pointer);
+      },
+    );
+  }
+
+  void _handleFallbackPointerMove(PointerMoveEvent event) {
+    final start = _fallbackPointerStarts[event.pointer];
+    if (start == null) return;
+    final tolerance = event.kind == ui.PointerDeviceKind.mouse
+        ? 4.0
+        : kTouchSlop;
+    if ((event.localPosition - start).distance > tolerance) {
+      if (_fallbackMovedPointers.add(event.pointer)) {
+        _fallbackPointerLongPressTimers.remove(event.pointer)?.cancel();
+      }
+    }
+  }
+
+  void _handleFallbackPointerCancel(PointerCancelEvent event) {
+    _clearFallbackPointer(event.pointer);
+  }
+
+  void _handleFallbackPointerUp(PointerUpEvent event, double viewportWidth) {
+    final start = _fallbackPointerStarts.remove(event.pointer);
+    _fallbackPointerLongPressTimers.remove(event.pointer)?.cancel();
+    final moved = _fallbackMovedPointers.remove(event.pointer);
+    final longPressed = _fallbackLongPressPointers.remove(event.pointer);
+    if (start == null || moved || longPressed) return;
+    _handleFallbackViewportTap(event.localPosition.dx, viewportWidth);
+  }
+
+  void _clearFallbackPointer(int pointer) {
+    _fallbackPointerStarts.remove(pointer);
+    _fallbackPointerLongPressTimers.remove(pointer)?.cancel();
+    _fallbackMovedPointers.remove(pointer);
+    _fallbackLongPressPointers.remove(pointer);
   }
 
   Future<void> _handleFallbackTapZone(String zone) async {

@@ -824,6 +824,56 @@ class _BookManagementSection extends StatelessWidget {
                   ),
                   if (controller.hasBookSelection)
                     FilledButton.tonalIcon(
+                      onPressed:
+                          controller.isWorking ||
+                              controller.grantableUsers.isEmpty
+                          ? null
+                          : () async {
+                              final userId = await showDialog<int>(
+                                context: context,
+                                builder: (context) => _BulkGrantBooksDialog(
+                                  users: controller.grantableUsers,
+                                  bookCount: controller.selectedBookCount,
+                                ),
+                              );
+                              if (userId != null && context.mounted) {
+                                await controller.grantSelectedBooks(userId);
+                              }
+                            },
+                      icon: const Icon(Icons.person_add_alt_1_outlined),
+                      label: const Text('批量授权'),
+                    ),
+                  if (controller.hasBookSelection)
+                    FilledButton.tonalIcon(
+                      onPressed: controller.isWorking
+                          ? null
+                          : () async {
+                              final selection =
+                                  await showDialog<_BulkGroupSelection>(
+                                    context: context,
+                                    builder: (context) => _BulkGroupBooksDialog(
+                                      groups: controller.availableBookGroups
+                                          .where(
+                                            (group) =>
+                                                group !=
+                                                AdminCenterController
+                                                    .allBookGroupsLabel,
+                                          )
+                                          .toList(),
+                                      bookCount: controller.selectedBookCount,
+                                    ),
+                                  );
+                              if (selection != null && context.mounted) {
+                                await controller.groupSelectedBooks(
+                                  selection.groupName,
+                                );
+                              }
+                            },
+                      icon: const Icon(Icons.drive_file_move_outline),
+                      label: const Text('批量编组'),
+                    ),
+                  if (controller.hasBookSelection)
+                    FilledButton.tonalIcon(
                       onPressed: controller.isWorking
                           ? null
                           : () async {
@@ -1849,6 +1899,180 @@ class _BookmarkManagementSection extends ConsumerWidget {
             ),
           )
           .toList(),
+    );
+  }
+}
+
+class _BulkGrantBooksDialog extends StatefulWidget {
+  const _BulkGrantBooksDialog({required this.users, required this.bookCount});
+
+  final List<AdminUserView> users;
+  final int bookCount;
+
+  @override
+  State<_BulkGrantBooksDialog> createState() => _BulkGrantBooksDialogState();
+}
+
+class _BulkGrantBooksDialogState extends State<_BulkGrantBooksDialog> {
+  int? _userId;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.users.isNotEmpty) {
+      _userId = widget.users.first.id;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassAlertDialog(
+      title: const Text('批量赋予阅读权限'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('将已勾选的 ${widget.bookCount} 本图书授权给：'),
+          const SizedBox(height: 16),
+          DropdownButtonFormField<int>(
+            initialValue: _userId,
+            isExpanded: true,
+            borderRadius: BorderRadius.circular(16),
+            decoration: const InputDecoration(
+              labelText: '用户',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.all(Radius.circular(16)),
+              ),
+            ),
+            items: widget.users
+                .map(
+                  (user) => DropdownMenuItem<int>(
+                    value: user.id,
+                    child: Text(
+                      '${user.username} · ${adminRoleLabel(user.role)}',
+                    ),
+                  ),
+                )
+                .toList(),
+            onChanged: (value) => setState(() => _userId = value),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: _userId == null
+              ? null
+              : () => Navigator.of(context).pop(_userId),
+          child: const Text('确认授权'),
+        ),
+      ],
+    );
+  }
+}
+
+class _BulkGroupSelection {
+  const _BulkGroupSelection(this.groupName);
+
+  final String? groupName;
+}
+
+class _BulkGroupBooksDialog extends StatefulWidget {
+  const _BulkGroupBooksDialog({required this.groups, required this.bookCount});
+
+  final List<String> groups;
+  final int bookCount;
+
+  @override
+  State<_BulkGroupBooksDialog> createState() => _BulkGroupBooksDialogState();
+}
+
+class _BulkGroupBooksDialogState extends State<_BulkGroupBooksDialog> {
+  static const _ungrouped = '__ungrouped__';
+  static const _newGroup = '__new_group__';
+
+  final _newGroupController = TextEditingController();
+  String _selection = _ungrouped;
+
+  @override
+  void dispose() {
+    _newGroupController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassAlertDialog(
+      title: const Text('批量对书籍编组'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('为已勾选的 ${widget.bookCount} 本图书设置统一分组：'),
+          const SizedBox(height: 16),
+          DropdownButtonFormField<String>(
+            initialValue: _selection,
+            isExpanded: true,
+            borderRadius: BorderRadius.circular(16),
+            decoration: const InputDecoration(
+              labelText: '目标分组',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.all(Radius.circular(16)),
+              ),
+            ),
+            items: [
+              const DropdownMenuItem(value: _ungrouped, child: Text('未分组')),
+              ...widget.groups.map(
+                (group) => DropdownMenuItem(value: group, child: Text(group)),
+              ),
+              const DropdownMenuItem(value: _newGroup, child: Text('新增分组…')),
+            ],
+            onChanged: (value) {
+              if (value != null) {
+                setState(() => _selection = value);
+              }
+            },
+          ),
+          if (_selection == _newGroup) ...[
+            const SizedBox(height: 12),
+            TextField(
+              controller: _newGroupController,
+              autofocus: true,
+              maxLength: 120,
+              decoration: const InputDecoration(
+                labelText: '新分组名称',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.all(Radius.circular(16)),
+                ),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed:
+              _selection == _newGroup && _newGroupController.text.trim().isEmpty
+              ? null
+              : () {
+                  final groupName = switch (_selection) {
+                    _ungrouped => null,
+                    _newGroup => _newGroupController.text.trim(),
+                    _ => _selection,
+                  };
+                  Navigator.of(context).pop(_BulkGroupSelection(groupName));
+                },
+          child: const Text('确认编组'),
+        ),
+      ],
     );
   }
 }

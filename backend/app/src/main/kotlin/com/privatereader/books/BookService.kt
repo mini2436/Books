@@ -528,6 +528,52 @@ class BookService(
     }
 
     @Transactional
+    fun grantBooks(bookIds: List<Long>, userId: Long, grantedBy: Long): Int {
+        val normalizedIds = bookIds.distinct()
+        if (normalizedIds.isEmpty()) {
+            return 0
+        }
+
+        return jdbcClient.sql(
+            """
+            insert into user_book_access (user_id, book_id, granted_by, granted_at)
+            select :userId, b.id, :grantedBy, :grantedAt
+            from books b
+            where b.id in (:bookIds)
+            on conflict (user_id, book_id) do update
+            set granted_by = excluded.granted_by,
+                granted_at = excluded.granted_at
+            """.trimIndent(),
+        )
+            .param("userId", userId)
+            .param("bookIds", normalizedIds)
+            .param("grantedBy", grantedBy)
+            .param("grantedAt", Instant.now().toSqlTimestamp())
+            .update()
+    }
+
+    @Transactional
+    fun updateAdminBookGroups(bookIds: List<Long>, groupName: String?): Int {
+        val normalizedIds = bookIds.distinct()
+        if (normalizedIds.isEmpty()) {
+            return 0
+        }
+        val normalizedGroupName = groupName?.trim()?.takeIf { it.isNotEmpty() }
+        return jdbcClient.sql(
+            """
+            update books
+            set group_name = :groupName,
+                updated_at = :updatedAt
+            where id in (:bookIds)
+            """.trimIndent(),
+        )
+            .param("groupName", normalizedGroupName)
+            .param("updatedAt", Instant.now().toSqlTimestamp())
+            .param("bookIds", normalizedIds)
+            .update()
+    }
+
+    @Transactional
     fun updateAdminBook(bookId: Long, request: UpdateAdminBookRequest): AdminBookDetailView {
         val normalizedGroupName = request.groupName?.trim()?.takeIf { it.isNotEmpty() }
         // 更新后台维护的书籍分组，并刷新书籍更新时间。

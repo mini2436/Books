@@ -286,6 +286,36 @@ class ApiClient {
     return (data['deletedCount'] as num?)?.toInt() ?? 0;
   }
 
+  Future<int> bulkGrantAdminBooks(
+    String accessToken,
+    List<int> bookIds, {
+    required int userId,
+  }) async {
+    final data = await _request<Map<String, dynamic>>(
+      () => _dio.post<Map<String, dynamic>>(
+        '/api/admin/books/bulk-grant',
+        data: {'bookIds': bookIds, 'userId': userId},
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+    return (data['grantedCount'] as num?)?.toInt() ?? 0;
+  }
+
+  Future<int> bulkUpdateAdminBookGroups(
+    String accessToken,
+    List<int> bookIds, {
+    String? groupName,
+  }) async {
+    final data = await _request<Map<String, dynamic>>(
+      () => _dio.post<Map<String, dynamic>>(
+        '/api/admin/books/bulk-group',
+        data: {'bookIds': bookIds, 'groupName': groupName},
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+    return (data['updatedCount'] as num?)?.toInt() ?? 0;
+  }
+
   Future<BookDetail> uploadAdminBook(
     String accessToken, {
     String? filePath,

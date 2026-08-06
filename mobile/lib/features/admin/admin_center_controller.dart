@@ -1439,6 +1439,72 @@ class AdminCenterController extends ChangeNotifier {
     });
   }
 
+  Future<void> grantSelectedBooks(int userId) async {
+    final targetIds = _selectedBookIds.toList()..sort();
+    if (targetIds.isEmpty) {
+      return;
+    }
+
+    await _runMutation(() async {
+      final grantedCount = await _authController.runAuthorized(
+        (token) =>
+            _apiClient.bulkGrantAdminBooks(token, targetIds, userId: userId),
+      );
+      final user = _grantableUsers.firstWhere(
+        (item) => item.id == userId,
+        orElse: () => AdminUserView(
+          id: userId,
+          username: '所选用户',
+          role: UserRole.reader.value,
+          enabled: true,
+        ),
+      );
+      final targetSet = targetIds.toSet();
+      _bookViewers = Map<int, List<BookViewerView>>.from(_bookViewers)
+        ..removeWhere((bookId, _) => targetSet.contains(bookId));
+      _selectedBookIds = <int>{};
+      _notice = '已向 ${user.username} 授权 $grantedCount 本图书';
+    });
+  }
+
+  Future<void> groupSelectedBooks(String? groupName) async {
+    final targetIds = _selectedBookIds.toList()..sort();
+    if (targetIds.isEmpty) {
+      return;
+    }
+    final normalizedGroupName = groupName?.trim().isEmpty == true
+        ? null
+        : groupName?.trim();
+
+    await _runMutation(() async {
+      final updatedCount = await _authController.runAuthorized(
+        (token) => _apiClient.bulkUpdateAdminBookGroups(
+          token,
+          targetIds,
+          groupName: normalizedGroupName,
+        ),
+      );
+      final targetSet = targetIds.toSet();
+      _books = _books
+          .map(
+            (book) => targetSet.contains(book.id)
+                ? book.copyWith(
+                    groupName: normalizedGroupName,
+                    clearGroupName: normalizedGroupName == null,
+                  )
+                : book,
+          )
+          .toList();
+      _bookDetails = Map<int, AdminBookDetail>.from(_bookDetails)
+        ..removeWhere((bookId, _) => targetSet.contains(bookId));
+      _rebuildBookDerivedData();
+      _selectedBookIds = <int>{};
+      _notice = normalizedGroupName == null
+          ? '已将 $updatedCount 本图书设为未分组'
+          : '已将 $updatedCount 本图书编入“$normalizedGroupName”';
+    });
+  }
+
   Future<void> updateUserRole(AdminUserView user, String role) async {
     if (!canManageUsers || isCurrentUser(user) || role == user.role) {
       return;

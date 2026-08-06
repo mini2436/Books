@@ -54,6 +54,40 @@ void main() {
     controller.toggleSelectAllVisibleBooks();
     expect(controller.selectedBookCount, 0);
   });
+
+  test('管理页可批量授权并批量编组已选书籍', () async {
+    final apiClient = _BulkAdminBookApiClient();
+    final auth = AuthController(
+      apiClient: apiClient,
+      sessionStorage: _MemorySessionStorage(),
+      offlineBookCacheService: OfflineBookCacheService(),
+    );
+    await _waitUntil(() => !auth.isBootstrapping && auth.isAuthenticated);
+    final controller = AdminCenterController(
+      authController: auth,
+      apiClient: apiClient,
+    );
+    addTearDown(() {
+      controller.dispose();
+      auth.dispose();
+    });
+    await _waitUntil(() => !controller.isLoading);
+
+    controller.toggleBookSelection(1);
+    controller.toggleBookSelection(2);
+    await controller.grantSelectedBooks(12);
+    expect(apiClient.grantedBookIds, [1, 2]);
+    expect(apiClient.grantedUserId, 12);
+    expect(controller.selectedBookCount, 0);
+
+    controller.toggleBookSelection(1);
+    controller.toggleBookSelection(2);
+    await controller.groupSelectedBooks('科幻');
+    expect(apiClient.groupedBookIds, [1, 2]);
+    expect(apiClient.groupName, '科幻');
+    expect(controller.books.every((book) => book.groupName == '科幻'), isTrue);
+    expect(controller.selectedBookCount, 0);
+  });
 }
 
 Future<void> _waitUntil(bool Function() condition) async {
@@ -117,6 +151,63 @@ class _LargeAdminLibraryApiClient extends ApiClient {
   @override
   Future<List<AdminImportJobView>> listImportJobs(String accessToken) async =>
       const [];
+}
+
+class _BulkAdminBookApiClient extends _LargeAdminLibraryApiClient {
+  List<int> grantedBookIds = const [];
+  int? grantedUserId;
+  List<int> groupedBookIds = const [];
+  String? groupName;
+
+  @override
+  Future<List<AdminBookSummary>> listAdminBooks(String accessToken) async =>
+      List.generate(
+        2,
+        (index) => AdminBookSummary(
+          id: index + 1,
+          title: '图书 ${index + 1}',
+          author: null,
+          groupName: null,
+          description: null,
+          pluginId: 'epub',
+          format: 'EPUB',
+          sourceType: 'UPLOAD',
+          sourceMissing: false,
+          updatedAt: '2026-08-01T00:00:00Z',
+        ),
+      );
+
+  @override
+  Future<List<AdminUserView>> listGrantableUsers(String accessToken) async => [
+    const AdminUserView(
+      id: 12,
+      username: 'reader',
+      role: 'READER',
+      enabled: true,
+    ),
+  ];
+
+  @override
+  Future<int> bulkGrantAdminBooks(
+    String accessToken,
+    List<int> bookIds, {
+    required int userId,
+  }) async {
+    grantedBookIds = List.of(bookIds);
+    grantedUserId = userId;
+    return bookIds.length;
+  }
+
+  @override
+  Future<int> bulkUpdateAdminBookGroups(
+    String accessToken,
+    List<int> bookIds, {
+    String? groupName,
+  }) async {
+    groupedBookIds = List.of(bookIds);
+    this.groupName = groupName;
+    return bookIds.length;
+  }
 }
 
 class _MemorySessionStorage extends SessionStorage {

@@ -75,6 +75,27 @@ class AdminBookController(
         )
     }
 
+    // 书籍批量授权接口：将多本书一次授权给指定用户。
+    @PostMapping("/bulk-grant")
+    @PreAuthorize(RoleExpressions.ADMIN_ACCESS)
+    fun bulkGrantBooks(
+        @Valid @RequestBody request: BulkGrantBooksRequest,
+        @AuthenticationPrincipal actor: UserPrincipal,
+    ): Map<String, Any> {
+        val grantedCount = bookService.grantBooks(request.bookIds, request.userId, actor.id)
+        return mapOf("success" to true, "grantedCount" to grantedCount)
+    }
+
+    // 书籍批量编组接口：统一更新多本书的后台分组。
+    @PostMapping("/bulk-group")
+    @PreAuthorize(RoleExpressions.ADMIN_ACCESS)
+    fun bulkUpdateBookGroup(
+        @Valid @RequestBody request: BulkUpdateBookGroupRequest,
+    ): Map<String, Any> {
+        val updatedCount = bookService.updateAdminBookGroups(request.bookIds, request.groupName)
+        return mapOf("success" to true, "updatedCount" to updatedCount)
+    }
+
     // 书籍授权接口：管理员或馆员将指定书籍分配给用户。
     @PostMapping("/{bookId}/grants")
     fun grantBook(

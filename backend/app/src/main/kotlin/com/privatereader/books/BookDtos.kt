@@ -1,6 +1,7 @@
 package com.privatereader.books
 
 import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.NotEmpty
 import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.Size
 
@@ -138,8 +139,22 @@ data class RenameBookGroupResponse(
 )
 
 data class BulkDeleteBooksRequest(
-    @field:NotNull
+    @field:NotEmpty
     val bookIds: List<Long>,
+)
+
+data class BulkGrantBooksRequest(
+    @field:NotEmpty
+    val bookIds: List<Long>,
+    @field:NotNull
+    val userId: Long,
+)
+
+data class BulkUpdateBookGroupRequest(
+    @field:NotEmpty
+    val bookIds: List<Long>,
+    @field:Size(max = 120)
+    val groupName: String? = null,
 )
 
 data class CreateLibrarySourceRequest(

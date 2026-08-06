@@ -132,6 +132,18 @@ class AppLocalizations {
     if (match != null) {
       return 'Delete the ${match[1]} selected books? Access grants, annotations, bookmarks, and reading progress will also be removed.';
     }
+    match = RegExp(r'^将已勾选的 (\d+) 本图书授权给：$').firstMatch(source);
+    if (match != null) return 'Grant the ${match[1]} selected books to:';
+    match = RegExp(r'^为已勾选的 (\d+) 本图书设置统一分组：$').firstMatch(source);
+    if (match != null) {
+      return 'Set one group for the ${match[1]} selected books:';
+    }
+    match = RegExp(r'^已向 (.+) 授权 (\d+) 本图书$').firstMatch(source);
+    if (match != null) return 'Granted ${match[2]} books to ${match[1]}';
+    match = RegExp(r'^已将 (\d+) 本图书设为未分组$').firstMatch(source);
+    if (match != null) return 'Moved ${match[1]} books to Ungrouped';
+    match = RegExp(r'^已将 (\d+) 本图书编入“(.+)”$').firstMatch(source);
+    if (match != null) return 'Moved ${match[1]} books to “${match[2]}”';
     match = RegExp(r'^将删除“(.+)”的扫描配置和文件摘要。').firstMatch(source);
     if (match != null) {
       return 'Delete the scan configuration and file index for “${match[1]}”? Imported books will remain in the library.';
@@ -811,6 +823,14 @@ class AppLocalizations {
     '离线使用中：可阅读、搜索并暂存批注，登录原账户后同步。':
         'Offline mode: read, search, and save annotations locally. Sign in to the original account to sync.',
     '批量删除图书': 'Delete selected books',
+    '批量授权': 'Grant access',
+    '批量编组': 'Set group',
+    '批量赋予阅读权限': 'Grant reading access',
+    '批量对书籍编组': 'Group selected books',
+    '确认授权': 'Grant access',
+    '确认编组': 'Set group',
+    '目标分组': 'Target group',
+    '新分组名称': 'New group name',
     '确认删除': 'Confirm deletion',
     '暂时还没有批注': 'No annotations yet',
     '这本书当前没有可查看的批注了。': 'This book has no visible annotations.',

@@ -14,7 +14,7 @@
 
   <rect width="1280" height="720" fill="#F6F8FB"/>
   <rect x="54" y="40" width="8" height="36" rx="4" fill="#1565C0"/>
-  <text x="78" y="68" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="34" font-weight="700" fill="#0F2747">第一阶段已经打通四条关键业务链路</text>
+  <text x="78" y="68" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="34" font-weight="700" fill="#0F2747">项目已经打通四条关键业务链路</text>
   <text x="1200" y="68" text-anchor="end" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="14" fill="#8893A3">03</text>
 
   <rect x="54" y="92" width="1172" height="54" rx="16" fill="#E9EEF5"/>
@@ -69,8 +69,8 @@
     <rect x="652" y="552" width="172" height="40" rx="20" fill="#2FA39A"/>
     <text x="738" y="578" text-anchor="middle" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="17" font-weight="700" fill="#FFFFFF">资源扫描入库</text>
 
-    <text x="1040" y="580" text-anchor="end" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="16" fill="#DCE7F5">阶段一目标：先跑通，再稳定，再扩展</text>
+    <text x="1040" y="580" text-anchor="end" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="16" fill="#DCE7F5">持续目标：更稳定、更易用、更完善</text>
   </g>
 
-  <text x="54" y="687" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="12" fill="#8893A3">Source: docs/第一阶段功能总览.md, docs/第一阶段详细功能文档.md, docs/后端架构文档.md</text>
+  <text x="54" y="687" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="12" fill="#8893A3">Source: docs/功能总览.md, docs/详细功能文档.md, docs/后端架构文档.md</text>
 </svg>

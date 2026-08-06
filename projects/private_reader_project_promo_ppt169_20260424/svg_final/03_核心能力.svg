@@ -14,7 +14,7 @@
 
   <rect width="1280" height="720" fill="#F6F8FB" />
   <path fill="#1565C0" d="M58,40 H58 A4,4 0 0 1 62,44 V72 A4,4 0 0 1 58,76 H58 A4,4 0 0 1 54,72 V44 A4,4 0 0 1 58,40 Z" />
-  <text x="78" y="68" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="34" font-weight="700" fill="#0F2747">第一阶段已经打通四条关键业务链路</text>
+  <text x="78" y="68" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="34" font-weight="700" fill="#0F2747">项目已经打通四条关键业务链路</text>
   <text x="1200" y="68" text-anchor="end" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="14" fill="#8893A3">03</text>
 
   <path fill="#E9EEF5" d="M70,92 H1210 A16,16 0 0 1 1226,108 V130 A16,16 0 0 1 1210,146 H70 A16,16 0 0 1 54,130 V108 A16,16 0 0 1 70,92 Z" />
@@ -87,8 +87,8 @@
     <path fill="#2FA39A" d="M672,552 H804 A20,20 0 0 1 824,572 V572 A20,20 0 0 1 804,592 H672 A20,20 0 0 1 652,572 V572 A20,20 0 0 1 672,552 Z" />
     <text x="738" y="578" text-anchor="middle" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="17" font-weight="700" fill="#FFFFFF">资源扫描入库</text>
 
-    <text x="1040" y="580" text-anchor="end" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#DCE7F5">阶段一目标：先跑通，再稳定，再扩展</text>
+    <text x="1040" y="580" text-anchor="end" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="16" fill="#DCE7F5">持续目标：更稳定、更易用、更完善</text>
   </g>
 
-  <text x="54" y="687" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="12" fill="#8893A3">Source: docs/第一阶段功能总览.md, docs/第一阶段详细功能文档.md, docs/后端架构文档.md</text>
+  <text x="54" y="687" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="12" fill="#8893A3">Source: docs/功能总览.md, docs/详细功能文档.md, docs/后端架构文档.md</text>
 </svg>

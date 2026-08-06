@@ -21,7 +21,7 @@
 
   <rect width="1280" height="720" fill="#F6F8FB" />
   <path fill="#1565C0" d="M58,40 H58 A4,4 0 0 1 62,44 V72 A4,4 0 0 1 58,76 H58 A4,4 0 0 1 54,72 V44 A4,4 0 0 1 58,40 Z" />
-  <text x="78" y="68" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="34" font-weight="700" fill="#0F2747">下一阶段将把既有能力升级为统一的多端阅读与管理平台</text>
+  <text x="78" y="68" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="34" font-weight="700" fill="#0F2747">持续优化既有能力，建设统一的多端阅读与管理平台</text>
   <text x="1200" y="68" text-anchor="end" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="14" fill="#8893A3">08</text>
 
   <g id="roadmap">
@@ -29,19 +29,19 @@
     <line x1="116" y1="220" x2="116" y2="566" stroke="#D6DDE8" stroke-width="6" />
 
     <circle cx="116" cy="248" r="24" fill="#1565C0" />
-    <text x="168" y="242" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="24" font-weight="700" fill="#0F2747">阶段 A：基础收敛</text>
+    <text x="168" y="242" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="24" font-weight="700" fill="#0F2747">优化方向 A：基础收敛</text>
     <text x="168" y="272" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#1A2433">稳定 app 壳层、导航容器与主题 token</text>
 
     <circle cx="116" cy="358" r="24" fill="#1565C0" />
-    <text x="168" y="352" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="24" font-weight="700" fill="#0F2747">阶段 B：后台先行</text>
+    <text x="168" y="352" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="24" font-weight="700" fill="#0F2747">优化方向 B：后台先行</text>
     <text x="168" y="382" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#1A2433">优先让后台管理能力在 Flutter Web/Desktop 落地</text>
 
     <circle cx="116" cy="468" r="24" fill="#2FA39A" />
-    <text x="168" y="462" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="24" font-weight="700" fill="#0F2747">阶段 C：书架与阅读器跨端</text>
+    <text x="168" y="462" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="24" font-weight="700" fill="#0F2747">优化方向 C：书架与阅读器跨端</text>
     <text x="168" y="492" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#1A2433">迁移账户、书架和阅读器能力，建立统一前端体验</text>
 
     <circle cx="116" cy="578" r="24" fill="#2FA39A" />
-    <text x="168" y="572" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="24" font-weight="700" fill="#0F2747">阶段 D：平台价值释放</text>
+    <text x="168" y="572" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="24" font-weight="700" fill="#0F2747">优化方向 D：平台价值释放</text>
     <text x="168" y="602" font-family="&quot;Microsoft YaHei&quot;, &quot;PingFang SC&quot;, Arial, sans-serif" font-size="18" fill="#1A2433">面向团队、机构与企业沉淀长期可扩展的阅读基础设施</text>
   </g>
 

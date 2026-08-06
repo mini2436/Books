@@ -10,9 +10,6 @@ backend/.gradle/
 backend/**/build/
 backend/gradle-dist/
 backend/jdks/
-web/.next/
-web/out/
-web/node_modules/
 mobile/node_modules/
 storage/
 tmp/

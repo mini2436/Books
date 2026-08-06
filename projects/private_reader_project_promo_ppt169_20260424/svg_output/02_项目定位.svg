@@ -35,7 +35,7 @@
     <text x="88" y="376" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="20" fill="#1A2433">与阅读工作台，而不是局限于单一 App 页面展示。</text>
 
     <use data-icon="chunk/target" x="88" y="432" width="26" height="26" fill="#1565C0"/>
-    <text x="128" y="452" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#1A2433">面向长期演进：阶段一先完成可交付闭环</text>
+    <text x="128" y="452" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#1A2433">面向长期演进：围绕真实使用持续优化</text>
 
     <use data-icon="chunk/shield" x="88" y="486" width="26" height="26" fill="#1565C0"/>
     <text x="128" y="506" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="18" fill="#1A2433">面向治理：多角色、多入口、管理链路完整</text>
@@ -81,5 +81,5 @@
     </g>
   </g>
 
-  <text x="54" y="687" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="12" fill="#8893A3">Source: README.md, docs/第一阶段功能总览.md, docs/Web端停用与Flutter多端迁移计划.md</text>
+  <text x="54" y="687" font-family='"Microsoft YaHei", "PingFang SC", Arial, sans-serif' font-size="12" fill="#8893A3">Source: README.md, docs/功能总览.md, docs/Flutter多端持续优化路线.md</text>
 </svg>

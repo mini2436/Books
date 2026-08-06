@@ -6,7 +6,7 @@
 
 - 当前主交付目标是 Android 手机与平板
 - 仓库内目前存在 `android/`，但尚未创建 `ios/`
-- 因此“移动端”现阶段可视为 Android-first
+- 因此“移动端”当前可视为 Android-first
 
 生成依据：
 

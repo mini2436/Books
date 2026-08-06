@@ -189,6 +189,7 @@ Web 发布产物位于 `mobile/build/web/`。浏览器页面和 API 不同源时
 ## 文档
 
 - [运行文档](docs/运行文档.md)
+- [GitHub 多端构建说明](docs/GitHub多端构建说明.md)
 - [接口文档](docs/接口文档.md)
 - [功能总览](docs/功能总览.md)
 - [详细功能文档](docs/详细功能文档.md)

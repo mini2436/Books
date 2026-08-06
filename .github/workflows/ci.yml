@@ -34,16 +34,19 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - run: ./gradlew :app:nativeCompile
 
-  web:
+  flutter:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: web
+        working-directory: mobile
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: subosito/flutter-action@v2
         with:
-          node-version: "20"
-      - run: npm install
-      - run: npm run lint
-      - run: npm run build
+          flutter-version: "3.41.6"
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+      - run: flutter build web --release --no-web-resources-cdn --dart-define=API_BASE_URL=http://localhost:8080

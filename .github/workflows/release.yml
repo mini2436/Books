@@ -1,0 +1,211 @@
+name: 多端构建与发布
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_base_url:
+        description: 客户端默认连接的后端地址
+        required: true
+        default: http://localhost:8080
+        type: string
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  FLUTTER_VERSION: "3.41.6"
+  API_BASE_URL: ${{ inputs.api_base_url || 'http://localhost:8080' }}
+
+jobs:
+  backend:
+    name: 后端 JAR
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: 测试并构建后端
+        run: ./gradlew test :app:bootJar
+      - name: 整理产物
+        run: |
+          mkdir -p ../dist
+          backend_jar="$(find app/build/libs -maxdepth 1 -name '*.jar' ! -name '*-plain.jar' -print -quit)"
+          test -n "$backend_jar"
+          cp "$backend_jar" ../dist/private-reader-backend.jar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: private-reader-backend
+          path: dist/private-reader-backend.jar
+          if-no-files-found: error
+          retention-days: 14
+
+  web:
+    name: Flutter Web
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: 获取依赖
+        run: flutter pub get
+      - name: 构建 Web
+        run: flutter build web --release --no-web-resources-cdn --dart-define=API_BASE_URL="$API_BASE_URL"
+      - name: 打包 Web
+        run: tar -C build/web -czf private-reader-web.tar.gz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: private-reader-web
+          path: mobile/private-reader-web.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+
+  android:
+    name: Android APK 与 AAB
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: 获取依赖
+        run: flutter pub get
+      - name: 构建分架构 APK
+        run: flutter build apk --release --split-per-abi --dart-define=API_BASE_URL="$API_BASE_URL"
+      - name: 构建通用 APK
+        run: flutter build apk --release --dart-define=API_BASE_URL="$API_BASE_URL"
+      - name: 构建 Android App Bundle
+        run: flutter build appbundle --release --dart-define=API_BASE_URL="$API_BASE_URL"
+      - name: 整理产物
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk dist/private-reader-android-universal.apk
+          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk dist/private-reader-android-armeabi-v7a.apk
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk dist/private-reader-android-arm64-v8a.apk
+          cp build/app/outputs/flutter-apk/app-x86_64-release.apk dist/private-reader-android-x86_64.apk
+          cp build/app/outputs/bundle/release/app-release.aab dist/private-reader-android.aab
+      - uses: actions/upload-artifact@v4
+        with:
+          name: private-reader-android
+          path: mobile/dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  windows:
+    name: Windows x64
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: 获取依赖
+        run: flutter pub get
+      - name: 构建 Windows
+        run: flutter build windows --release --dart-define=API_BASE_URL="$env:API_BASE_URL"
+      - name: 打包 Windows
+        shell: pwsh
+        run: Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath private-reader-windows-x64.zip -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: private-reader-windows-x64
+          path: mobile/private-reader-windows-x64.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  linux:
+    name: Linux x64
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - name: 安装 Linux 桌面依赖
+        run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libsecret-1-dev libsqlite3-dev
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: 获取依赖
+        run: flutter pub get
+      - name: 构建 Linux
+        run: flutter build linux --release --dart-define=API_BASE_URL="$API_BASE_URL"
+      - name: 打包 Linux
+        run: tar -C build/linux/x64/release/bundle -czf private-reader-linux-x64.tar.gz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: private-reader-linux-x64
+          path: mobile/private-reader-linux-x64.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+
+  macos:
+    name: macOS App
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: 获取依赖
+        run: flutter pub get
+      - name: 构建 macOS App
+        run: flutter build macos --release --dart-define=API_BASE_URL="$API_BASE_URL"
+      - name: 打包 macOS App
+        run: ditto -c -k --sequesterRsrc --keepParent build/macos/Build/Products/Release/private_reader_mobile.app private-reader-macos.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: private-reader-macos
+          path: mobile/private-reader-macos.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  publish-release:
+    name: 发布 GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [backend, web, android, windows, linux, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: release-assets/**/*

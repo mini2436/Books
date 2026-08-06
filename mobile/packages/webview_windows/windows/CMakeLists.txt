@@ -68,11 +68,6 @@ set(PLUGIN_SOURCES
 # Create the plugin library
 add_library(${PLUGIN_NAME} SHARED ${PLUGIN_SOURCES})
 
-# Configure compiler options
-if(MSVC)
-  target_compile_options(${PLUGIN_NAME} PRIVATE "/await")
-endif()
-
 # Apply standard settings
 apply_standard_settings(${PLUGIN_NAME})
 
@@ -80,12 +75,12 @@ apply_standard_settings(${PLUGIN_NAME})
 target_compile_features(${PLUGIN_NAME} PUBLIC cxx_std_20)
 
 # Configure visibility
-set_target_properties(${PLUGIN_NAME} PROPERTIES 
+set_target_properties(${PLUGIN_NAME} PROPERTIES
   CXX_VISIBILITY_PRESET hidden
 )
 
 # Add dependencies
-target_link_libraries(${PLUGIN_NAME} PRIVATE 
+target_link_libraries(${PLUGIN_NAME} PRIVATE
   ${CMAKE_BINARY_DIR}/packages/Microsoft.Web.WebView2/build/native/Microsoft.Web.WebView2.targets
   ${CMAKE_BINARY_DIR}/packages/Microsoft.Windows.ImplementationLibrary/build/native/Microsoft.Windows.ImplementationLibrary.targets
   flutter 
@@ -101,4 +96,4 @@ target_include_directories(${PLUGIN_NAME} INTERFACE
 # Set bundled libraries
 set(webview_windows_bundled_libraries
   PARENT_SCOPE
-) 
+)

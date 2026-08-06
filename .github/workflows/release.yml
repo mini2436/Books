@@ -108,10 +108,39 @@ jobs:
           cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk dist/private-reader-android-arm64-v8a.apk
           cp build/app/outputs/flutter-apk/app-x86_64-release.apk dist/private-reader-android-x86_64.apk
           cp build/app/outputs/bundle/release/app-release.aab dist/private-reader-android.aab
-      - uses: actions/upload-artifact@v4
+      - name: 上传通用 APK
+        uses: actions/upload-artifact@v4
         with:
-          name: private-reader-android
-          path: mobile/dist/*
+          name: private-reader-android-universal
+          path: mobile/dist/private-reader-android-universal.apk
+          if-no-files-found: error
+          retention-days: 14
+      - name: 上传 Android App Bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: private-reader-android-aab
+          path: mobile/dist/private-reader-android.aab
+          if-no-files-found: error
+          retention-days: 14
+      - name: 上传 ARM64 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: private-reader-android-arm64-v8a
+          path: mobile/dist/private-reader-android-arm64-v8a.apk
+          if-no-files-found: error
+          retention-days: 14
+      - name: 上传 ARMv7 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: private-reader-android-armeabi-v7a
+          path: mobile/dist/private-reader-android-armeabi-v7a.apk
+          if-no-files-found: error
+          retention-days: 14
+      - name: 上传 x86_64 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: private-reader-android-x86_64
+          path: mobile/dist/private-reader-android-x86_64.apk
           if-no-files-found: error
           retention-days: 14
 

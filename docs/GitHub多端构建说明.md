@@ -37,7 +37,9 @@ git push origin v1.0.0
 | `private-reader-android.aab` | Android App Bundle |
 | `private-reader-windows-x64.zip` | Windows x64 客户端 |
 | `private-reader-linux-x64.tar.gz` | Linux x64 客户端 |
-| `private-reader-macos.zip` | macOS App |
+| `private-reader-macos.zip` | macOS Universal App，兼容 Apple Silicon 与 Intel |
+| `private-reader-macos-arm64.zip` | macOS Apple Silicon App |
+| `private-reader-macos-x86_64.zip` | macOS Intel App |
 
 ## 签名说明
 
@@ -50,7 +52,7 @@ git push origin v1.0.0
 
 - Windows 使用 GitHub 托管的 x64 Runner。Flutter 不支持 Windows 32 位 x86；Windows ARM64 需要单独的 ARM64 Runner。
 - Linux 默认构建 x64。Linux ARM64 可通过 ARM64 Runner 增加独立任务。
-- macOS 使用 `macos-latest` Runner，产物架构由 GitHub 当前 Runner 架构决定。
+- macOS Release 默认构建 Universal App，并额外拆分 ARM64 与 x86_64 两个独立安装包。
 - Web 产物与处理器架构无关。
 
 ## API 地址

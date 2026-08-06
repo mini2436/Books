@@ -216,12 +216,73 @@ jobs:
         run: flutter pub get
       - name: 构建 macOS App
         run: flutter build macos --release --dart-define=API_BASE_URL="$API_BASE_URL"
+      - name: 拆分 ARM64 与 x86_64 App
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          source_app="build/macos/Build/Products/Release/private_reader_mobile.app"
+
+          thin_app() {
+            local arch="$1"
+            local target_app="dist/private-reader-macos-${arch}.app"
+
+            ditto "$source_app" "$target_app"
+            while IFS= read -r -d '' binary; do
+              if file -b "$binary" | grep -q 'Mach-O'; then
+                binary_arches="$(lipo -archs "$binary")"
+                if [[ " $binary_arches " != *" $arch "* ]]; then
+                  echo "错误：$binary 不包含 $arch 架构，现有架构：$binary_arches" >&2
+                  exit 1
+                fi
+                if [[ "$binary_arches" != "$arch" ]]; then
+                  lipo "$binary" -thin "$arch" -output "$binary.thin"
+                  mv "$binary.thin" "$binary"
+                fi
+              fi
+            done < <(find "$target_app" -type f -print0)
+
+            codesign --force --deep --sign - "$target_app"
+            codesign --verify --deep --strict "$target_app"
+
+            while IFS= read -r -d '' binary; do
+              if file -b "$binary" | grep -q 'Mach-O'; then
+                binary_arches="$(lipo -archs "$binary")"
+                if [[ "$binary_arches" != "$arch" ]]; then
+                  echo "错误：$binary 拆分后架构异常：$binary_arches" >&2
+                  exit 1
+                fi
+              fi
+            done < <(find "$target_app" -type f -print0)
+          }
+
+          mkdir -p dist
+          thin_app arm64
+          thin_app x86_64
       - name: 打包 macOS App
-        run: ditto -c -k --sequesterRsrc --keepParent build/macos/Build/Products/Release/private_reader_mobile.app private-reader-macos.zip
-      - uses: actions/upload-artifact@v4
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent build/macos/Build/Products/Release/private_reader_mobile.app private-reader-macos.zip
+          ditto -c -k --sequesterRsrc --keepParent dist/private-reader-macos-arm64.app private-reader-macos-arm64.zip
+          ditto -c -k --sequesterRsrc --keepParent dist/private-reader-macos-x86_64.app private-reader-macos-x86_64.zip
+      - name: 上传 macOS Universal App
+        uses: actions/upload-artifact@v4
         with:
           name: private-reader-macos
           path: mobile/private-reader-macos.zip
+          if-no-files-found: error
+          retention-days: 14
+      - name: 上传 macOS ARM64 App
+        uses: actions/upload-artifact@v4
+        with:
+          name: private-reader-macos-arm64
+          path: mobile/private-reader-macos-arm64.zip
+          if-no-files-found: error
+          retention-days: 14
+      - name: 上传 macOS x86_64 App
+        uses: actions/upload-artifact@v4
+        with:
+          name: private-reader-macos-x86_64
+          path: mobile/private-reader-macos-x86_64.zip
           if-no-files-found: error
           retention-days: 14
 

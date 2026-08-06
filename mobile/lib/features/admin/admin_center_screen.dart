@@ -154,7 +154,8 @@ class AdminCenterScreen extends ConsumerWidget {
                                       ),
                                     ),
                                     visualDensity: VisualDensity.standard,
-                                    tapTargetSize: MaterialTapTargetSize.padded,
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
                                   ),
                             showSelectedIcon: false,
                             segments: controller.availableSections
@@ -780,7 +781,7 @@ class _BookManagementSection extends StatelessWidget {
                               ),
                             ),
                             visualDensity: VisualDensity.standard,
-                            tapTargetSize: MaterialTapTargetSize.padded,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                           ),
                     showSelectedIcon: false,
                     segments: controller.availableBookGroups

@@ -119,7 +119,7 @@ class _BookshelfScreenState extends ConsumerState<BookshelfScreen>
               EdgeInsets.symmetric(horizontal: 18, vertical: 14),
             ),
             visualDensity: VisualDensity.standard,
-            tapTargetSize: MaterialTapTargetSize.padded,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           );
     final showFilters =
         _view == _ShelfView.all && controller.filterOptions.length > 1;

@@ -50,6 +50,8 @@ class GlassSegmentedControl<T> extends StatelessWidget {
           shape: const WidgetStatePropertyAll(StadiumBorder()),
           side: const WidgetStatePropertyAll(BorderSide.none),
           elevation: const WidgetStatePropertyAll(0),
+          visualDensity: VisualDensity.standard,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           minimumSize: WidgetStatePropertyAll(Size(0, platform.controlHeight)),
           padding: const WidgetStatePropertyAll(
             EdgeInsets.symmetric(horizontal: 16, vertical: 9),

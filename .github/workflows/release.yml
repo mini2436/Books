@@ -344,8 +344,15 @@ jobs:
     needs: [backend, docker-image, docker-web, web, android, windows, linux, macos]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - name: 下载后端 JAR
+        uses: actions/download-artifact@v4
         with:
+          name: qingyue-backend
+          path: release-assets
+      - name: 下载客户端发布产物
+        uses: actions/download-artifact@v4
+        with:
+          pattern: private-reader-*
           path: release-assets
       - uses: softprops/action-gh-release@v2
         with:

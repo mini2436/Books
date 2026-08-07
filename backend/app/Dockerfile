@@ -14,7 +14,7 @@ ENV HTTP_PROXY=$HTTP_PROXY \
     no_proxy=$NO_PROXY
 WORKDIR /workspace
 COPY . .
-RUN --mount=type=cache,id=private-reader-gradle,target=/root/.gradle,sharing=locked \
+RUN --mount=type=cache,id=qingyue-gradle,target=/root/.gradle,sharing=locked \
     sed -i 's/\r$//' ./gradlew \
     && chmod +x ./gradlew \
     && if [ -n "$GRADLE_PROXY_HOST" ] && [ -n "$GRADLE_PROXY_PORT" ]; then \

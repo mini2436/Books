@@ -1,4 +1,4 @@
-rootProject.name = "private-reader-backend"
+rootProject.name = "qingyue-backend"
 
 include("app")
 include("plugin-api")

@@ -18,16 +18,7 @@ services:
       retries: 12
 
   backend:
-    image: private-reader-backend:local
-    build:
-      context: ./backend
-      dockerfile: app/Dockerfile
-      args:
-        HTTP_PROXY: ${HTTP_PROXY:-http://host.docker.internal:10808}
-        HTTPS_PROXY: ${HTTPS_PROXY:-http://host.docker.internal:10808}
-        NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,::1,host.docker.internal,postgres}
-        GRADLE_PROXY_HOST: ${GRADLE_PROXY_HOST:-host.docker.internal}
-        GRADLE_PROXY_PORT: ${GRADLE_PROXY_PORT:-10808}
+    image: chen584991126/qingyue-backend:v0.0.1-beta4
     environment:
       SPRING_PROFILES_ACTIVE: docker
       APP_STORAGE_ROOT: /app/storage
@@ -50,20 +41,12 @@ services:
       - "8080:8080"
 
   web:
-    image: node:20-alpine
-    working_dir: /workspace/web
-    command: sh -lc "npm install && npm run dev"
-    volumes:
-      - ./:/workspace
-    environment:
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:8080
-      HTTP_PROXY: ${HTTP_PROXY:-http://host.docker.internal:10808}
-      HTTPS_PROXY: ${HTTPS_PROXY:-http://host.docker.internal:10808}
-      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,::1,host.docker.internal,backend,postgres}
+    image: chen584991126/qingyue-web:v0.0.1-beta4
     depends_on:
-      - backend
+      backend:
+        condition: service_started
     ports:
-      - "3000:3000"
+      - "3000:80"
 
 volumes:
   postgres-data:

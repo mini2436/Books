@@ -1,6 +1,6 @@
 # GitHub 多端构建说明
 
-仓库通过 [`.github/workflows/release.yml`](../.github/workflows/release.yml) 构建多端发布资源。
+仓库通过 [`.github/workflows/release.yml`](../.github/workflows/release.yml) 构建多端发布资源，并在发布标签时推送后端 Docker 镜像。
 
 ## 触发方式
 
@@ -28,7 +28,7 @@ git push origin v1.0.0
 
 | 产物 | 内容 |
 | --- | --- |
-| `private-reader-backend.jar` | JDK 21 后端程序 |
+| `qingyue-backend.jar` | JDK 21 后端程序 |
 | `private-reader-web.tar.gz` | Flutter Web 静态资源 |
 | `private-reader-android-universal.apk` | Android 通用 APK |
 | `private-reader-android-arm64-v8a.apk` | Android ARM64 APK |
@@ -40,6 +40,35 @@ git push origin v1.0.0
 | `private-reader-macos.zip` | macOS Universal App，兼容 Apple Silicon 与 Intel |
 | `private-reader-macos-arm64.zip` | macOS Apple Silicon App |
 | `private-reader-macos-x86_64.zip` | macOS Intel App |
+
+## Docker Hub 镜像
+
+推送以 `v` 开头的标签时，工作流会构建并推送后端和 Flutter Web 前端的 `linux/amd64`（x86_64）和 `linux/arm64` 两个版本到 Docker Hub，并分别合并为多架构标签：
+
+```text
+chen584991126/qingyue-backend:<Git 标签>
+chen584991126/qingyue-backend:latest
+chen584991126/qingyue-web:<Git 标签>
+chen584991126/qingyue-web:latest
+```
+
+例如推送 `v0.0.1-beta3` 后，可直接拉取：
+
+```powershell
+docker pull chen584991126/qingyue-backend:v0.0.1-beta4
+docker pull chen584991126/qingyue-web:v0.0.1-beta4
+```
+
+部署机只需要 Docker；Docker 会自动选择与当前 CPU 匹配的镜像。前端镜像包含 Nginx，并会将 `/api/` 请求代理到 Compose 网络中的 `backend:8080`，因此浏览器只需访问前端端口。为了让工作流能够推送镜像，需要在 GitHub 仓库的 `Settings → Secrets and variables → Actions` 新增以下 Secrets：
+
+- `DOCKERHUB_USERNAME`：`chen584991126`。
+- `DOCKERHUB_TOKEN`：Docker Hub 创建的 Access Token；不要填写账户密码。
+
+创建 Token 的入口：登录 Docker Hub 后，点击右上角头像 → `My Account` → `Personal access tokens` → `Generate new token`，权限选择 `Read & Write`。Token 只会完整显示一次，请立即复制。
+
+保存到 GitHub 的入口：仓库页面 → `Settings` → `Secrets and variables` → `Actions` → `New repository secret`。分别创建 `DOCKERHUB_USERNAME`（值为 `chen584991126`）和 `DOCKERHUB_TOKEN`（粘贴刚复制的 Token）。
+
+生产环境建议固定使用版本标签，验证无误后再选择跟随 `latest`。
 
 ## 签名说明
 

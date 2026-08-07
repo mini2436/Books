@@ -1,4 +1,4 @@
-# Private Reader
+# Qingyue
 
 > A lightweight, self-hosted reading manager for families.
 

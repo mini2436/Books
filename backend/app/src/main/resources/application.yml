@@ -1,6 +1,6 @@
 spring:
   application:
-    name: private-reader
+    name: qingyue
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/private_reader}
     username: ${SPRING_DATASOURCE_USERNAME:reader}

@@ -9,6 +9,9 @@ class AppConfig {
 
   static String get defaultServerAddress {
     const override = String.fromEnvironment('API_BASE_URL');
+    if (kIsWeb && override == '/') {
+      return Uri.base.origin;
+    }
     if (override.isNotEmpty) {
       return normalizeBaseUrl(override);
     }

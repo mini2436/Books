@@ -1,4 +1,4 @@
-# 轻阅 · Private Reader
+# 轻阅 · Qingyue
 
 > 为家庭准备的轻量、自托管阅读管理器。
 
@@ -128,6 +128,16 @@ cd backend
 - 密码：`admin12345`
 
 > 该账号仅用于本地首次启动。部署到家庭服务器前，请通过环境变量 `APP_BOOTSTRAP_ADMIN_USERNAME` 和 `APP_BOOTSTRAP_ADMIN_PASSWORD` 修改默认凭据。
+
+### 使用 Docker Hub 镜像部署后端
+
+发布版本可直接拉取多架构镜像；Docker 会自动选择 x86_64 或 ARM64 版本，无须在部署机器安装 JDK、Flutter、Gradle 或编译源码：
+
+```powershell
+docker compose up -d postgres backend web
+```
+
+默认镜像为 `chen584991126/qingyue-backend:v0.0.1-beta4` 和 `chen584991126/qingyue-web:v0.0.1-beta4`。前端访问地址为 `http://localhost:3000`，并通过容器内 Nginx 将 API 请求转发至后端。升级时将 [docker-compose.yml](docker-compose.yml) 中的版本标签改为目标 Release 标签，再执行 `docker compose pull` 和 `docker compose up -d`。
 
 ### 4. 启动 Flutter 客户端
 

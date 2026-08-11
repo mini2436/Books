@@ -129,15 +129,31 @@ cd backend
 
 > 该账号仅用于本地首次启动。部署到家庭服务器前，请通过环境变量 `APP_BOOTSTRAP_ADMIN_USERNAME` 和 `APP_BOOTSTRAP_ADMIN_PASSWORD` 修改默认凭据。
 
-### 使用 Docker Hub 镜像部署后端
+### 使用 Docker Hub 镜像快速部署
 
-发布版本可直接拉取多架构镜像；Docker 会自动选择 x86_64 或 ARM64 版本，无须在部署机器安装 JDK、Flutter、Gradle 或编译源码：
+发布版本提供 x86_64 和 ARM64 多架构镜像。只需安装 Docker Compose，无须在部署机器上安装 JDK、Flutter、Gradle 或编译源码。仓库根目录的 [docker-compose.quick.yml](docker-compose.quick.yml) 会启动 PostgreSQL、后端和 Web，并使用命名卷持久保存数据库与书籍文件：
 
 ```powershell
-docker compose up -d postgres backend web
+docker compose -f docker-compose.quick.yml up -d
 ```
 
-默认镜像为 `chen584991126/qingyue-backend:v0.0.1-beta4` 和 `chen584991126/qingyue-web:v0.0.1-beta4`。前端访问地址为 `http://localhost:3000`，并通过容器内 Nginx 将 API 请求转发至后端。升级时将 [docker-compose.yml](docker-compose.yml) 中的版本标签改为目标 Release 标签，再执行 `docker compose pull` 和 `docker compose up -d`。
+启动后访问 `http://部署设备IP:3000`。默认管理员为 `admin / admin12345`，默认数据库密码为 `reader`；它们仅适合局域网试用。正式部署前请设置独立密码：
+
+```powershell
+$env:QINGYUE_ADMIN_PASSWORD = "请替换为强密码"
+$env:QINGYUE_POSTGRES_PASSWORD = "请替换为另一组强密码"
+docker compose -f docker-compose.quick.yml up -d
+```
+
+可通过 `QINGYUE_WEB_PORT` 修改 Web 端口，通过 `QINGYUE_BACKEND_IMAGE` 和 `QINGYUE_WEB_IMAGE` 固定或切换镜像版本。升级及查看状态：
+
+```powershell
+docker compose -f docker-compose.quick.yml pull
+docker compose -f docker-compose.quick.yml up -d
+docker compose -f docker-compose.quick.yml ps
+```
+
+默认镜像为 `chen584991126/qingyue-backend:v0.0.1-beta4` 和 `chen584991126/qingyue-web:v0.0.1-beta4`。快速部署文件只向宿主机开放 Web 端口，PostgreSQL 与后端仅在 Compose 网络内通信。原有 [docker-compose.yml](docker-compose.yml) 继续用于本地开发和需要直接访问后端、数据库端口的场景。
 
 ### 4. 启动 Flutter 客户端
 

@@ -1,0 +1,53 @@
+name: qingyue
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: private_reader
+      POSTGRES_USER: reader
+      POSTGRES_PASSWORD: ${QINGYUE_POSTGRES_PASSWORD:-reader}
+    volumes:
+      - qingyue-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U reader -d private_reader"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  backend:
+    image: ${QINGYUE_BACKEND_IMAGE:-chen584991126/qingyue-backend:v0.0.1-beta4}
+    pull_policy: always
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      APP_STORAGE_ROOT: /app/storage
+      APP_SCAN_ROOT: /app/storage/nas
+      APP_BOOTSTRAP_ADMIN_USERNAME: ${QINGYUE_ADMIN_USERNAME:-admin}
+      APP_BOOTSTRAP_ADMIN_PASSWORD: ${QINGYUE_ADMIN_PASSWORD:-admin12345}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/private_reader
+      SPRING_DATASOURCE_USERNAME: reader
+      SPRING_DATASOURCE_PASSWORD: ${QINGYUE_POSTGRES_PASSWORD:-reader}
+      SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE: 1GB
+      SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE: 1100MB
+      APP_EAGER_RESOURCE_CACHE_MAX_FILE_SIZE_BYTES: 104857600
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - qingyue-storage:/app/storage
+
+  web:
+    image: ${QINGYUE_WEB_IMAGE:-chen584991126/qingyue-web:v0.0.1-beta4}
+    pull_policy: always
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_started
+    ports:
+      - "${QINGYUE_WEB_PORT:-3000}:80"
+
+volumes:
+  qingyue-postgres-data:
+  qingyue-storage:

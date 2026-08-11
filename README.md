@@ -155,6 +155,13 @@ docker compose -f docker-compose.quick.yml ps
 
 默认镜像为 `chen584991126/qingyue-backend:v0.0.1-beta4` 和 `chen584991126/qingyue-web:v0.0.1-beta4`。快速部署文件只向宿主机开放 Web 端口，PostgreSQL 与后端仅在 Compose 网络内通信。原有 [docker-compose.yml](docker-compose.yml) 继续用于本地开发和需要直接访问后端、数据库端口的场景。
 
+### 发布标签规则
+
+- 推送 `v*` 标签（例如 `v0.0.2`）：构建后端 JAR 和 Web、Android、Windows、Linux、macOS 客户端，并创建 GitHub Release。
+- 推送 `d*` 标签（例如 `d0.0.2`）：只构建前后端多架构 Docker 镜像并推送到 Docker Hub，不创建 GitHub Release；镜像会同时使用该标签和 `latest`。
+
+两类标签互不触发对方的构建任务。手动运行工作流时会构建全平台产物，但不会自动创建 Release 或推送 Docker 镜像。
+
 ### 4. 启动 Flutter 客户端
 
 ```powershell

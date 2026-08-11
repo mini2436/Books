@@ -4,6 +4,8 @@ import 'package:flutter/material.dart' hide Text;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/admin_models.dart';
+import '../../data/services/backup_upload_file.dart';
+import '../../data/services/backup_upload_picker.dart';
 import '../../shared/localization/app_localizations.dart';
 import '../../shared/localization/localized_text.dart';
 import '../../shared/theme/reader_theme_extension.dart';
@@ -33,7 +35,7 @@ class AdminBackupSection extends ConsumerStatefulWidget {
 }
 
 class _AdminBackupSectionState extends ConsumerState<AdminBackupSection> {
-  PlatformFile? _selectedFile;
+  BackupUploadFile? _selectedFile;
   AdminBackupPreview? _preview;
   bool _saving = false;
   String _exportScope = 'FULL';
@@ -306,16 +308,8 @@ class _AdminBackupSectionState extends ConsumerState<AdminBackupSection> {
 
   Future<void> _pickBackup() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
-        dialogTitle: '选择轻阅备份',
-        type: FileType.custom,
-        allowedExtensions: const ['zip'],
-        allowMultiple: false,
-        withData: kIsWeb,
-        lockParentWindow: true,
-      );
-      if (result == null || result.files.isEmpty || !mounted) return;
-      final file = result.files.single;
+      final file = await pickBackupUploadFile();
+      if (file == null || !mounted) return;
       setState(() {
         _selectedFile = file;
         _preview = null;
@@ -326,6 +320,7 @@ class _AdminBackupSectionState extends ConsumerState<AdminBackupSection> {
             fileName: file.name,
             filePath: file.path,
             fileBytes: file.bytes,
+            backupFile: file,
           );
       if (!mounted || _selectedFile != file) return;
       setState(() {
@@ -399,6 +394,7 @@ class _AdminBackupSectionState extends ConsumerState<AdminBackupSection> {
           fileName: file.name,
           filePath: file.path,
           fileBytes: file.bytes,
+          backupFile: file,
           restoreScope: _restoreScope,
           userMappings: _restoreScope == 'USER_DATA' ? _userMappings : null,
           dataTypes: _restoreScope == 'USER_DATA'
@@ -982,7 +978,7 @@ class _RestorePanel extends StatelessWidget {
     required this.onRestoreModeChanged,
   });
 
-  final PlatformFile? selectedFile;
+  final BackupUploadFile? selectedFile;
   final AdminBackupPreview? preview;
   final bool isBusy;
   final AdminBackupOperation operation;

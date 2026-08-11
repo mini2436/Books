@@ -4,6 +4,8 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:path/path.dart' as path;
 
+import 'backup_upload_file.dart';
+import 'native_backup_uploader.dart';
 import '../models/admin_models.dart';
 import '../../shared/config/app_config.dart';
 import '../models/auth_models.dart';
@@ -537,7 +539,17 @@ class ApiClient {
     required String fileName,
     String? filePath,
     Uint8List? fileBytes,
+    BackupUploadFile? backupFile,
   }) async {
+    if (backupFile != null && supportsNativeBackupUpload(backupFile)) {
+      final response = await uploadBackupWithNativeMultipart(
+        baseUrl: _dio.options.baseUrl,
+        accessToken: accessToken,
+        endpoint: '/api/admin/backups/preview',
+        file: backupFile,
+      );
+      return AdminBackupPreview.fromJson(_decodeNativeBackupResponse(response));
+    }
     final formData = FormData.fromMap({
       'file': await _multipartFile(
         filePath: filePath,
@@ -586,12 +598,36 @@ class ApiClient {
     required String fileName,
     String? filePath,
     Uint8List? fileBytes,
+    BackupUploadFile? backupFile,
     required String restoreScope,
     Map<int, int>? userMappings,
     List<String> dataTypes = const [],
     String mode = 'MERGE',
     ProgressCallback? onSendProgress,
   }) async {
+    final requestJson = jsonEncode({
+      'scope': restoreScope,
+      'dataTypes': dataTypes,
+      if (userMappings != null)
+        'userMappings': userMappings.map(
+          (key, value) => MapEntry(key.toString(), value),
+        ),
+      'mode': mode,
+    });
+    if (backupFile != null && supportsNativeBackupUpload(backupFile)) {
+      final response = await uploadBackupWithNativeMultipart(
+        baseUrl: _dio.options.baseUrl,
+        accessToken: accessToken,
+        endpoint: '/api/admin/backups/restore',
+        file: backupFile,
+        operationId: operationId,
+        requestJson: requestJson,
+        onSendProgress: onSendProgress,
+      );
+      return AdminBackupRestoreResult.fromJson(
+        _decodeNativeBackupResponse(response),
+      );
+    }
     final formData = FormData.fromMap({
       'file': await _multipartFile(
         filePath: filePath,
@@ -599,15 +635,7 @@ class ApiClient {
         fileName: fileName,
       ),
       'request': MultipartFile.fromString(
-        jsonEncode({
-          'scope': restoreScope,
-          'dataTypes': dataTypes,
-          if (userMappings != null)
-            'userMappings': userMappings.map(
-              (key, value) => MapEntry(key.toString(), value),
-            ),
-          'mode': mode,
-        }),
+        requestJson,
         contentType: DioMediaType.parse('application/json'),
       ),
     });
@@ -1214,6 +1242,29 @@ class ApiClient {
     }
   }
 
+  Map<String, dynamic> _decodeNativeBackupResponse(
+    NativeBackupUploadResponse response,
+  ) {
+    Object? data;
+    if (response.body.trim().isNotEmpty) {
+      try {
+        data = jsonDecode(response.body);
+      } on FormatException {
+        data = response.body;
+      }
+    }
+    if (!response.isSuccessful) {
+      throw ApiException(
+        _httpErrorMessage(response.statusCode, data),
+        statusCode: response.statusCode,
+      );
+    }
+    if (data is! Map<String, dynamic>) {
+      throw const ApiException('服务器未返回有效数据');
+    }
+    return data;
+  }
+
   String _extractMessage(DioException error) {
     final statusCode = error.response?.statusCode;
     if (statusCode == 413) {
@@ -1236,7 +1287,14 @@ class ApiClient {
       return '无法验证服务器证书，请检查服务地址。';
     }
 
-    final serverMessage = _serverMessage(error.response?.data);
+    return _httpErrorMessage(statusCode, error.response?.data);
+  }
+
+  String _httpErrorMessage(int? statusCode, Object? responseData) {
+    if (statusCode == 413) {
+      return '文件超过服务器上传限制，请联系管理员调整上传配置';
+    }
+    final serverMessage = _serverMessage(responseData);
     final mappedMessage = _mapServerMessage(serverMessage);
     if (mappedMessage != null) return mappedMessage;
     if (statusCode != null && statusCode >= 500) {

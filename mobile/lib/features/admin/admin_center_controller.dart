@@ -1125,6 +1125,7 @@ class AdminCenterController extends ChangeNotifier {
           for (final file in folder.files) file.relativePath: file,
         };
         var uploaded = 0;
+        final failedFiles = <String>[];
         for (final relativePath in plan.uploadPaths) {
           final file = filesByPath[relativePath];
           if (file == null) {
@@ -1153,7 +1154,7 @@ class AdminCenterController extends ChangeNotifier {
               throw StateError('读取文件分块失败：${file.relativePath}');
             }
             final chunkOffsetBytes = offsetBytes;
-            await _authController.runAuthorized(
+            final result = await _authController.runAuthorized(
               (token) => _apiClient.uploadClientLibraryFileChunk(
                 token,
                 source.id,
@@ -1176,15 +1177,27 @@ class AdminCenterController extends ChangeNotifier {
                 },
               ),
             );
+            if (result['complete'] == true && result['imported'] == false) {
+              final reason = result['error']?.toString().trim();
+              failedFiles.add(
+                reason == null || reason.isEmpty
+                    ? file.relativePath
+                    : '${file.relativePath}（$reason）',
+              );
+            }
             offsetBytes = chunkEndBytes;
           }
           uploaded += 1;
         }
         await refresh();
         _selectedSection = AdminSection.librarySources;
-        _notice =
-            '${source.name} 扫描完成，上传 $uploaded 本，'
-            '跳过 ${plan.unchanged} 本，标记缺失 ${plan.missingMarked} 本';
+        final imported = uploaded - failedFiles.length;
+        _notice = failedFiles.isEmpty
+            ? '${source.name} 扫描完成，导入 $imported 本，'
+                  '跳过 ${plan.unchanged} 本，标记缺失 ${plan.missingMarked} 本'
+            : '${source.name} 扫描完成，导入 $imported 本，失败 ${failedFiles.length} 本：'
+                  '${failedFiles.join('、')}；跳过 ${plan.unchanged} 本，'
+                  '标记缺失 ${plan.missingMarked} 本';
       } finally {
         _workingMessage = null;
       }

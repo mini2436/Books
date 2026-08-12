@@ -17,7 +17,7 @@ services:
       retries: 12
 
   backend:
-    image: ${QINGYUE_BACKEND_IMAGE:-chen584991126/qingyue-backend:v0.0.2-beta1}
+    image: ${QINGYUE_BACKEND_IMAGE:-chen584991126/qingyue-backend:v0.0.2-beta2}
     pull_policy: always
     restart: unless-stopped
     environment:
@@ -39,7 +39,7 @@ services:
       - qingyue-storage:/app/storage
 
   web:
-    image: ${QINGYUE_WEB_IMAGE:-chen584991126/qingyue-web:v0.0.2-beta1}
+    image: ${QINGYUE_WEB_IMAGE:-chen584991126/qingyue-web:v0.0.2-beta2}
     pull_policy: always
     restart: unless-stopped
     depends_on:

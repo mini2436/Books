@@ -18,7 +18,7 @@ services:
       retries: 12
 
   backend:
-    image: chen584991126/qingyue-backend:v0.0.2-beta1
+    image: chen584991126/qingyue-backend:v0.0.2-beta2
     environment:
       SPRING_PROFILES_ACTIVE: docker
       APP_STORAGE_ROOT: /app/storage
@@ -41,7 +41,7 @@ services:
       - "8080:8080"
 
   web:
-    image: chen584991126/qingyue-web:v0.0.2-beta1
+    image: chen584991126/qingyue-web:v0.0.2-beta2
     depends_on:
       backend:
         condition: service_started

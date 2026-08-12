@@ -52,11 +52,11 @@ chen584991126/qingyue-web:<Git 标签>
 chen584991126/qingyue-web:latest
 ```
 
-例如推送 `v0.0.1-beta3` 后，可直接拉取：
+例如推送 `v0.0.2-beta1` 后，可直接拉取：
 
 ```powershell
-docker pull chen584991126/qingyue-backend:v0.0.1-beta4
-docker pull chen584991126/qingyue-web:v0.0.1-beta4
+docker pull chen584991126/qingyue-backend:v0.0.2-beta1
+docker pull chen584991126/qingyue-web:v0.0.2-beta1
 ```
 
 部署机只需要 Docker；Docker 会自动选择与当前 CPU 匹配的镜像。前端镜像包含 Nginx，并会将 `/api/` 请求代理到 Compose 网络中的 `backend:8080`，因此浏览器只需访问前端端口。为了让工作流能够推送镜像，需要在 GitHub 仓库的 `Settings → Secrets and variables → Actions` 新增以下 Secrets：

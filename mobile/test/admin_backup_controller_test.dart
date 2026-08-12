@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:private_reader_mobile/data/models/admin_models.dart';
 import 'package:private_reader_mobile/data/models/auth_models.dart';
 import 'package:private_reader_mobile/data/services/api_client.dart';
+import 'package:private_reader_mobile/data/services/backup_upload_file.dart';
 import 'package:private_reader_mobile/data/services/offline_book_cache_service.dart';
 import 'package:private_reader_mobile/data/services/session_storage.dart';
 import 'package:private_reader_mobile/features/admin/admin_center_controller.dart';
@@ -296,6 +297,7 @@ class _BackupApiClient extends ApiClient {
     required String fileName,
     String? filePath,
     Uint8List? fileBytes,
+    BackupUploadFile? backupFile,
   }) async => previewValue;
 
   @override
@@ -305,6 +307,7 @@ class _BackupApiClient extends ApiClient {
     required String fileName,
     String? filePath,
     Uint8List? fileBytes,
+    BackupUploadFile? backupFile,
     required String restoreScope,
     Map<int, int>? userMappings,
     List<String> dataTypes = const [],

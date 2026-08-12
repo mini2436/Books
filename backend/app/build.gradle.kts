@@ -45,7 +45,6 @@ graalvmNative {
     binaries {
         named("main") {
             imageName.set("qingyue-backend")
-            buildArgs.add("--initialize-at-build-time=com.privatereader")
         }
     }
 }

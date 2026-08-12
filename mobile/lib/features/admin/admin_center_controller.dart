@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/admin_models.dart';
 import '../../data/models/user_role.dart';
 import '../../data/services/api_client.dart';
+import '../../data/services/backup_upload_file.dart';
 import '../../data/services/local_library_folder_models.dart';
 import '../auth/auth_controller.dart';
 
@@ -460,11 +461,13 @@ class AdminCenterController extends ChangeNotifier {
     required String fileName,
     String? filePath,
     Uint8List? fileBytes,
+    BackupUploadFile? backupFile,
   }) async {
     final preview = await previewBackup(
       fileName: fileName,
       filePath: filePath,
       fileBytes: fileBytes,
+      backupFile: backupFile,
     );
     if (preview != null && !preview.isFull) {
       _error = '请选择完整系统备份文件';
@@ -478,6 +481,7 @@ class AdminCenterController extends ChangeNotifier {
     required String fileName,
     String? filePath,
     Uint8List? fileBytes,
+    BackupUploadFile? backupFile,
   }) async {
     if (!canManageBackups || _isWorking) return null;
     _isWorking = true;
@@ -494,6 +498,7 @@ class AdminCenterController extends ChangeNotifier {
           fileName: fileName,
           filePath: filePath,
           fileBytes: fileBytes,
+          backupFile: backupFile,
         ),
       );
       return preview;
@@ -516,11 +521,13 @@ class AdminCenterController extends ChangeNotifier {
     required String fileName,
     String? filePath,
     Uint8List? fileBytes,
+    BackupUploadFile? backupFile,
   }) async {
     return restoreBackup(
       fileName: fileName,
       filePath: filePath,
       fileBytes: fileBytes,
+      backupFile: backupFile,
       restoreScope: 'FULL',
     );
   }
@@ -529,6 +536,7 @@ class AdminCenterController extends ChangeNotifier {
     required String fileName,
     String? filePath,
     Uint8List? fileBytes,
+    BackupUploadFile? backupFile,
     required String restoreScope,
     Map<int, int>? userMappings,
     List<String> dataTypes = const [],
@@ -562,6 +570,7 @@ class AdminCenterController extends ChangeNotifier {
           fileName: fileName,
           filePath: filePath,
           fileBytes: fileBytes,
+          backupFile: backupFile,
           restoreScope: restoreScope,
           userMappings: userMappings,
           dataTypes: dataTypes,

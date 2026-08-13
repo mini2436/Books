@@ -391,7 +391,7 @@ class _BookshelfScreenState extends ConsumerState<BookshelfScreen>
                           child: LayoutBuilder(
                             builder: (context, constraints) {
                               final isPrimaryFilterSet =
-                                  controller.filterOptions.length == 3;
+                                  controller.filterOptions.length == 4;
                               final selector = GlassSegmentedControl<String>(
                                 blur: false,
                                 style: mobileSegmentStyle,
@@ -413,6 +413,9 @@ class _BookshelfScreenState extends ConsumerState<BookshelfScreen>
                                               : option.key ==
                                                     bookshelfFilterUnread
                                               ? Icons.schedule_rounded
+                                              : option.key ==
+                                                    bookshelfFilterUngrouped
+                                              ? Icons.folder_off_outlined
                                               : Icons.folder_outlined,
                                           size: 17,
                                         ),
@@ -1117,6 +1120,8 @@ class _BookTile extends StatefulWidget {
     this.isOfflineAvailable = false,
     this.isDownloading = false,
     this.onOfflinePressed,
+    this.selected = false,
+    this.onSelectionToggle,
   });
 
   final BookSummary book;
@@ -1129,6 +1134,8 @@ class _BookTile extends StatefulWidget {
   final bool isOfflineAvailable;
   final bool isDownloading;
   final VoidCallback? onOfflinePressed;
+  final bool selected;
+  final VoidCallback? onSelectionToggle;
 
   @override
   State<_BookTile> createState() => _BookTileState();
@@ -1217,6 +1224,31 @@ class _BookTileState extends State<_BookTile> {
                 ),
               ),
             ),
+            if (widget.onSelectionToggle != null)
+              Positioned(
+                top: 8,
+                left: 8,
+                child: Material(
+                  color: widget.selected
+                      ? palette.accent
+                      : Colors.black.withValues(alpha: 0.38),
+                  shape: const CircleBorder(),
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: widget.onSelectionToggle,
+                    child: Padding(
+                      padding: const EdgeInsets.all(6),
+                      child: Icon(
+                        widget.selected
+                            ? Icons.check_rounded
+                            : Icons.radio_button_unchecked_rounded,
+                        size: 19,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -1812,6 +1844,8 @@ Future<void> _showGroupFolder(
   required Object titleHeroTag,
 }) {
   final reduceMotion = MediaQuery.of(context).disableAnimations;
+  final selectedBookIds = <int>{};
+  var isGrouping = false;
   return Navigator.of(context, rootNavigator: true).push<void>(
     PageRouteBuilder<void>(
       opaque: false,
@@ -1831,153 +1865,298 @@ Future<void> _showGroupFolder(
         final dialogWidth = (screenSize.width - dialogInset * 2)
             .clamp(280.0, 880.0)
             .toDouble();
-        return ListenableBuilder(
-          listenable: controller,
-          builder: (_, _) {
-            final visibleBooks =
-                controller.groupedBooks[name] ?? const <BookSummary>[];
-            final gridWidth = dialogWidth - 48;
-            final columns = gridWidth >= 720
-                ? 6
-                : gridWidth >= 500
-                ? 4
-                : 3;
-            final tileAspectRatio = wideDialog ? 0.58 : 0.43;
-            final tileWidth = (gridWidth - (columns - 1) * 16) / columns;
-            final rows = visibleBooks.isEmpty
-                ? 0
-                : (visibleBooks.length + columns - 1) ~/ columns;
-            final naturalGridHeight = rows == 0
-                ? 0.0
-                : rows * (tileWidth / tileAspectRatio) + (rows - 1) * 18;
-            final maxDialogHeight = wideDialog
-                ? (screenSize.height - dialogInset * 2)
-                      .clamp(280.0, 680.0)
-                      .toDouble()
-                : (screenSize.height * 0.66).clamp(320.0, 560.0).toDouble();
-            final dialogHeight = wideDialog
-                ? maxDialogHeight
-                : (140 + naturalGridHeight)
-                      .clamp(280.0, maxDialogHeight)
-                      .toDouble();
-            return Dialog(
-              backgroundColor: Colors.transparent,
-              elevation: 0,
-              insetPadding: EdgeInsets.all(dialogInset),
-              child: SizedBox(
-                width: dialogWidth,
-                height: dialogHeight,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    _GroupFolderHeroFrame(
-                      heroTag: reduceMotion ? null : frameHeroTag,
-                      dialog: true,
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(24, 30, 24, 24),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _GroupNameHero(
-                                  name: name,
-                                  heroTag: reduceMotion ? null : titleHeroTag,
-                                  expanded: true,
+        return StatefulBuilder(
+          builder: (routeContext, setRouteState) => ListenableBuilder(
+            listenable: controller,
+            builder: (_, _) {
+              final visibleBooks =
+                  controller.groupedBooks[name] ?? const <BookSummary>[];
+              final visibleBookIds = visibleBooks
+                  .map((book) => book.id)
+                  .toSet();
+              selectedBookIds.removeWhere((id) => !visibleBookIds.contains(id));
+              final allSelected =
+                  visibleBooks.isNotEmpty &&
+                  selectedBookIds.length == visibleBooks.length;
+              final gridWidth = dialogWidth - 48;
+              final columns = gridWidth >= 720
+                  ? 6
+                  : gridWidth >= 500
+                  ? 4
+                  : 3;
+              final tileAspectRatio = wideDialog ? 0.58 : 0.43;
+              final tileWidth = (gridWidth - (columns - 1) * 16) / columns;
+              final rows = visibleBooks.isEmpty
+                  ? 0
+                  : (visibleBooks.length + columns - 1) ~/ columns;
+              final naturalGridHeight = rows == 0
+                  ? 0.0
+                  : rows * (tileWidth / tileAspectRatio) + (rows - 1) * 18;
+              final maxDialogHeight = wideDialog
+                  ? (screenSize.height - dialogInset * 2)
+                        .clamp(280.0, 680.0)
+                        .toDouble()
+                  : (screenSize.height * 0.66).clamp(320.0, 560.0).toDouble();
+              final dialogHeight = wideDialog
+                  ? maxDialogHeight
+                  : (196 + naturalGridHeight)
+                        .clamp(280.0, maxDialogHeight)
+                        .toDouble();
+              return Dialog(
+                backgroundColor: Colors.transparent,
+                elevation: 0,
+                insetPadding: EdgeInsets.all(dialogInset),
+                child: SizedBox(
+                  width: dialogWidth,
+                  height: dialogHeight,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      _GroupFolderHeroFrame(
+                        heroTag: reduceMotion ? null : frameHeroTag,
+                        dialog: true,
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 30, 24, 24),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _GroupNameHero(
+                                    name: name,
+                                    heroTag: reduceMotion ? null : titleHeroTag,
+                                    expanded: true,
+                                  ),
                                 ),
-                              ),
-                              Text('${visibleBooks.length} 本'),
-                              const SizedBox(width: 8),
-                              IconButton(
-                                tooltip: context.tr('关闭'),
-                                onPressed: () =>
-                                    Navigator.of(dialogContext).pop(),
-                                icon: const Icon(Icons.close_rounded),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 18),
-                          Expanded(
-                            child: LayoutBuilder(
-                              builder: (gridContext, constraints) {
-                                final columns = constraints.maxWidth >= 720
-                                    ? 6
-                                    : constraints.maxWidth >= 500
-                                    ? 4
-                                    : 3;
-                                return GridView.builder(
-                                  gridDelegate:
-                                      SliverGridDelegateWithFixedCrossAxisCount(
-                                        crossAxisCount: columns,
-                                        crossAxisSpacing: 16,
-                                        mainAxisSpacing: 18,
-                                        childAspectRatio: tileAspectRatio,
-                                      ),
-                                  itemCount: visibleBooks.length,
-                                  itemBuilder: (tileContext, index) {
-                                    final book = visibleBooks[index];
-                                    final coverHeroTag =
-                                        'book-cover-group-$name-${book.id}';
-                                    final frameHeroTag =
-                                        'book-frame-group-$name-${book.id}';
-                                    return _BookTile(
-                                      book: book,
-                                      imageUrl: imageUrlFor(book),
-                                      imageBytes: controller
-                                          .offlineCoverForBook(book.id),
-                                      headers: headers,
-                                      isOfflineAvailable: controller
-                                          .isBookCached(book.id),
-                                      isDownloading: controller
-                                          .isBookDownloading(book.id),
-                                      onOfflinePressed:
-                                          controller.isOfflineGuest
-                                          ? null
-                                          : () => _toggleOfflineDownload(
-                                              tileContext,
-                                              controller,
-                                              book,
-                                            ),
-                                      heroTag: coverHeroTag,
-                                      frameHeroTag: frameHeroTag,
-                                      onTap: () => _showBookDetails(
-                                        tileContext,
+                                Text('${visibleBooks.length} 本'),
+                                const SizedBox(width: 8),
+                                IconButton(
+                                  tooltip: context.tr('关闭'),
+                                  onPressed: () =>
+                                      Navigator.of(dialogContext).pop(),
+                                  icon: const Icon(Icons.close_rounded),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            Wrap(
+                              spacing: 10,
+                              runSpacing: 8,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                OutlinedButton.icon(
+                                  onPressed: visibleBooks.isEmpty || isGrouping
+                                      ? null
+                                      : () => setRouteState(() {
+                                          if (allSelected) {
+                                            selectedBookIds.clear();
+                                          } else {
+                                            selectedBookIds
+                                              ..clear()
+                                              ..addAll(visibleBookIds);
+                                          }
+                                        }),
+                                  icon: Icon(
+                                    allSelected
+                                        ? Icons.deselect_rounded
+                                        : Icons.select_all_rounded,
+                                  ),
+                                  label: Text(allSelected ? '取消全选' : '全选'),
+                                ),
+                                FilledButton.tonalIcon(
+                                  onPressed:
+                                      selectedBookIds.isEmpty || isGrouping
+                                      ? null
+                                      : () async {
+                                          final selection =
+                                              await showCenteredScaleDialog<
+                                                String
+                                              >(
+                                                routeContext,
+                                                builder: (_) =>
+                                                    _BookshelfBulkGroupDialog(
+                                                      groups:
+                                                          controller.groupNames,
+                                                      bookCount: selectedBookIds
+                                                          .length,
+                                                    ),
+                                              );
+                                          if (selection == null ||
+                                              !routeContext.mounted) {
+                                            return;
+                                          }
+                                          final targetGroup =
+                                              selection ==
+                                                  _bulkGroupDialogUngrouped
+                                              ? null
+                                              : selection;
+                                          setRouteState(
+                                            () => isGrouping = true,
+                                          );
+                                          try {
+                                            final count = await controller
+                                                .updateBookGroups(
+                                                  selectedBookIds,
+                                                  targetGroup,
+                                                );
+                                            selectedBookIds.clear();
+                                            if (routeContext.mounted) {
+                                              ScaffoldMessenger.of(
+                                                routeContext,
+                                              ).showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                    targetGroup == null
+                                                        ? '已将 $count 本书设为未分组'
+                                                        : '已将 $count 本书编入“$targetGroup”',
+                                                  ),
+                                                ),
+                                              );
+                                            }
+                                          } catch (error) {
+                                            if (routeContext.mounted) {
+                                              ScaffoldMessenger.of(
+                                                routeContext,
+                                              ).showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                    '批量编组失败：${ApiException.userFacingMessage(error, fallback: '请稍后重试。')}',
+                                                  ),
+                                                ),
+                                              );
+                                            }
+                                          } finally {
+                                            if (routeContext.mounted) {
+                                              setRouteState(
+                                                () => isGrouping = false,
+                                              );
+                                            }
+                                          }
+                                        },
+                                  icon: isGrouping
+                                      ? const SizedBox.square(
+                                          dimension: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      : const Icon(
+                                          Icons.drive_file_move_outline,
+                                        ),
+                                  label: Text(
+                                    selectedBookIds.isEmpty
+                                        ? '批量编组'
+                                        : '批量编组 (${selectedBookIds.length})',
+                                  ),
+                                ),
+                                if (selectedBookIds.isNotEmpty)
+                                  TextButton(
+                                    onPressed: isGrouping
+                                        ? null
+                                        : () => setRouteState(
+                                            selectedBookIds.clear,
+                                          ),
+                                    child: const Text('取消选择'),
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Expanded(
+                              child: LayoutBuilder(
+                                builder: (gridContext, constraints) {
+                                  final columns = constraints.maxWidth >= 720
+                                      ? 6
+                                      : constraints.maxWidth >= 500
+                                      ? 4
+                                      : 3;
+                                  return GridView.builder(
+                                    gridDelegate:
+                                        SliverGridDelegateWithFixedCrossAxisCount(
+                                          crossAxisCount: columns,
+                                          crossAxisSpacing: 16,
+                                          mainAxisSpacing: 18,
+                                          childAspectRatio: tileAspectRatio,
+                                        ),
+                                    itemCount: visibleBooks.length,
+                                    itemBuilder: (tileContext, index) {
+                                      final book = visibleBooks[index];
+                                      final coverHeroTag =
+                                          'book-cover-group-$name-${book.id}';
+                                      final frameHeroTag =
+                                          'book-frame-group-$name-${book.id}';
+                                      return _BookTile(
                                         book: book,
-                                        controller: controller,
                                         imageUrl: imageUrlFor(book),
                                         imageBytes: controller
                                             .offlineCoverForBook(book.id),
                                         headers: headers,
+                                        isOfflineAvailable: controller
+                                            .isBookCached(book.id),
+                                        isDownloading: controller
+                                            .isBookDownloading(book.id),
+                                        onOfflinePressed:
+                                            controller.isOfflineGuest
+                                            ? null
+                                            : () => _toggleOfflineDownload(
+                                                tileContext,
+                                                controller,
+                                                book,
+                                              ),
+                                        selected: selectedBookIds.contains(
+                                          book.id,
+                                        ),
+                                        onSelectionToggle: isGrouping
+                                            ? null
+                                            : () => setRouteState(() {
+                                                if (!selectedBookIds.add(
+                                                  book.id,
+                                                )) {
+                                                  selectedBookIds.remove(
+                                                    book.id,
+                                                  );
+                                                }
+                                              }),
                                         heroTag: coverHeroTag,
                                         frameHeroTag: frameHeroTag,
-                                        onReadRequested: (anchor) async {
-                                          if (dialogContext.mounted) {
-                                            Navigator.of(dialogContext).pop();
-                                          }
-                                          if (context.mounted) {
-                                            await context.push(
-                                              _readerLocation(book, anchor),
-                                            );
-                                            await controller.refresh();
-                                          }
-                                        },
-                                      ),
-                                    );
-                                  },
-                                );
-                              },
+                                        onTap: () => _showBookDetails(
+                                          tileContext,
+                                          book: book,
+                                          controller: controller,
+                                          imageUrl: imageUrlFor(book),
+                                          imageBytes: controller
+                                              .offlineCoverForBook(book.id),
+                                          headers: headers,
+                                          heroTag: coverHeroTag,
+                                          frameHeroTag: frameHeroTag,
+                                          onReadRequested: (anchor) async {
+                                            if (dialogContext.mounted) {
+                                              Navigator.of(dialogContext).pop();
+                                            }
+                                            if (context.mounted) {
+                                              await context.push(
+                                                _readerLocation(book, anchor),
+                                              );
+                                              await controller.refresh();
+                                            }
+                                          },
+                                        ),
+                                      );
+                                    },
+                                  );
+                                },
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            );
-          },
+              );
+            },
+          ),
         );
       },
       transitionsBuilder: (_, animation, _, child) {
@@ -1990,6 +2169,101 @@ Future<void> _showGroupFolder(
       },
     ),
   );
+}
+
+const String _bulkGroupDialogUngrouped = '__ungrouped_result__';
+
+class _BookshelfBulkGroupDialog extends StatefulWidget {
+  const _BookshelfBulkGroupDialog({
+    required this.groups,
+    required this.bookCount,
+  });
+
+  final List<String> groups;
+  final int bookCount;
+
+  @override
+  State<_BookshelfBulkGroupDialog> createState() =>
+      _BookshelfBulkGroupDialogState();
+}
+
+class _BookshelfBulkGroupDialogState extends State<_BookshelfBulkGroupDialog> {
+  static const _ungrouped = '__ungrouped__';
+  static const _newGroup = '__new_group__';
+  final _newGroupController = TextEditingController();
+  String _selection = _ungrouped;
+
+  @override
+  void dispose() {
+    _newGroupController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassAlertDialog(
+      title: const Text('批量编组'),
+      content: SizedBox(
+        width: 380,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('为已选择的 ${widget.bookCount} 本书设置统一分组。'),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
+              initialValue: _selection,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: '目标分组',
+                prefixIcon: Icon(Icons.folder_outlined),
+              ),
+              items: [
+                const DropdownMenuItem(value: _ungrouped, child: Text('未分组')),
+                ...widget.groups.map(
+                  (group) => DropdownMenuItem(value: group, child: Text(group)),
+                ),
+                const DropdownMenuItem(value: _newGroup, child: Text('新增分组…')),
+              ],
+              onChanged: (value) {
+                if (value != null) setState(() => _selection = value);
+              },
+            ),
+            if (_selection == _newGroup) ...[
+              const SizedBox(height: 12),
+              TextField(
+                controller: _newGroupController,
+                autofocus: true,
+                maxLength: 120,
+                decoration: const InputDecoration(labelText: '新分组名称'),
+                onChanged: (_) => setState(() {}),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed:
+              _selection == _newGroup && _newGroupController.text.trim().isEmpty
+              ? null
+              : () {
+                  final groupName = switch (_selection) {
+                    _ungrouped => _bulkGroupDialogUngrouped,
+                    _newGroup => _newGroupController.text.trim(),
+                    _ => _selection,
+                  };
+                  Navigator.of(context).pop(groupName);
+                },
+          child: const Text('确认编组'),
+        ),
+      ],
+    );
+  }
 }
 
 class _BookDialogResult {

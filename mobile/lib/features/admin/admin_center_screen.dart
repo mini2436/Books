@@ -715,7 +715,7 @@ class _BookManagementSection extends StatelessWidget {
                       ),
                       _SummaryChip(
                         label: '当前分组',
-                        value: '${controller.availableBookGroups.length - 1}',
+                        value: '${controller.bookGroupCount}',
                       ),
                       _SummaryChip(
                         label: '已勾选',
@@ -788,13 +788,19 @@ class _BookManagementSection extends StatelessWidget {
                         .map(
                           (group) => ButtonSegment<String>(
                             value: group,
-                            icon: Icon(
-                              group == AdminCenterController.allBookGroupsLabel
-                                  ? Icons.apps_rounded
-                                  : Icons.folder_outlined,
-                              size: 17,
+                            icon: Icon(switch (group) {
+                              AdminCenterController.allBookGroupsLabel =>
+                                Icons.apps_rounded,
+                              AdminCenterController.ungroupedBooksFilter =>
+                                Icons.folder_off_outlined,
+                              _ => Icons.folder_outlined,
+                            }, size: 17),
+                            label: Text(
+                              group ==
+                                      AdminCenterController.ungroupedBooksFilter
+                                  ? '未分组'
+                                  : group,
                             ),
-                            label: Text(group),
                           ),
                         )
                         .toList(),
@@ -857,8 +863,11 @@ class _BookManagementSection extends StatelessWidget {
                                           .where(
                                             (group) =>
                                                 group !=
-                                                AdminCenterController
-                                                    .allBookGroupsLabel,
+                                                    AdminCenterController
+                                                        .allBookGroupsLabel &&
+                                                group !=
+                                                    AdminCenterController
+                                                        .ungroupedBooksFilter,
                                           )
                                           .toList(),
                                       bookCount: controller.selectedBookCount,

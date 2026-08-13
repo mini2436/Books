@@ -73,13 +73,13 @@ void main() {
     await _waitUntil(
       () =>
           controller.books.length == 1000 &&
-          controller.groupedBooks.length == 10 &&
+          controller.groupedBooks.length == 11 &&
           !controller.isLoading,
     );
 
     expect(cache.coverLoads, 0);
-    expect(controller.groupedBooks, hasLength(10));
-    expect(controller.filterOptions, hasLength(13));
+    expect(controller.groupedBooks, hasLength(11));
+    expect(controller.filterOptions, hasLength(14));
     expect(controller.recentBooks, hasLength(10));
     expect(identical(controller.groupedBooks, controller.groupedBooks), isTrue);
     expect(
@@ -94,6 +94,10 @@ void main() {
 
     controller.setFilter(bookshelfFilterRead);
     expect(controller.filteredBooks, hasLength(100));
+
+    controller.setFilter(bookshelfFilterUngrouped);
+    expect(controller.filteredBooks, hasLength(1));
+    expect(controller.filteredBooks.single.id, 1000);
 
     final firstCover = controller.offlineCoverForBook(1);
     final repeatedCover = controller.offlineCoverForBook(1);
@@ -111,7 +115,7 @@ BookSummary _summary(int id) => BookSummary(
   id: id,
   title: '图书 $id',
   author: '作者 ${id % 50}',
-  groupName: '分组 ${id % 10}',
+  groupName: id == 1000 ? null : '分组 ${id % 10}',
   description: '用于千本书架测试的简介 $id',
   pluginId: 'epub',
   format: 'epub',

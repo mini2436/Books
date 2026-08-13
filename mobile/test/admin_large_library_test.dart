@@ -27,7 +27,8 @@ void main() {
 
     await _waitUntil(() => !controller.isLoading);
     expect(controller.books, hasLength(1000));
-    expect(controller.availableBookGroups, hasLength(11));
+    expect(controller.availableBookGroups, hasLength(12));
+    expect(controller.bookGroupCount, 10);
     expect(controller.filteredBooks, hasLength(1000));
     expect(
       identical(controller.availableBookGroups, controller.availableBookGroups),
@@ -45,6 +46,10 @@ void main() {
 
     controller.setBookSearchQuery('');
     await _waitUntil(() => controller.filteredBooks.length == 1000);
+    controller.setBookGroupFilter(AdminCenterController.ungroupedBooksFilter);
+    expect(controller.filteredBooks, hasLength(1));
+    expect(controller.filteredBooks.single.id, 1000);
+
     controller.setBookGroupFilter('分组 3');
     expect(controller.filteredBooks, hasLength(100));
 
@@ -124,7 +129,7 @@ class _LargeAdminLibraryApiClient extends ApiClient {
           id: id,
           title: '图书 $id',
           author: '作者 $id',
-          groupName: '分组 ${id % 10}',
+          groupName: id == 1000 ? null : '分组 ${id % 10}',
           description: null,
           pluginId: 'epub',
           format: 'EPUB',

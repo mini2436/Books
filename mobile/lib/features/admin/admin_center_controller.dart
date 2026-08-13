@@ -92,6 +92,7 @@ class AdminCenterController extends ChangeNotifier {
   }
 
   static const String allBookGroupsLabel = '全部分组';
+  static const String ungroupedBooksFilter = '__ungrouped_books__';
 
   final AuthController _authController;
   final ApiClient _apiClient;
@@ -183,6 +184,12 @@ class AdminCenterController extends ChangeNotifier {
   bool get hasBookSelection => _selectedBookIds.isNotEmpty;
 
   List<String> get availableBookGroups => _availableBookGroups;
+
+  int get bookGroupCount => _availableBookGroups
+      .where(
+        (group) => group != allBookGroupsLabel && group != ungroupedBooksFilter,
+      )
+      .length;
 
   List<AdminBookSummary> get filteredBooks => _filteredBooks;
 
@@ -1707,7 +1714,11 @@ class AdminCenterController extends ChangeNotifier {
             .toSet()
             .toList()
           ..sort();
-    _availableBookGroups = List.unmodifiable([allBookGroupsLabel, ...groups]);
+    _availableBookGroups = List.unmodifiable([
+      allBookGroupsLabel,
+      ungroupedBooksFilter,
+      ...groups,
+    ]);
     if (!_availableBookGroups.contains(_selectedBookGroup)) {
       _selectedBookGroup = allBookGroupsLabel;
     }
@@ -1723,9 +1734,12 @@ class AdminCenterController extends ChangeNotifier {
     final normalizedQuery = _appliedBookSearchQuery.trim().toLowerCase();
     _filteredBooks = List.unmodifiable(
       _books.where((book) {
-        final groupMatches =
-            _selectedBookGroup == allBookGroupsLabel ||
-            (book.groupName?.trim() ?? '') == _selectedBookGroup;
+        final bookGroup = book.groupName?.trim() ?? '';
+        final groupMatches = switch (_selectedBookGroup) {
+          allBookGroupsLabel => true,
+          ungroupedBooksFilter => bookGroup.isEmpty,
+          _ => bookGroup == _selectedBookGroup,
+        };
         return groupMatches &&
             (normalizedQuery.isEmpty ||
                 (_bookSearchCorpus[book.id]?.contains(normalizedQuery) ??

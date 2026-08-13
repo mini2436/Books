@@ -199,6 +199,21 @@ class ApiClient {
     return (data['updatedBooks'] as num?)?.toInt() ?? 0;
   }
 
+  Future<int> bulkUpdateMyBookGroups(
+    String accessToken, {
+    required List<int> bookIds,
+    String? groupName,
+  }) async {
+    final data = await _request<Map<String, dynamic>>(
+      () => _dio.patch<Map<String, dynamic>>(
+        '/api/me/books/groups/bulk',
+        data: {'bookIds': bookIds, 'groupName': groupName},
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+    return (data['updatedBooks'] as num?)?.toInt() ?? 0;
+  }
+
   Future<List<AdminBookSummary>> listAdminBooks(String accessToken) async {
     final data = await _request<List<dynamic>>(
       () => _dio.get<List<dynamic>>(

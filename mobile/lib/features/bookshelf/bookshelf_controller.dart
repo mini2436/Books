@@ -15,6 +15,7 @@ import '../auth/auth_controller.dart';
 const String bookshelfFilterAll = 'all';
 const String bookshelfFilterRead = 'read';
 const String bookshelfFilterUnread = 'unread';
+const String bookshelfFilterUngrouped = 'ungrouped';
 const String _bookshelfFilterGroupPrefix = 'group:';
 
 class BookshelfFilterOption {
@@ -76,6 +77,7 @@ class BookshelfController extends ChangeNotifier {
     BookshelfFilterOption(key: bookshelfFilterAll, label: '全部书籍'),
     BookshelfFilterOption(key: bookshelfFilterRead, label: '已读书籍'),
     BookshelfFilterOption(key: bookshelfFilterUnread, label: '未读书籍'),
+    BookshelfFilterOption(key: bookshelfFilterUngrouped, label: '未分组'),
   ];
   List<BookSummary> _filteredBooks = const [];
   List<BookSummary> _recentBooks = const [];
@@ -256,6 +258,36 @@ class BookshelfController extends ChangeNotifier {
         '$_bookshelfFilterGroupPrefix$normalizedOldName') {
       _selectedFilterKey = '$_bookshelfFilterGroupPrefix$normalizedNewName';
     }
+    _rebuildDerivedState();
+    notifyListeners();
+    return updatedBooks;
+  }
+
+  Future<int> updateBookGroups(Iterable<int> bookIds, String? groupName) async {
+    final normalizedIds = bookIds.toSet().toList()..sort();
+    if (normalizedIds.isEmpty) return 0;
+    final normalizedName = groupName?.trim();
+    final nextGroup = normalizedName == null || normalizedName.isEmpty
+        ? null
+        : normalizedName;
+    final updatedBooks = await _authController.runAuthorized(
+      (accessToken) => _apiClient.bulkUpdateMyBookGroups(
+        accessToken,
+        bookIds: normalizedIds,
+        groupName: nextGroup,
+      ),
+    );
+    final selectedIds = normalizedIds.toSet();
+    _books = _books
+        .map(
+          (book) => selectedIds.contains(book.id)
+              ? book.copyWith(
+                  groupName: nextGroup,
+                  clearGroup: nextGroup == null,
+                )
+              : book,
+        )
+        .toList();
     _rebuildDerivedState();
     notifyListeners();
     return updatedBooks;
@@ -722,6 +754,7 @@ class BookshelfController extends ChangeNotifier {
       const BookshelfFilterOption(key: bookshelfFilterAll, label: '全部书籍'),
       const BookshelfFilterOption(key: bookshelfFilterRead, label: '已读书籍'),
       const BookshelfFilterOption(key: bookshelfFilterUnread, label: '未读书籍'),
+      const BookshelfFilterOption(key: bookshelfFilterUngrouped, label: '未分组'),
       ...groupNames.map(
         (group) => BookshelfFilterOption(
           key: '$_bookshelfFilterGroupPrefix$group',
@@ -760,6 +793,9 @@ class BookshelfController extends ChangeNotifier {
       switch (_selectedFilterKey) {
         bookshelfFilterRead => _books.where((book) => _hasBeenRead(book.id)),
         bookshelfFilterUnread => _books.where((book) => !_hasBeenRead(book.id)),
+        bookshelfFilterUngrouped => _books.where(
+          (book) => (book.groupName?.trim() ?? '').isEmpty,
+        ),
         final key when key.startsWith(_bookshelfFilterGroupPrefix) =>
           _books.where(
             (book) =>

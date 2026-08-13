@@ -330,6 +330,43 @@ class BookService(
         return RenameBookGroupResponse(groupName = newName, updatedBooks = updated)
     }
 
+    @Transactional
+    fun updateAccessibleBookGroups(userId: Long, request: BulkUpdateBookGroupRequest): Int {
+        val bookIds = request.bookIds.distinct()
+        if (bookIds.isEmpty()) return 0
+        require(bookIds.all { hasAccess(userId, it) }) { "Book access denied" }
+
+        val groupName = request.groupName?.trim()?.takeIf { it.isNotEmpty() }
+        if (groupName == null) {
+            return jdbcClient.sql(
+                "delete from user_book_groups where user_id = :userId and book_id in (:bookIds)",
+            )
+                .param("userId", userId)
+                .param("bookIds", bookIds)
+                .update()
+        }
+        require(groupName != UNGROUPED_LABEL) { "The reserved ungrouped name cannot be used" }
+        jdbcClient.sql(
+            "delete from user_book_groups where user_id = :userId and book_id in (:bookIds)",
+        )
+            .param("userId", userId)
+            .param("bookIds", bookIds)
+            .update()
+        return jdbcClient.sql(
+            """
+            insert into user_book_groups (user_id, book_id, group_name, updated_at)
+            select :userId, b.id, :groupName, :updatedAt
+            from books b
+            where b.id in (:bookIds)
+            """.trimIndent(),
+        )
+            .param("userId", userId)
+            .param("bookIds", bookIds)
+            .param("groupName", groupName)
+            .param("updatedAt", Instant.now().toSqlTimestamp())
+            .update()
+    }
+
     private fun findUserBookGroup(userId: Long, bookId: Long): String? =
         jdbcClient.sql(
             "select group_name from user_book_groups where user_id = :userId and book_id = :bookId",

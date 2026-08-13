@@ -104,5 +104,19 @@ class BookServiceBookshelfTest {
                 .query(String::class.java)
                 .single(),
         )
+
+        val regrouped = service.updateAccessibleBookGroups(
+            1,
+            BulkUpdateBookGroupRequest(bookIds = listOf(10), groupName = "批量分组"),
+        )
+
+        assertEquals(1, regrouped)
+        assertEquals("批量分组", service.listAccessibleBooks(1).single().groupName)
+        assertEquals(
+            "我的分组",
+            jdbcClient.sql("select group_name from user_book_groups where user_id = 2")
+                .query(String::class.java)
+                .single(),
+        )
     }
 }

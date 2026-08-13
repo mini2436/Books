@@ -153,7 +153,7 @@ docker compose -f docker-compose.quick.yml up -d
 docker compose -f docker-compose.quick.yml ps
 ```
 
-默认镜像为 `chen584991126/qingyue-backend:v0.0.2-beta2` 和 `chen584991126/qingyue-web:v0.0.2-beta2`。快速部署文件只向宿主机开放 Web 端口，PostgreSQL 与后端仅在 Compose 网络内通信。原有 [docker-compose.yml](docker-compose.yml) 继续用于本地开发和需要直接访问后端、数据库端口的场景。
+默认镜像为 `chen584991126/qingyue-backend:v0.0.2-beta4` 和 `chen584991126/qingyue-web:v0.0.2-beta4`。快速部署文件只向宿主机开放 Web 端口，PostgreSQL 与后端仅在 Compose 网络内通信。原有 [docker-compose.yml](docker-compose.yml) 继续用于本地开发和需要直接访问后端、数据库端口的场景。
 
 ### 4. 启动 Flutter 客户端
 

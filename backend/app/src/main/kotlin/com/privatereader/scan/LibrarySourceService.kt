@@ -34,6 +34,7 @@ import java.util.zip.ZipException
 import javax.xml.XMLConstants
 import javax.xml.parsers.DocumentBuilderFactory
 import org.xml.sax.InputSource
+import org.xml.sax.SAXException
 
 private const val MAX_CLIENT_UPLOAD_CHUNK_BYTES = 16L * 1024 * 1024
 private const val MAX_CLIENT_STORAGE_FILE_NAME_BYTES = 200
@@ -750,12 +751,20 @@ class LibrarySourceService(
             messages.any { it.contains("zip END header not found", ignoreCase = true) ||
                 it.contains("End of Central Directory", ignoreCase = true) } ->
                 "EPUB 文件结构损坏或不完整"
+            generateSequence<Throwable>(exception) { it.cause }.any { it is SAXException } ->
+                "EPUB 内部 XML 编码或结构无效"
+            messages.any { it.startsWith("EPUB ", ignoreCase = true) } ->
+                "EPUB 文件结构无效"
             else -> messages.firstOrNull()?.take(300) ?: "文件解析失败"
         }
     }
 
     private fun isInvalidBookFile(exception: Exception): Boolean =
-        generateSequence<Throwable>(exception) { it.cause }.any { it is ZipException }
+        generateSequence<Throwable>(exception) { it.cause }.any { cause ->
+            cause is ZipException ||
+                cause is SAXException ||
+                cause is IllegalArgumentException && cause.message.orEmpty().startsWith("EPUB ", ignoreCase = true)
+        }
 
     private fun boundedClientStorageFileName(originalName: String): String {
         val extensionStart = originalName.lastIndexOf('.')

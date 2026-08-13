@@ -16,6 +16,43 @@ class EpubBookFormatPluginTest {
     private val plugin = EpubBookFormatPlugin()
 
     @Test
+    fun `resolves epub archive entries ignoring path case`() {
+        val tempFile = Files.createTempFile("reader-epub-path-case", ".epub")
+        ZipOutputStream(Files.newOutputStream(tempFile)).use { zip ->
+            writeEntry(
+                zip,
+                "META-INF/container.xml",
+                """
+                <container xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+                  <rootfiles><rootfile full-path="ops/content.opf"/></rootfiles>
+                </container>
+                """.trimIndent(),
+            )
+            writeEntry(
+                zip,
+                "OPS/content.opf",
+                """
+                <package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+                  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>大小写兼容</dc:title></metadata>
+                  <manifest><item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest>
+                  <spine><itemref idref="chapter"/></spine>
+                </package>
+                """.trimIndent(),
+            )
+            writeEntry(
+                zip,
+                "OPS/chapter.xhtml",
+                """
+                <html xmlns="http://www.w3.org/1999/xhtml"><body><h1>正文</h1></body></html>
+                """.trimIndent(),
+            )
+        }
+
+        assertEquals("大小写兼容", plugin.extractMetadata(tempFile).title)
+        assertEquals(1, plugin.extractStructuredContent(tempFile).chapters.size)
+    }
+
+    @Test
     fun `extracts toc from epub 2 ncx with standard doctype`() {
         val tempFile = Files.createTempFile("reader-epub2-ncx", ".epub")
         ZipOutputStream(Files.newOutputStream(tempFile)).use { zip ->

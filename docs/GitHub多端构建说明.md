@@ -72,7 +72,13 @@ docker pull chen584991126/qingyue-web:v0.0.2-beta1
 
 ## 签名说明
 
-- 当前 Android 工程在没有正式密钥时使用调试密钥签署 Release 构建，适合内部安装验证，不适合提交应用商店。
+- Android 发布包必须使用固定的发布密钥签名。GitHub Actions 需要配置下列 Repository Secrets，否则 Android 构建会明确失败，避免误发布每次签名都变化的调试包：
+  - `ANDROID_KEYSTORE_BASE64`：发布 `.jks` 文件经 Base64 编码后的单行内容。
+  - `ANDROID_KEYSTORE_PASSWORD`：密钥库密码。
+  - `ANDROID_KEY_ALIAS`：密钥别名。
+  - `ANDROID_KEY_PASSWORD`：密钥密码。
+- 本机正式构建在 `mobile/android/key.properties` 中填写相同信息；该文件和 `.jks` 文件已被 Git 忽略。没有该文件时，本机 `release` 仅回退使用调试密钥，适合临时验证，不可用于覆盖安装或发布。
+- 已通过 ADB / `flutter run` 安装过的调试包，与采用发布密钥签名的版本无法覆盖安装。首次切换时请卸载旧的“轻阅”（会清除其本机离线数据）后再安装发布版。
 - macOS 构建未配置 Apple Developer 签名和公证，适合内部验证；对外分发前需配置证书、公证和应用标识。
 - iOS 必须配置 Apple 签名证书和描述文件，因此未加入默认公开构建矩阵。
 - Windows 当前生成免安装 ZIP；如需 MSIX 或代码签名，可在此工作流基础上增加证书 Secret 和打包步骤。

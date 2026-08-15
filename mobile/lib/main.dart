@@ -1,5 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 
 import 'app/app.dart';
 import 'data/services/server_config_storage.dart';
@@ -8,6 +10,9 @@ import 'shared/localization/app_locale.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (kIsWeb) {
+    await BrowserContextMenu.disableContextMenu();
+  }
   final serverConfigStorage = ServerConfigStorage();
   final initialServerAddress = await serverConfigStorage.readAddress();
   final appLocaleStorage = AppLocaleStorage();

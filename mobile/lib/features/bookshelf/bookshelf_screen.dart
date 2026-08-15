@@ -437,67 +437,20 @@ class _BookshelfScreenState extends ConsumerState<BookshelfScreen>
                             horizontalPadding,
                             18,
                           ),
-                          child: LayoutBuilder(
-                            builder: (context, constraints) {
-                              final selector = GlassSegmentedControl<String>(
-                                blur: false,
-                                style: const ButtonStyle(
-                                  minimumSize: WidgetStatePropertyAll(
-                                    Size(0, 40),
-                                  ),
-                                  padding: WidgetStatePropertyAll(
-                                    EdgeInsets.symmetric(
-                                      horizontal: 11,
-                                      vertical: 8,
-                                    ),
-                                  ),
-                                  visualDensity: VisualDensity.compact,
-                                  tapTargetSize:
-                                      MaterialTapTargetSize.shrinkWrap,
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(999),
+                              child: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: _BookshelfFilterBar(
+                                  options: controller.filterOptions,
+                                  selectedKey: controller.selectedFilterKey,
+                                  onSelected: (key) =>
+                                      _selectBookFilter(controller, key),
                                 ),
-                                showSelectedIcon: false,
-                                segments: controller.filterOptions
-                                    .map(
-                                      (option) => ButtonSegment<String>(
-                                        value: option.key,
-                                        icon: Icon(
-                                          option.key == bookshelfFilterAll
-                                              ? Icons.apps_rounded
-                                              : option.key ==
-                                                    bookshelfFilterRead
-                                              ? Icons
-                                                    .check_circle_outline_rounded
-                                              : option.key ==
-                                                    bookshelfFilterUnread
-                                              ? Icons.schedule_rounded
-                                              : option.key ==
-                                                    bookshelfFilterUngrouped
-                                              ? Icons.folder_off_outlined
-                                              : Icons.folder_outlined,
-                                          size: 17,
-                                        ),
-                                        label: Text(option.label),
-                                      ),
-                                    )
-                                    .toList(),
-                                selected: {controller.selectedFilterKey},
-                                onSelectionChanged: (selection) =>
-                                    _selectBookFilter(
-                                      controller,
-                                      selection.first,
-                                    ),
-                              );
-                              return Align(
-                                alignment: Alignment.centerLeft,
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(999),
-                                  child: SingleChildScrollView(
-                                    scrollDirection: Axis.horizontal,
-                                    child: selector,
-                                  ),
-                                ),
-                              );
-                            },
+                              ),
+                            ),
                           ),
                         )
                       : const SizedBox.shrink(),
@@ -1024,6 +977,101 @@ class _SectionHeading extends StatelessWidget {
       ],
     );
   }
+}
+
+class _BookshelfFilterBar extends StatelessWidget {
+  const _BookshelfFilterBar({
+    required this.options,
+    required this.selectedKey,
+    required this.onSelected,
+  });
+
+  final List<BookshelfFilterOption> options;
+  final String selectedKey;
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppReaderPalette.of(context);
+    return GlassSurface(
+      level: GlassSurfaceLevel.subtle,
+      borderRadius: BorderRadius.circular(999),
+      padding: const EdgeInsets.all(4),
+      blur: false,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var index = 0; index < options.length; index++) ...[
+            if (index > 0) const SizedBox(width: 2),
+            _BookshelfFilterButton(
+              option: options[index],
+              selected: options[index].key == selectedKey,
+              palette: palette,
+              onTap: () => onSelected(options[index].key),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _BookshelfFilterButton extends StatelessWidget {
+  const _BookshelfFilterButton({
+    required this.option,
+    required this.selected,
+    required this.palette,
+    required this.onTap,
+  });
+
+  final BookshelfFilterOption option;
+  final bool selected;
+  final AppReaderPalette palette;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final foreground = selected ? palette.accent : palette.inkSecondary;
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: Material(
+        color: selected
+            ? palette.accent.withValues(alpha: 0.18)
+            : Colors.transparent,
+        shape: const StadiumBorder(),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(_filterIcon(option.key), size: 17, color: foreground),
+                const SizedBox(width: 7),
+                Text(
+                  option.label,
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    color: foreground,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  IconData _filterIcon(String key) => switch (key) {
+    bookshelfFilterAll => Icons.apps_rounded,
+    bookshelfFilterRead => Icons.check_circle_outline_rounded,
+    bookshelfFilterUnread => Icons.schedule_rounded,
+    bookshelfFilterUngrouped => Icons.folder_off_outlined,
+    _ => Icons.folder_outlined,
+  };
 }
 
 class _RecentBookItem extends StatelessWidget {

@@ -1185,6 +1185,15 @@ class ApiClient {
     return ReadingProgressView.fromJson(data);
   }
 
+  Future<void> deleteReadingHistory(String accessToken, int bookId) async {
+    await _request<Map<String, dynamic>>(
+      () => _dio.delete<Map<String, dynamic>>(
+        '/api/me/books/$bookId/reading-history',
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+  }
+
   Future<SyncPullResponse> pullSync(String accessToken, {int? cursor}) async {
     final data = await _request<Map<String, dynamic>>(
       () => _dio.get<Map<String, dynamic>>(

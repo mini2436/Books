@@ -90,6 +90,22 @@ class AppLocalizations {
     if (match != null) return 'Added to “${match[1]}”';
     match = RegExp(r'^已删除“(.+)”的离线文件$').firstMatch(source);
     if (match != null) return 'Removed the offline copy of “${match[1]}”';
+    match = RegExp(r'^已移除“(.+)”的最近阅读记录$').firstMatch(source);
+    if (match != null) return 'Removed “${match[1]}” from recently read';
+    match = RegExp(r'^仅从最近阅读中移除“(.+)”，不会删除阅读进度、批注或书签。$').firstMatch(source);
+    if (match != null) {
+      return 'Remove “${match[1]}” from recently read only? Reading progress, annotations, and bookmarks will be kept.';
+    }
+    match = RegExp(r'^清理 (\d+) 本本机缓存书籍（(.+)）$').firstMatch(source);
+    if (match != null) {
+      return 'Clear ${match[1]} cached books from this device (${match[2]})';
+    }
+    match = RegExp(
+      r'^将删除当前账号在本机缓存的 (\d+) 本书籍及离线文件。服务器书籍、阅读进度、批注和书签不会被删除。$',
+    ).firstMatch(source);
+    if (match != null) {
+      return 'Clear ${match[1]} cached books and offline files for this account? Server books, reading progress, annotations, and bookmarks will be kept.';
+    }
     match = RegExp(r'^“(.+)”已可离线阅读$').firstMatch(source);
     if (match != null) return '“${match[1]}” is available offline';
     match = RegExp(r'^定位：(.+)$').firstMatch(source);
@@ -385,6 +401,11 @@ class AppLocalizations {
     '全局切换卡片、导航、弹窗与阅读工具栏材质':
         'Switch cards, navigation, dialogs, and reader toolbars globally',
     '同步状态': 'Sync status',
+    '清理缓存': 'Clear cache',
+    '当前账号没有缓存书籍': 'No cached books for this account',
+    '清理缓存书籍？': 'Clear cached books?',
+    '确认清理': 'Clear cache',
+    '本机书籍缓存已清理': 'Cached books cleared from this device',
     '离线操作将在网络恢复后自动补偿':
         'Offline changes sync automatically when the network returns',
     '返回登录': 'Back to sign in',
@@ -425,6 +446,8 @@ class AppLocalizations {
     '搜索书名、作者或格式': 'Search by title, author, or format',
     '全部': 'All',
     '最近阅读': 'Recently read',
+    '删除最近阅读记录？': 'Remove recent reading record?',
+    '删除记录': 'Remove record',
     '已读书籍': 'Finished',
     '未读书籍': 'Unread',
     '全部分组': 'All groups',

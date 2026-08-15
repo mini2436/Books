@@ -606,6 +606,34 @@ class BookshelfController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> clearOfflineCache() async {
+    final serverKey = _authController.activeServerKey;
+    final userId = _authController.activeUserId;
+    if (serverKey == null || userId == null) return;
+    await _offlineBookCacheService.deleteBooks(serverKey, userId);
+    _cachedBookIds = <int>{};
+    _clearOfflineCoverCache();
+    _offlineLibrarySizeBytes = 0;
+    if (_authController.isOfflineGuest) {
+      _books = const [];
+      _readingProgresses = const [];
+      _readingHistories = const [];
+      _rebuildDerivedState();
+    }
+    notifyListeners();
+  }
+
+  Future<void> deleteRecentReading(int bookId) async {
+    await _authController.runAuthorized(
+      (accessToken) => _apiClient.deleteReadingHistory(accessToken, bookId),
+    );
+    _readingHistories = List<ReadingHistoryView>.unmodifiable(
+      _readingHistories.where((history) => history.bookId != bookId),
+    );
+    _rebuildDerivedState();
+    notifyListeners();
+  }
+
   Future<Uint8List?> _downloadCover(BookSummary book) async {
     try {
       return await _authController.runAuthorized(
@@ -774,8 +802,10 @@ class BookshelfController extends ChangeNotifier {
       for (final history in _readingHistories)
         history.bookId: history.lastReadAt,
     };
-    for (final progress in _readingProgresses) {
-      lastReadByBook.putIfAbsent(progress.bookId, () => progress.updatedAt);
+    if (_authController.isOfflineGuest) {
+      for (final progress in _readingProgresses) {
+        lastReadByBook.putIfAbsent(progress.bookId, () => progress.updatedAt);
+      }
     }
     final recentEntries = lastReadByBook.entries.toList()
       ..sort((left, right) => right.value.compareTo(left.value));

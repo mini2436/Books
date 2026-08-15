@@ -3,6 +3,7 @@ package com.privatereader.sync
 import com.privatereader.auth.UserPrincipal
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
@@ -42,6 +43,16 @@ class SyncController(
         @AuthenticationPrincipal principal: UserPrincipal,
         @PathVariable bookId: Long,
     ): List<BookmarkView> = syncService.getBookmarks(principal.id, bookId)
+
+    // 最近阅读删除接口：只移除阅读历史，不影响阅读进度、批注或书签。
+    @DeleteMapping("/api/me/books/{bookId}/reading-history")
+    fun deleteReadingHistory(
+        @AuthenticationPrincipal principal: UserPrincipal,
+        @PathVariable bookId: Long,
+    ): Map<String, Boolean> {
+        syncService.deleteReadingHistory(principal.id, bookId)
+        return mapOf("deleted" to true)
+    }
 
     // 阅读进度接口：写入或更新当前用户在指定书籍上的阅读进度。
     @PutMapping("/api/me/books/{bookId}/progress")

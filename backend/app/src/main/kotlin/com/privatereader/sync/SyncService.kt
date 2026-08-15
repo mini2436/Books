@@ -270,6 +270,15 @@ class SyncService(
             .query { rs, _ -> rs.toBookmarkView() }
             .list()
 
+    fun deleteReadingHistory(userId: Long, bookId: Long) {
+        jdbcClient.sql(
+            "delete from reading_history where user_id = :userId and book_id = :bookId",
+        )
+            .param("userId", userId)
+            .param("bookId", bookId)
+            .update()
+    }
+
     fun upsertReadingProgress(userId: Long, mutation: ReadingProgressMutation): ReadingProgressView {
         push(userId, SyncPushRequest(progresses = listOf(mutation)))
         return ReadingProgressView(

@@ -211,6 +211,32 @@ class OfflineBookCacheService {
     });
   }
 
+  Future<void> deleteBooks(String serverKey, int userId) async {
+    if (kIsWeb) {
+      await _webStore.deleteBooks(serverKey, userId);
+      return;
+    }
+    final db = await _database;
+    await db.transaction((txn) async {
+      final args = [serverKey, userId];
+      await txn.delete(
+        'offline_resources',
+        where: 'server_key = ? AND user_id = ?',
+        whereArgs: args,
+      );
+      await txn.delete(
+        'offline_chapters',
+        where: 'server_key = ? AND user_id = ?',
+        whereArgs: args,
+      );
+      await txn.delete(
+        'offline_books',
+        where: 'server_key = ? AND user_id = ?',
+        whereArgs: args,
+      );
+    });
+  }
+
   Future<void> saveChapter(
     String serverKey,
     int userId,

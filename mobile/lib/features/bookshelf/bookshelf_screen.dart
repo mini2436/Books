@@ -84,6 +84,49 @@ class _BookshelfScreenState extends ConsumerState<BookshelfScreen>
     _restartContentTransition();
   }
 
+  Future<void> _confirmDeleteRecentReading(
+    BuildContext context,
+    BookshelfController controller,
+    BookSummary book,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => GlassAlertDialog(
+        title: const Text('删除最近阅读记录？'),
+        content: Text('仅从最近阅读中移除“${book.title}”，不会删除阅读进度、批注或书签。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('删除记录'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    try {
+      await controller.deleteRecentReading(book.id);
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('已移除“${book.title}”的最近阅读记录')));
+      }
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '删除失败：${ApiException.userFacingMessage(error, fallback: '请稍后重试。')}',
+            ),
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final controller = ref.watch(bookshelfControllerProvider);
@@ -295,6 +338,11 @@ class _BookshelfScreenState extends ConsumerState<BookshelfScreen>
                             heroTag: 'book-cover-recent-${book.id}',
                             frameHeroTag: 'book-frame-recent-${book.id}',
                           ),
+                          onRemove: () => _confirmDeleteRecentReading(
+                            context,
+                            controller,
+                            book,
+                          ),
                         );
                       },
                     ),
@@ -347,6 +395,7 @@ class _BookshelfScreenState extends ConsumerState<BookshelfScreen>
                                         ? '${controller.books.length} 本'
                                         : '${controller.filteredBooks.length}/${controller.books.length} 本'
                                   : '${controller.groupedBooks.length} 个分组',
+                              stacked: true,
                             ),
                           ),
                         ),
@@ -390,15 +439,23 @@ class _BookshelfScreenState extends ConsumerState<BookshelfScreen>
                           ),
                           child: LayoutBuilder(
                             builder: (context, constraints) {
-                              final isPrimaryFilterSet =
-                                  controller.filterOptions.length == 4;
                               final selector = GlassSegmentedControl<String>(
                                 blur: false,
-                                style: mobileSegmentStyle,
+                                style: const ButtonStyle(
+                                  minimumSize: WidgetStatePropertyAll(
+                                    Size(0, 40),
+                                  ),
+                                  padding: WidgetStatePropertyAll(
+                                    EdgeInsets.symmetric(
+                                      horizontal: 11,
+                                      vertical: 8,
+                                    ),
+                                  ),
+                                  visualDensity: VisualDensity.compact,
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                ),
                                 showSelectedIcon: false,
-                                expandedInsets: isPrimaryFilterSet
-                                    ? EdgeInsets.zero
-                                    : null,
                                 segments: controller.filterOptions
                                     .map(
                                       (option) => ButtonSegment<String>(
@@ -430,23 +487,14 @@ class _BookshelfScreenState extends ConsumerState<BookshelfScreen>
                                       selection.first,
                                     ),
                               );
-                              if (!isPrimaryFilterSet) {
-                                return ClipRRect(
+                              return Align(
+                                alignment: Alignment.centerLeft,
+                                child: ClipRRect(
                                   borderRadius: BorderRadius.circular(999),
                                   child: SingleChildScrollView(
                                     scrollDirection: Axis.horizontal,
                                     child: selector,
                                   ),
-                                );
-                              }
-                              final selectorWidth = constraints.maxWidth > 480
-                                  ? 480.0
-                                  : constraints.maxWidth;
-                              return Align(
-                                alignment: Alignment.centerLeft,
-                                child: SizedBox(
-                                  width: selectorWidth,
-                                  child: selector,
                                 ),
                               );
                             },
@@ -942,16 +990,23 @@ class _OfflineGuestBanner extends StatelessWidget {
 }
 
 class _SectionHeading extends StatelessWidget {
-  const _SectionHeading({required this.title, required this.detail});
+  const _SectionHeading({
+    required this.title,
+    required this.detail,
+    this.stacked = false,
+  });
 
   final String title;
   final String detail;
+  final bool stacked;
 
   @override
   Widget build(BuildContext context) {
     final palette = AppReaderPalette.of(context);
-    return Row(
+    return Flex(
+      direction: stacked ? Axis.vertical : Axis.horizontal,
       mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           title,
@@ -959,7 +1014,7 @@ class _SectionHeading extends StatelessWidget {
             context,
           ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
         ),
-        const SizedBox(width: 9),
+        SizedBox(width: stacked ? 0 : 9, height: stacked ? 3 : 0),
         Text(
           detail,
           style: Theme.of(
@@ -976,6 +1031,7 @@ class _RecentBookItem extends StatelessWidget {
     required this.book,
     required this.progress,
     required this.onTap,
+    required this.onRemove,
     required this.heroTag,
     required this.frameHeroTag,
     this.imageUrl,
@@ -986,6 +1042,7 @@ class _RecentBookItem extends StatelessWidget {
   final BookSummary book;
   final ReadingProgressView? progress;
   final VoidCallback onTap;
+  final VoidCallback onRemove;
   final Object heroTag;
   final Object frameHeroTag;
   final String? imageUrl;
@@ -1012,6 +1069,8 @@ class _RecentBookItem extends StatelessWidget {
             color: Colors.transparent,
             child: InkWell(
               onTap: onTap,
+              onLongPress: onRemove,
+              onSecondaryTap: onRemove,
               borderRadius: BorderRadius.circular(14),
               child: Padding(
                 padding: const EdgeInsets.all(6),

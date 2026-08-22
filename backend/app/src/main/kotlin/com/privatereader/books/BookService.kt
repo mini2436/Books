@@ -2,7 +2,6 @@ package com.privatereader.books
 
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.privatereader.auth.AuthRepository
 import com.privatereader.auth.UserPrincipal
 import com.privatereader.auth.UserRole
 import com.privatereader.common.toSqlTimestamp
@@ -34,7 +33,6 @@ class BookService(
     private val pluginRegistryService: PluginRegistryService,
     private val objectMapper: ObjectMapper,
     private val appProperties: AppProperties,
-    private val authRepository: AuthRepository,
     private val bookResourceStorageService: BookResourceStorageService,
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -151,28 +149,7 @@ class BookService(
     }
 
     fun listAccessibleBooks(userId: Long): List<BookView> {
-        if (hasGlobalLibraryAccess(userId)) {
-            // 查询全局角色可访问的全部书籍，每本书只取最新文件记录用于列表展示。
-            return jdbcClient.sql(
-                """
-                select b.id, b.title, b.author, ubg.group_name, b.description, bf.plugin_id, bf.format, bf.source_type, bf.source_missing, b.updated_at,
-                       extract(epoch from b.cover_updated_at) * 1000 as cover_version
-                from books b
-                join book_files bf on bf.book_id = b.id
-                left join user_book_groups ubg on ubg.book_id = b.id and ubg.user_id = :userId
-                where bf.id = (
-                    select max(inner_bf.id) from book_files inner_bf
-                    where inner_bf.book_id = b.id
-                )
-                order by b.updated_at desc, b.id desc
-                """.trimIndent(),
-            )
-                .param("userId", userId)
-                .query { rs, _ -> rs.toBookView(granted = true) }
-                .list()
-        }
-
-        // 查询普通读者被显式授权的书籍列表，并带出最新文件信息。
+        // 阅读权限与后台管理角色分离，所有用户都只返回被显式授权的书籍。
         return jdbcClient.sql(
             """
             select b.id, b.title, b.author, ubg.group_name, b.description, bf.plugin_id, bf.format, bf.source_type, bf.source_missing, b.updated_at,
@@ -546,22 +523,36 @@ class BookService(
         }
     }
 
+    @Transactional
     fun grantBook(bookId: Long, userId: Long, grantedBy: Long) {
-        // 新增或刷新用户对书籍的显式授权记录，重复授权时更新授权人和时间。
-        jdbcClient.sql(
+        val grantedAt = Instant.now().toSqlTimestamp()
+        // 先刷新已有授权，再补插入新授权，保持重复操作幂等并兼容不同数据库。
+        val updated = jdbcClient.sql(
             """
-            insert into user_book_access (user_id, book_id, granted_by, granted_at)
-            values (:userId, :bookId, :grantedBy, :grantedAt)
-            on conflict (user_id, book_id) do update
-            set granted_by = excluded.granted_by,
-                granted_at = excluded.granted_at
+            update user_book_access
+            set granted_by = :grantedBy, granted_at = :grantedAt
+            where user_id = :userId and book_id = :bookId
             """.trimIndent(),
         )
             .param("userId", userId)
             .param("bookId", bookId)
             .param("grantedBy", grantedBy)
-            .param("grantedAt", Instant.now().toSqlTimestamp())
+            .param("grantedAt", grantedAt)
             .update()
+        if (updated == 0) {
+            jdbcClient.sql(
+                """
+                insert into user_book_access (user_id, book_id, granted_by, granted_at)
+                values (:userId, :bookId, :grantedBy, :grantedAt)
+                """.trimIndent(),
+            )
+                .param("userId", userId)
+                .param("bookId", bookId)
+                .param("grantedBy", grantedBy)
+                .param("grantedAt", grantedAt)
+                .update()
+        }
+        copyAdminGroupsForNewGrants(listOf(bookId), userId, grantedAt)
     }
 
     @Transactional
@@ -571,21 +562,59 @@ class BookService(
             return 0
         }
 
-        return jdbcClient.sql(
+        val grantedAt = Instant.now().toSqlTimestamp()
+        val updatedCount = jdbcClient.sql(
             """
-            insert into user_book_access (user_id, book_id, granted_by, granted_at)
-            select :userId, b.id, :grantedBy, :grantedAt
-            from books b
-            where b.id in (:bookIds)
-            on conflict (user_id, book_id) do update
-            set granted_by = excluded.granted_by,
-                granted_at = excluded.granted_at
+            update user_book_access
+            set granted_by = :grantedBy, granted_at = :grantedAt
+            where user_id = :userId and book_id in (:bookIds)
             """.trimIndent(),
         )
             .param("userId", userId)
             .param("bookIds", normalizedIds)
             .param("grantedBy", grantedBy)
-            .param("grantedAt", Instant.now().toSqlTimestamp())
+            .param("grantedAt", grantedAt)
+            .update()
+        val insertedCount = jdbcClient.sql(
+            """
+            insert into user_book_access (user_id, book_id, granted_by, granted_at)
+            select :userId, b.id, :grantedBy, :grantedAt
+            from books b
+            where b.id in (:bookIds)
+              and not exists (
+                  select 1 from user_book_access uba
+                  where uba.user_id = :userId and uba.book_id = b.id
+              )
+            """.trimIndent(),
+        )
+            .param("userId", userId)
+            .param("bookIds", normalizedIds)
+            .param("grantedBy", grantedBy)
+            .param("grantedAt", grantedAt)
+            .update()
+        copyAdminGroupsForNewGrants(normalizedIds, userId, grantedAt)
+        return updatedCount + insertedCount
+    }
+
+    private fun copyAdminGroupsForNewGrants(bookIds: List<Long>, userId: Long, updatedAt: java.sql.Timestamp) {
+        // 首次授权时沿用后台管理分组；已存在的用户分组代表用户自己的选择，不覆盖。
+        jdbcClient.sql(
+            """
+            insert into user_book_groups (user_id, book_id, group_name, updated_at)
+            select :userId, b.id, b.group_name, :updatedAt
+            from books b
+            where b.id in (:bookIds)
+              and b.group_name is not null
+              and trim(b.group_name) <> ''
+              and not exists (
+                  select 1 from user_book_groups ubg
+                  where ubg.user_id = :userId and ubg.book_id = b.id
+              )
+            """.trimIndent(),
+        )
+            .param("userId", userId)
+            .param("bookIds", bookIds)
+            .param("updatedAt", updatedAt)
             .update()
     }
 
@@ -702,25 +731,18 @@ class BookService(
     }
 
     fun listBookViewers(bookId: Long): List<BookViewerView> =
-        // 查询可访问指定书籍的用户列表，合并全局角色和显式授权来源。
+        // 所有角色都必须显式获得阅读授权，后台管理角色不再自动成为阅读者。
         jdbcClient.sql(
             """
             select u.id as user_id,
                    u.username,
                    u.role,
                    u.enabled,
-                   case
-                       when u.role in (:adminRoles) then :globalAccessSource
-                       else :explicitGrantSource
-                   end as access_source,
+                   :explicitGrantSource as access_source,
                    uba.granted_at
             from users u
-            left join user_book_access uba on uba.user_id = u.id and uba.book_id = :bookId
+            join user_book_access uba on uba.user_id = u.id and uba.book_id = :bookId
             where u.enabled = true
-              and (
-                  u.role in (:adminRoles)
-                  or uba.book_id is not null
-              )
             order by
                 case
                     when u.role = :superAdminRole then 0
@@ -731,8 +753,6 @@ class BookService(
             """.trimIndent(),
         )
             .param("bookId", bookId)
-            .param("adminRoles", UserRole.adminAccessValues)
-            .param("globalAccessSource", ACCESS_SOURCE_GLOBAL_ROLE)
             .param("explicitGrantSource", ACCESS_SOURCE_EXPLICIT_GRANT)
             .param("superAdminRole", UserRole.SUPER_ADMIN.value)
             .param("librarianRole", UserRole.LIBRARIAN.value)
@@ -833,10 +853,7 @@ class BookService(
             .list()
 
     private fun hasAccess(userId: Long, bookId: Long): Boolean {
-        if (hasGlobalLibraryAccess(userId)) {
-            return true
-        }
-        // 查询用户是否拥有指定书籍的显式授权，用于阅读接口访问控制。
+        // 管理员和普通读者使用同一套显式阅读授权规则。
         return jdbcClient.sql(
             """
             select count(*) from user_book_access
@@ -848,9 +865,6 @@ class BookService(
             .query(Long::class.java)
             .single() > 0
     }
-
-    private fun hasGlobalLibraryAccess(userId: Long): Boolean =
-        authRepository.findUserById(userId)?.role?.let(UserRole::hasGlobalLibraryAccess) == true
 
     private fun ResultSet.toBookView(granted: Boolean): BookView =
         BookView(
@@ -1459,7 +1473,6 @@ class BookService(
         private const val CONTENT_STATUS_READY = "READY"
         private const val CONTENT_STATUS_FAILED = "FAILED"
         private const val CONTENT_STATUS_STALE = "STALE"
-        private const val ACCESS_SOURCE_GLOBAL_ROLE = "GLOBAL_ROLE"
         private const val ACCESS_SOURCE_EXPLICIT_GRANT = "EXPLICIT_GRANT"
         private const val SYNTHETIC_CHAPTER_META_JSON = """{"syntheticChapterTitle":true}"""
     }

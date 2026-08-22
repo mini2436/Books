@@ -807,6 +807,20 @@ class ApiClient {
     return AdminUserView.fromJson(data);
   }
 
+  Future<void> deleteAdministrator(
+    String accessToken,
+    int userId, {
+    required String targetPassword,
+  }) async {
+    await _request<Map<String, dynamic>>(
+      () => _dio.delete<Map<String, dynamic>>(
+        '/api/admin/users/$userId',
+        data: {'targetPassword': targetPassword},
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+  }
+
   Future<List<AdminAnnotationView>> listAdminAnnotations(
     String accessToken,
   ) async {

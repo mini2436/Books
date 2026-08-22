@@ -1623,6 +1623,38 @@ class AdminCenterController extends ChangeNotifier {
     });
   }
 
+  Future<void> deleteAdministrator(
+    AdminUserView user,
+    String targetPassword,
+  ) async {
+    if (!canManageUsers ||
+        isCurrentUser(user) ||
+        UserRole.fromValue(user.role) != UserRole.superAdmin) {
+      return;
+    }
+
+    await _runMutation(() async {
+      await _authController.runAuthorized(
+        (token) => _apiClient.deleteAdministrator(
+          token,
+          user.id,
+          targetPassword: targetPassword,
+        ),
+      );
+      _users = _users.where((item) => item.id != user.id).toList();
+      _grantableUsers = _grantableUsers
+          .where((item) => item.id != user.id)
+          .toList();
+      _bookViewers = {
+        for (final entry in _bookViewers.entries)
+          entry.key: entry.value
+              .where((viewer) => viewer.userId != user.id)
+              .toList(),
+      };
+      _notice = '已删除管理员 ${user.username}';
+    });
+  }
+
   Future<void> updateAnnotationDeleted(
     AdminAnnotationView annotation,
     bool deleted,

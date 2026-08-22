@@ -3,8 +3,8 @@ import 'package:flutter/foundation.dart';
 class AppConfig {
   AppConfig._();
 
-  static const String _mobileDefaultServerAddress = '192.168.110.159';
-  static const String _desktopDefaultServerAddress = 'localhost';
+  static const String _mobileDefaultServerAddress = '127.0.0.1';
+  static const String _desktopDefaultServerAddress = '127.0.0.1';
   static const int defaultPort = 8080;
 
   static String get defaultServerAddress {

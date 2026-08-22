@@ -6,59 +6,54 @@
 
 轻阅把散落在电脑、NAS 和家庭成员设备里的电子书整理成一个私有书库。它不是面向公众运营的内容平台，而是一套适合小家庭部署的阅读服务：管理员负责导入和整理书籍，家庭成员使用各自账号阅读，被授权的书籍、进度、书签和批注会在设备之间同步，数据始终保留在自己的服务器上。
 
-![轻阅 Web 家庭书架](docs/screenshots/bookshelf-web.png)
+![轻阅项目主页运行效果](docs/screenshots/bookshelf-web.png)
 
-## 为什么做轻阅
+## 功能
 
-- **一个家庭书库**：集中管理 EPUB、TXT、PDF、CBZ、FB2、MOBI，不再依赖每台设备分别整理文件。
-- **每个人有自己的阅读空间**：多人账号、逐书授权，阅读进度和笔记互不干扰。
-- **自己的数据自己保存**：后端、数据库和原始书籍均可部署在家庭服务器或 NAS 旁。
-- **一套界面覆盖多端**：Flutter 客户端目前可运行于 Web、Windows 和 Android，并针对平板/桌面宽屏布局适配。
-- **阅读体验优先**：目录、翻页、自动滚动、书签、划线批注、主题、字号、行高和内置中文字体均可直接使用。
-- **断网也能继续阅读**：提前下载书籍后可离线启动 Windows/移动客户端，阅读进度、书签和批注会在恢复联网后自动同步。
+### 书库管理
 
-## 当前能力
+- 支持上传书籍，以及扫描服务器本地目录、挂载目录或 NAS 书库。
+- 支持 EPUB、TXT、PDF、CBZ、FB2 和 MOBI，自动提取封面、书名、作者等元数据。
+- 支持搜索、最近阅读、管理分组、用户书架分组、批量编组和未分组筛选。
+- 扫描单本损坏或格式不规范的书籍时会记录错误并继续任务，避免整批导入中断。
 
-| 范围 | 已实现能力 |
-| --- | --- |
-| 家庭书库 | 上传书籍、NAS/目录扫描、封面与元数据、搜索、最近阅读、来源状态 |
-| 格式支持 | EPUB、TXT、FB2、MOBI 统一正文；CBZ 漫画分页；PDF 固定版面阅读 |
-| 家庭账号 | 登录与会话恢复、管理员/普通成员、逐书授权、头像与个人设置 |
-| 阅读器 | 目录跳转、滚动/翻页、阅读进度、书签、自动滚动、响应式单栏/宽屏布局 |
-| 笔记 | 文本选择、划线、高亮、批注编辑、按书聚合的批注中心 |
-| 个性化 | 4 套阅读主题、字号与行高、MiSans、思源宋体、霞鹜文楷 |
-| 离线与同步 | EPUB、TXT、PDF、CBZ、FB2、MOBI 整本离线缓存；进度、书签、批注本地保存并在联网后自动同步 |
-| 管理后台 | 图书、成员、授权、书库来源、扫描任务、批注和书签概览；完整系统、指定书籍与按用户/类型阅读数据备份恢复，大型备份采用跨端流式下载 |
+### 用户与书籍权限
 
-## 真实界面
+- 支持管理员和普通用户，每个用户拥有独立的书架、阅读记录、进度、书签和批注。
+- 新建用户默认没有任何书籍，需要由管理员逐本或批量分配阅读权限。
+- 分配书籍时会将后台管理分组同步为用户书架分组；用户分组不存在时自动创建。
+- 管理员可以维护用户资料、重置权限，并在验证目标管理员密码后删除其他管理员。
 
-以下截图均重新截取自透明玻璃界面的实际运行版本，原图统一存放在 [`docs/screenshots`](docs/screenshots/) 目录。当前版本可在“我的”页面全局切换轻量玻璃与液态玻璃效果；两种材质共享相同布局、主题和交互语义。
+### 阅读与批注
 
-### 一套书架，适配手机、平板与桌面
+- 支持目录跳转、滚动与翻页、自动滚动、阅读进度、书签和最近阅读。
+- 支持文本选择、划线、高亮、批注编辑，以及按书聚合查看批注。
+- 支持删除单条最近阅读记录，且不会删除对应书籍的阅读进度、书签或批注。
+- EPUB、TXT、FB2、MOBI 使用统一正文阅读器，CBZ 使用漫画分页，PDF 保留固定版面。
 
-手机端使用底部透明悬浮导航，平板与 Windows 桌面端则使用左侧垂直悬浮导航；书架密度、封面比例和内容间距会随可用空间自动调整。
+### 阅读外观
 
-<table>
-  <tr>
-    <th align="center">Android 手机</th>
-    <th align="center">Android 平板</th>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/screenshots/app-phone.png" alt="轻阅 Android 手机端书架" width="280"></td>
-    <td align="center"><img src="docs/screenshots/app-tablet.png" alt="轻阅 Android 平板端书架" width="560"></td>
-  </tr>
-</table>
+- 提供 4 套阅读主题，并可调整字号、行高和页面显示方式。
+- 内置 MiSans、思源宋体和霞鹜文楷，适合中文长时间阅读。
+- 支持轻量玻璃与液态玻璃两种界面效果，并响应系统的减少动态效果设置。
 
-<p align="center">
-  <strong>Windows 桌面端</strong><br>
-  <img src="docs/screenshots/app-windows.png" alt="轻阅 Windows 桌面端" width="760">
-</p>
+### 离线缓存与同步
 
-### Web 桌面书架
+- 支持 EPUB、TXT、PDF、CBZ、FB2 和 MOBI 整本缓存，断网后仍可进入离线书库。
+- 阅读进度、书签和批注会先保存在本机，恢复连接并登录原服务器后自动同步。
+- 离线数据按服务器和用户隔离，避免多个账号之间混用阅读数据。
+- 可在个人设置中清理当前设备缓存的书籍信息，不影响服务器中的原始书籍。
 
-Web 端沿用相同的透明悬浮导航、玻璃按钮组与响应式书架布局，在浏览器中也能获得一致的视觉体验。
+### 管理后台与备份
 
-![轻阅 Web 家庭书架](docs/screenshots/bookshelf-web.png)
+- 提供图书、分组、用户、授权、书库来源和扫描任务管理。
+- 提供阅读数据、书签和批注概览，便于管理员了解书库使用情况。
+- 支持完整系统备份、指定书籍备份，以及按用户或数据类型备份和恢复。
+- 大型备份使用流式上传与下载，适配 Web、Windows 等不同客户端。
+
+## 界面与多端适配
+
+轻阅使用同一套 Flutter 客户端覆盖 Web、Windows、Android 手机和平板。手机端采用底部导航，平板和桌面宽屏采用侧边导航；书架密度、封面尺寸、按钮排列与阅读区域会根据屏幕空间和输入方式自动调整。
 
 ## 技术架构
 
@@ -120,7 +115,7 @@ cd backend
 .\gradlew.bat bootRun
 ```
 
-后端默认地址为 `http://localhost:8080`，健康检查为 `http://localhost:8080/actuator/health`。
+后端默认地址为 `http://127.0.0.1:8080`，健康检查为 `http://127.0.0.1:8080/actuator/health`。
 
 首次启动且数据库中没有用户时，会创建开发管理员：
 
@@ -165,13 +160,13 @@ flutter pub get
 Web：
 
 ```powershell
-flutter run -d edge --dart-define=API_BASE_URL=http://localhost:8080
+flutter run -d edge
 ```
 
 Windows：
 
 ```powershell
-flutter run -d windows --dart-define=API_BASE_URL=http://localhost:8080
+flutter run -d windows
 ```
 
 Android 模拟器：
@@ -180,7 +175,7 @@ Android 模拟器：
 flutter run -d android --dart-define=API_BASE_URL=http://10.0.2.2:8080
 ```
 
-Android 真机需将 `API_BASE_URL` 换成家庭服务器或开发机的局域网地址。
+客户端默认连接 `http://127.0.0.1:8080`。Android 真机、远程 Web 页面或连接家庭服务器时，可直接在登录页面填写实际服务器地址；地址会保存在当前设备中。Android 模拟器也可通过上面的 `API_BASE_URL` 构建参数访问宿主机。
 
 ## 构建与检查
 
@@ -189,8 +184,8 @@ Android 真机需将 `API_BASE_URL` 换成家庭服务器或开发机的局域�
 cd mobile
 flutter analyze
 flutter test
-flutter build web --release --no-web-resources-cdn --dart-define=API_BASE_URL=http://localhost:8080
-flutter build windows --release --dart-define=API_BASE_URL=http://localhost:8080
+flutter build web --release --no-web-resources-cdn
+flutter build windows --release
 
 # Backend
 cd ..\backend

@@ -9,6 +9,7 @@ import com.privatereader.books.UpdateLibrarySourceRequest
 import com.privatereader.common.toSqlTimestamp
 import com.privatereader.config.AppProperties
 import org.springframework.jdbc.core.simple.JdbcClient
+import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -29,9 +30,11 @@ import java.time.Duration
 import java.time.Instant
 import java.util.Base64
 import java.util.HexFormat
+import java.util.zip.ZipException
 import javax.xml.XMLConstants
 import javax.xml.parsers.DocumentBuilderFactory
 import org.xml.sax.InputSource
+import org.xml.sax.SAXException
 
 private const val MAX_CLIENT_UPLOAD_CHUNK_BYTES = 16L * 1024 * 1024
 private const val MAX_CLIENT_STORAGE_FILE_NAME_BYTES = 200
@@ -42,6 +45,7 @@ class LibrarySourceService(
     private val bookService: BookService,
     private val appProperties: AppProperties,
 ) {
+    private val logger = LoggerFactory.getLogger(javaClass)
     private val httpClient: HttpClient = HttpClient.newBuilder()
         .connectTimeout(Duration.ofSeconds(20))
         .followRedirects(HttpClient.Redirect.NORMAL)
@@ -226,7 +230,6 @@ class LibrarySourceService(
         )
     }
 
-    @Transactional
     fun uploadClientFile(
         sourceId: Long,
         relativePath: String,
@@ -269,18 +272,20 @@ class LibrarySourceService(
         } catch (exception: Exception) {
             Files.deleteIfExists(targetFile)
             Files.deleteIfExists(targetDirectory)
-            throw exception
+            if (!isInvalidBookFile(exception)) throw exception
+            logger.warn("跳过无法导入的客户端文件：sourceId={}, path={}", sourceId, normalizedPath, exception)
+            return failedClientImportResult(sourceId, normalizedPath, sizeBytes, exception)
         }
         upsertClientFileSummary(sourceId, ClientFileSummary(normalizedPath, sizeBytes, lastModifiedMillis))
         return mapOf(
             "sourceId" to sourceId,
             "relativePath" to normalizedPath,
+            "imported" to true,
             "bookId" to imported.id,
             "title" to imported.title,
         )
     }
 
-    @Transactional
     fun uploadClientFileChunk(
         sourceId: Long,
         relativePath: String,
@@ -352,7 +357,9 @@ class LibrarySourceService(
         } catch (exception: Exception) {
             Files.deleteIfExists(targetFile)
             Files.deleteIfExists(targetDirectory)
-            throw exception
+            if (!isInvalidBookFile(exception)) throw exception
+            logger.warn("跳过无法导入的客户端文件：sourceId={}, path={}", sourceId, normalizedPath, exception)
+            return failedClientImportResult(sourceId, normalizedPath, receivedBytes, exception)
         }
         upsertClientFileSummary(sourceId, ClientFileSummary(normalizedPath, sizeBytes, lastModifiedMillis))
         return mapOf(
@@ -360,6 +367,7 @@ class LibrarySourceService(
             "relativePath" to normalizedPath,
             "receivedBytes" to receivedBytes,
             "complete" to true,
+            "imported" to true,
             "bookId" to imported.id,
             "title" to imported.title,
         )
@@ -720,6 +728,43 @@ class LibrarySourceService(
         val digest = MessageDigest.getInstance("SHA-256")
         return HexFormat.of().formatHex(digest.digest(value.toByteArray(StandardCharsets.UTF_8)))
     }
+
+    private fun failedClientImportResult(
+        sourceId: Long,
+        relativePath: String,
+        receivedBytes: Long,
+        exception: Exception,
+    ): Map<String, Any> = mapOf(
+        "sourceId" to sourceId,
+        "relativePath" to relativePath,
+        "receivedBytes" to receivedBytes,
+        "complete" to true,
+        "imported" to false,
+        "error" to clientImportErrorMessage(exception),
+    )
+
+    private fun clientImportErrorMessage(exception: Exception): String {
+        val messages = generateSequence<Throwable>(exception) { it.cause }
+            .mapNotNull { it.message }
+            .toList()
+        return when {
+            messages.any { it.contains("zip END header not found", ignoreCase = true) ||
+                it.contains("End of Central Directory", ignoreCase = true) } ->
+                "EPUB 文件结构损坏或不完整"
+            generateSequence<Throwable>(exception) { it.cause }.any { it is SAXException } ->
+                "EPUB 内部 XML 编码或结构无效"
+            messages.any { it.startsWith("EPUB ", ignoreCase = true) } ->
+                "EPUB 文件结构无效"
+            else -> messages.firstOrNull()?.take(300) ?: "文件解析失败"
+        }
+    }
+
+    private fun isInvalidBookFile(exception: Exception): Boolean =
+        generateSequence<Throwable>(exception) { it.cause }.any { cause ->
+            cause is ZipException ||
+                cause is SAXException ||
+                cause is IllegalArgumentException && cause.message.orEmpty().startsWith("EPUB ", ignoreCase = true)
+        }
 
     private fun boundedClientStorageFileName(originalName: String): String {
         val extensionStart = originalName.lastIndexOf('.')

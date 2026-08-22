@@ -87,6 +87,13 @@ class WebOfflineBookStore {
     await transaction.completed;
   }
 
+  Future<void> deleteBooks(String serverKey, int userId) async {
+    final books = await listBooks(serverKey: serverKey, userId: userId);
+    for (final book in books) {
+      await deleteBook(serverKey, userId, book['book_id']! as int);
+    }
+  }
+
   Future<void> putChapter(Map<String, Object?> row) {
     final copy = Map<String, Object?>.from(row);
     final bookKey = _bookKey(

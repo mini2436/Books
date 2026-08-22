@@ -1,9 +1,6 @@
 package com.privatereader.books
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import com.privatereader.auth.AuthRepository
-import com.privatereader.auth.UserRecord
-import com.privatereader.auth.UserRole
 import com.privatereader.config.AppProperties
 import com.privatereader.plugin.BookFormatPlugin
 import com.privatereader.plugin.CoverExtractionResult
@@ -24,7 +21,6 @@ import java.nio.file.Files
 class BookServiceCoverTest {
     private lateinit var jdbcClient: JdbcClient
     private lateinit var pluginRegistryService: PluginRegistryService
-    private lateinit var authRepository: AuthRepository
     private lateinit var service: BookService
 
     @BeforeEach
@@ -72,18 +68,19 @@ class BookServiceCoverTest {
             )
             """.trimIndent(),
         ).update()
+        jdbcClient.sql(
+            """
+            create table user_book_access (
+                user_id bigint not null,
+                book_id bigint not null,
+                granted_by bigint not null,
+                granted_at timestamp with time zone not null,
+                primary key (user_id, book_id)
+            )
+            """.trimIndent(),
+        ).update()
 
         pluginRegistryService = mock()
-        authRepository = mock()
-        whenever(authRepository.findUserById(1)).thenReturn(
-            UserRecord(
-                id = 1,
-                username = "admin",
-                passwordHash = "unused",
-                role = UserRole.SUPER_ADMIN.value,
-                enabled = true,
-            ),
-        )
         val objectMapper = jacksonObjectMapper()
         val resourceStorageService = BookResourceStorageService(
             jdbcClient = jdbcClient,
@@ -95,7 +92,6 @@ class BookServiceCoverTest {
             pluginRegistryService = pluginRegistryService,
             objectMapper = objectMapper,
             appProperties = AppProperties(),
-            authRepository = authRepository,
             bookResourceStorageService = resourceStorageService,
         )
     }
@@ -187,6 +183,14 @@ class BookServiceCoverTest {
             .param("bookId", bookId)
             .param("storagePath", storagePath)
             .param("fileHash", "hash-$bookId")
+            .update()
+        jdbcClient.sql(
+            """
+            insert into user_book_access (user_id, book_id, granted_by, granted_at)
+            values (1, :bookId, 1, current_timestamp)
+            """.trimIndent(),
+        )
+            .param("bookId", bookId)
             .update()
     }
 }

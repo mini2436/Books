@@ -2,6 +2,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:private_reader_mobile/shared/config/app_config.dart';
 
 void main() {
+  test('the default server uses the local loopback address', () {
+    expect(AppConfig.defaultApiBaseUrl, 'http://127.0.0.1:8080');
+  });
+
   test('server addresses without a scheme keep the development API port', () {
     expect(
       AppConfig.normalizeBaseUrl('192.168.1.10'),

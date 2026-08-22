@@ -138,6 +138,10 @@ data class RenameBookGroupResponse(
     val updatedBooks: Int,
 )
 
+data class BulkUpdateBookGroupResponse(
+    val updatedBooks: Int,
+)
+
 data class BulkDeleteBooksRequest(
     @field:NotEmpty
     val bookIds: List<Long>,

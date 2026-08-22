@@ -23,6 +23,8 @@ class WebOfflineBookStore {
 
   Future<void> deleteBook(String serverKey, int userId, int bookId) async {}
 
+  Future<void> deleteBooks(String serverKey, int userId) async {}
+
   Future<void> putChapter(Map<String, Object?> row) async {}
 
   Future<Map<String, Object?>?> getChapter(

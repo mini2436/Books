@@ -8,7 +8,7 @@ plugins {
 
 subprojects {
     group = "com.privatereader"
-    version = "0.0.2-beta1"
+    version = "0.0.3-beta2"
 
     repositories {
         mavenCentral()

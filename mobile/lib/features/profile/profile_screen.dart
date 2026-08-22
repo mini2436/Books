@@ -29,6 +29,8 @@ class ProfileScreen extends ConsumerStatefulWidget {
 }
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
+  bool _isClearingCache = false;
+
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(authControllerProvider);
@@ -313,6 +315,22 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   ),
                 ),
               ),
+            _ActionTile(
+              icon: Icons.cleaning_services_outlined,
+              title: '清理缓存',
+              subtitle: shelf.offlineBookCount == 0
+                  ? '当前账号没有缓存书籍'
+                  : '清理 ${shelf.offlineBookCount} 本本机缓存书籍（${_formatCacheSize(shelf.offlineLibrarySizeBytes)}）',
+              trailing: _isClearingCache
+                  ? const SizedBox.square(
+                      dimension: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.chevron_right),
+              onTap: _isClearingCache || shelf.offlineBookCount == 0
+                  ? null
+                  : _clearBookCache,
+            ),
             const SizedBox(height: 24),
             TextButton(
               onPressed: auth.isWorking
@@ -451,6 +469,51 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
   }
 
+  Future<void> _clearBookCache() async {
+    final shelf = ref.read(bookshelfControllerProvider);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => GlassAlertDialog(
+        title: const Text('清理缓存书籍？'),
+        content: Text(
+          '将删除当前账号在本机缓存的 ${shelf.offlineBookCount} 本书籍及离线文件。服务器书籍、阅读进度、批注和书签不会被删除。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('确认清理'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _isClearingCache = true);
+    try {
+      await shelf.clearOfflineCache();
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('本机书籍缓存已清理')));
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '清理失败：${ApiException.userFacingMessage(error, fallback: '请稍后重试。')}',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isClearingCache = false);
+    }
+  }
+
   void _showError(Object error) {
     if (!mounted) {
       return;
@@ -463,6 +526,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       ),
     );
   }
+}
+
+String _formatCacheSize(int bytes) {
+  if (bytes >= 1024 * 1024 * 1024) {
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+  }
+  if (bytes >= 1024 * 1024) {
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+  if (bytes >= 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+  return '$bytes B';
 }
 
 class _AvatarInitials extends StatelessWidget {

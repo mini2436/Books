@@ -92,6 +92,7 @@ class AdminCenterController extends ChangeNotifier {
   }
 
   static const String allBookGroupsLabel = '全部分组';
+  static const String ungroupedBooksFilter = '__ungrouped_books__';
 
   final AuthController _authController;
   final ApiClient _apiClient;
@@ -183,6 +184,12 @@ class AdminCenterController extends ChangeNotifier {
   bool get hasBookSelection => _selectedBookIds.isNotEmpty;
 
   List<String> get availableBookGroups => _availableBookGroups;
+
+  int get bookGroupCount => _availableBookGroups
+      .where(
+        (group) => group != allBookGroupsLabel && group != ungroupedBooksFilter,
+      )
+      .length;
 
   List<AdminBookSummary> get filteredBooks => _filteredBooks;
 
@@ -1125,6 +1132,7 @@ class AdminCenterController extends ChangeNotifier {
           for (final file in folder.files) file.relativePath: file,
         };
         var uploaded = 0;
+        final failedFiles = <String>[];
         for (final relativePath in plan.uploadPaths) {
           final file = filesByPath[relativePath];
           if (file == null) {
@@ -1153,7 +1161,7 @@ class AdminCenterController extends ChangeNotifier {
               throw StateError('读取文件分块失败：${file.relativePath}');
             }
             final chunkOffsetBytes = offsetBytes;
-            await _authController.runAuthorized(
+            final result = await _authController.runAuthorized(
               (token) => _apiClient.uploadClientLibraryFileChunk(
                 token,
                 source.id,
@@ -1176,15 +1184,27 @@ class AdminCenterController extends ChangeNotifier {
                 },
               ),
             );
+            if (result['complete'] == true && result['imported'] == false) {
+              final reason = result['error']?.toString().trim();
+              failedFiles.add(
+                reason == null || reason.isEmpty
+                    ? file.relativePath
+                    : '${file.relativePath}（$reason）',
+              );
+            }
             offsetBytes = chunkEndBytes;
           }
           uploaded += 1;
         }
         await refresh();
         _selectedSection = AdminSection.librarySources;
-        _notice =
-            '${source.name} 扫描完成，上传 $uploaded 本，'
-            '跳过 ${plan.unchanged} 本，标记缺失 ${plan.missingMarked} 本';
+        final imported = uploaded - failedFiles.length;
+        _notice = failedFiles.isEmpty
+            ? '${source.name} 扫描完成，导入 $imported 本，'
+                  '跳过 ${plan.unchanged} 本，标记缺失 ${plan.missingMarked} 本'
+            : '${source.name} 扫描完成，导入 $imported 本，失败 ${failedFiles.length} 本：'
+                  '${failedFiles.join('、')}；跳过 ${plan.unchanged} 本，'
+                  '标记缺失 ${plan.missingMarked} 本';
       } finally {
         _workingMessage = null;
       }
@@ -1603,6 +1623,38 @@ class AdminCenterController extends ChangeNotifier {
     });
   }
 
+  Future<void> deleteAdministrator(
+    AdminUserView user,
+    String targetPassword,
+  ) async {
+    if (!canManageUsers ||
+        isCurrentUser(user) ||
+        UserRole.fromValue(user.role) != UserRole.superAdmin) {
+      return;
+    }
+
+    await _runMutation(() async {
+      await _authController.runAuthorized(
+        (token) => _apiClient.deleteAdministrator(
+          token,
+          user.id,
+          targetPassword: targetPassword,
+        ),
+      );
+      _users = _users.where((item) => item.id != user.id).toList();
+      _grantableUsers = _grantableUsers
+          .where((item) => item.id != user.id)
+          .toList();
+      _bookViewers = {
+        for (final entry in _bookViewers.entries)
+          entry.key: entry.value
+              .where((viewer) => viewer.userId != user.id)
+              .toList(),
+      };
+      _notice = '已删除管理员 ${user.username}';
+    });
+  }
+
   Future<void> updateAnnotationDeleted(
     AdminAnnotationView annotation,
     bool deleted,
@@ -1694,7 +1746,11 @@ class AdminCenterController extends ChangeNotifier {
             .toSet()
             .toList()
           ..sort();
-    _availableBookGroups = List.unmodifiable([allBookGroupsLabel, ...groups]);
+    _availableBookGroups = List.unmodifiable([
+      allBookGroupsLabel,
+      ungroupedBooksFilter,
+      ...groups,
+    ]);
     if (!_availableBookGroups.contains(_selectedBookGroup)) {
       _selectedBookGroup = allBookGroupsLabel;
     }
@@ -1710,9 +1766,12 @@ class AdminCenterController extends ChangeNotifier {
     final normalizedQuery = _appliedBookSearchQuery.trim().toLowerCase();
     _filteredBooks = List.unmodifiable(
       _books.where((book) {
-        final groupMatches =
-            _selectedBookGroup == allBookGroupsLabel ||
-            (book.groupName?.trim() ?? '') == _selectedBookGroup;
+        final bookGroup = book.groupName?.trim() ?? '';
+        final groupMatches = switch (_selectedBookGroup) {
+          allBookGroupsLabel => true,
+          ungroupedBooksFilter => bookGroup.isEmpty,
+          _ => bookGroup == _selectedBookGroup,
+        };
         return groupMatches &&
             (normalizedQuery.isEmpty ||
                 (_bookSearchCorpus[book.id]?.contains(normalizedQuery) ??

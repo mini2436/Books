@@ -64,6 +64,20 @@ class AuthRepository(
             .optional()
             .orElse(null)
 
+    fun findUserByIdForUpdate(id: Long): UserRecord? =
+        jdbcClient.sql(
+            """
+            select id, username, password_hash, role, enabled, display_name, avatar_updated_at
+            from users
+            where id = :id
+            for update
+            """.trimIndent(),
+        )
+            .param("id", id)
+            .query { rs, _ -> rs.toUserRecord() }
+            .optional()
+            .orElse(null)
+
     fun createToken(
         userId: Long,
         accessTokenHash: String,

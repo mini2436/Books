@@ -15,6 +15,7 @@ import '../auth/auth_controller.dart';
 const String bookshelfFilterAll = 'all';
 const String bookshelfFilterRead = 'read';
 const String bookshelfFilterUnread = 'unread';
+const String bookshelfFilterUngrouped = 'ungrouped';
 const String _bookshelfFilterGroupPrefix = 'group:';
 
 class BookshelfFilterOption {
@@ -76,6 +77,7 @@ class BookshelfController extends ChangeNotifier {
     BookshelfFilterOption(key: bookshelfFilterAll, label: '全部书籍'),
     BookshelfFilterOption(key: bookshelfFilterRead, label: '已读书籍'),
     BookshelfFilterOption(key: bookshelfFilterUnread, label: '未读书籍'),
+    BookshelfFilterOption(key: bookshelfFilterUngrouped, label: '未分组'),
   ];
   List<BookSummary> _filteredBooks = const [];
   List<BookSummary> _recentBooks = const [];
@@ -256,6 +258,36 @@ class BookshelfController extends ChangeNotifier {
         '$_bookshelfFilterGroupPrefix$normalizedOldName') {
       _selectedFilterKey = '$_bookshelfFilterGroupPrefix$normalizedNewName';
     }
+    _rebuildDerivedState();
+    notifyListeners();
+    return updatedBooks;
+  }
+
+  Future<int> updateBookGroups(Iterable<int> bookIds, String? groupName) async {
+    final normalizedIds = bookIds.toSet().toList()..sort();
+    if (normalizedIds.isEmpty) return 0;
+    final normalizedName = groupName?.trim();
+    final nextGroup = normalizedName == null || normalizedName.isEmpty
+        ? null
+        : normalizedName;
+    final updatedBooks = await _authController.runAuthorized(
+      (accessToken) => _apiClient.bulkUpdateMyBookGroups(
+        accessToken,
+        bookIds: normalizedIds,
+        groupName: nextGroup,
+      ),
+    );
+    final selectedIds = normalizedIds.toSet();
+    _books = _books
+        .map(
+          (book) => selectedIds.contains(book.id)
+              ? book.copyWith(
+                  groupName: nextGroup,
+                  clearGroup: nextGroup == null,
+                )
+              : book,
+        )
+        .toList();
     _rebuildDerivedState();
     notifyListeners();
     return updatedBooks;
@@ -574,6 +606,34 @@ class BookshelfController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> clearOfflineCache() async {
+    final serverKey = _authController.activeServerKey;
+    final userId = _authController.activeUserId;
+    if (serverKey == null || userId == null) return;
+    await _offlineBookCacheService.deleteBooks(serverKey, userId);
+    _cachedBookIds = <int>{};
+    _clearOfflineCoverCache();
+    _offlineLibrarySizeBytes = 0;
+    if (_authController.isOfflineGuest) {
+      _books = const [];
+      _readingProgresses = const [];
+      _readingHistories = const [];
+      _rebuildDerivedState();
+    }
+    notifyListeners();
+  }
+
+  Future<void> deleteRecentReading(int bookId) async {
+    await _authController.runAuthorized(
+      (accessToken) => _apiClient.deleteReadingHistory(accessToken, bookId),
+    );
+    _readingHistories = List<ReadingHistoryView>.unmodifiable(
+      _readingHistories.where((history) => history.bookId != bookId),
+    );
+    _rebuildDerivedState();
+    notifyListeners();
+  }
+
   Future<Uint8List?> _downloadCover(BookSummary book) async {
     try {
       return await _authController.runAuthorized(
@@ -722,6 +782,7 @@ class BookshelfController extends ChangeNotifier {
       const BookshelfFilterOption(key: bookshelfFilterAll, label: '全部书籍'),
       const BookshelfFilterOption(key: bookshelfFilterRead, label: '已读书籍'),
       const BookshelfFilterOption(key: bookshelfFilterUnread, label: '未读书籍'),
+      const BookshelfFilterOption(key: bookshelfFilterUngrouped, label: '未分组'),
       ...groupNames.map(
         (group) => BookshelfFilterOption(
           key: '$_bookshelfFilterGroupPrefix$group',
@@ -741,8 +802,10 @@ class BookshelfController extends ChangeNotifier {
       for (final history in _readingHistories)
         history.bookId: history.lastReadAt,
     };
-    for (final progress in _readingProgresses) {
-      lastReadByBook.putIfAbsent(progress.bookId, () => progress.updatedAt);
+    if (_authController.isOfflineGuest) {
+      for (final progress in _readingProgresses) {
+        lastReadByBook.putIfAbsent(progress.bookId, () => progress.updatedAt);
+      }
     }
     final recentEntries = lastReadByBook.entries.toList()
       ..sort((left, right) => right.value.compareTo(left.value));
@@ -760,6 +823,9 @@ class BookshelfController extends ChangeNotifier {
       switch (_selectedFilterKey) {
         bookshelfFilterRead => _books.where((book) => _hasBeenRead(book.id)),
         bookshelfFilterUnread => _books.where((book) => !_hasBeenRead(book.id)),
+        bookshelfFilterUngrouped => _books.where(
+          (book) => (book.groupName?.trim() ?? '').isEmpty,
+        ),
         final key when key.startsWith(_bookshelfFilterGroupPrefix) =>
           _books.where(
             (book) =>

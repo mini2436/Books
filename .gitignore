@@ -11,6 +11,9 @@ backend/**/build/
 backend/gradle-dist/
 backend/jdks/
 mobile/node_modules/
+mobile/android/key.properties
+mobile/android/*.jks
+mobile/android/*.keystore
 storage/
 tmp/
 .playwright-cli/

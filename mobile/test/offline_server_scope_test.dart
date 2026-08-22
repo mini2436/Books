@@ -71,6 +71,41 @@ void main() {
     },
   );
 
+  test(
+    'clearing cached books only affects the selected server and user',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'private-reader-cache-clear-scope-',
+      );
+      final service = OfflineBookCacheService(
+        databasePathOverride: p.join(directory.path, 'books.db'),
+      );
+      addTearDown(() async {
+        await service.close();
+        await directory.delete(recursive: true);
+      });
+
+      await _saveBook(service, serverKey: _server1, title: '待清理图书');
+      await _saveBook(service, serverKey: _server2, title: '其他服务器图书');
+      final otherUser = _summary('其他账号图书', id: 12);
+      await service.saveDownloadedBook(
+        serverKey: _server1,
+        userId: 8,
+        summary: otherUser,
+        detail: _detail(otherUser),
+        annotations: const [],
+        bookmarks: const [],
+        sizeBytes: 0,
+      );
+
+      await service.deleteBooks(_server1, 7);
+
+      expect(await service.cachedBookIds(_server1, 7), isEmpty);
+      expect(await service.cachedBookIds(_server2, 7), {11});
+      expect(await service.cachedBookIds(_server1, 8), {12});
+    },
+  );
+
   test('version 1 cache is retained and assigned to current server', () async {
     final directory = await Directory.systemTemp.createTemp(
       'private-reader-cache-migration-',

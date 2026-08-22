@@ -199,6 +199,21 @@ class ApiClient {
     return (data['updatedBooks'] as num?)?.toInt() ?? 0;
   }
 
+  Future<int> bulkUpdateMyBookGroups(
+    String accessToken, {
+    required List<int> bookIds,
+    String? groupName,
+  }) async {
+    final data = await _request<Map<String, dynamic>>(
+      () => _dio.patch<Map<String, dynamic>>(
+        '/api/me/books/groups/bulk',
+        data: {'bookIds': bookIds, 'groupName': groupName},
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+    return (data['updatedBooks'] as num?)?.toInt() ?? 0;
+  }
+
   Future<List<AdminBookSummary>> listAdminBooks(String accessToken) async {
     final data = await _request<List<dynamic>>(
       () => _dio.get<List<dynamic>>(
@@ -792,6 +807,20 @@ class ApiClient {
     return AdminUserView.fromJson(data);
   }
 
+  Future<void> deleteAdministrator(
+    String accessToken,
+    int userId, {
+    required String targetPassword,
+  }) async {
+    await _request<Map<String, dynamic>>(
+      () => _dio.delete<Map<String, dynamic>>(
+        '/api/admin/users/$userId',
+        data: {'targetPassword': targetPassword},
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
+  }
+
   Future<List<AdminAnnotationView>> listAdminAnnotations(
     String accessToken,
   ) async {
@@ -1168,6 +1197,15 @@ class ApiClient {
     );
 
     return ReadingProgressView.fromJson(data);
+  }
+
+  Future<void> deleteReadingHistory(String accessToken, int bookId) async {
+    await _request<Map<String, dynamic>>(
+      () => _dio.delete<Map<String, dynamic>>(
+        '/api/me/books/$bookId/reading-history',
+        options: Options(headers: _headers(accessToken)),
+      ),
+    );
   }
 
   Future<SyncPullResponse> pullSync(String accessToken, {int? cursor}) async {

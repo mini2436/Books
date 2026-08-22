@@ -12,14 +12,93 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.springframework.mock.web.MockMultipartFile
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.charset.StandardCharsets
+import java.util.zip.ZipException
+import org.xml.sax.SAXParseException
 
 class LibrarySourceServiceTest {
+    @Test
+    fun `invalid epub xml encoding is reported without failing the client upload request`(@TempDir tempDir: Path) {
+        val fixture = fixture(tempDir)
+        fixture.jdbc.sql(
+            """
+            insert into library_sources (
+                id, name, root_path, enabled, source_type, scan_interval_minutes, created_at, updated_at
+            ) values (7, '含非法编码文件的目录', 'Books', false, 'CLIENT_FOLDER', 60, current_timestamp, current_timestamp)
+            """.trimIndent(),
+        ).update()
+        whenever(
+            fixture.bookService.importDiscoveredFile(
+                filePath = org.mockito.kotlin.any(),
+                sourceType = org.mockito.kotlin.any(),
+                sourceId = org.mockito.kotlin.any(),
+                actorId = org.mockito.kotlin.any(),
+                sourcePathOverride = org.mockito.kotlin.any(),
+            ),
+        ).thenThrow(
+            IllegalStateException(
+                "EPUB XML 解析失败",
+                SAXParseException("Invalid byte 1 of 1-byte UTF-8 sequence", null),
+            ),
+        )
+
+        val result = fixture.service.uploadClientFileChunk(
+            sourceId = 7,
+            relativePath = "掌阅加密书.epub",
+            sizeBytes = 4,
+            lastModifiedMillis = 1234,
+            offsetBytes = 0,
+            file = MockMultipartFile("file", "掌阅加密书.epub", "application/epub+zip", byteArrayOf(1, 2, 3, 4)),
+            actorId = 7,
+        )
+
+        assertTrue(result["complete"] as Boolean)
+        assertFalse(result["imported"] as Boolean)
+        assertEquals("EPUB 内部 XML 编码或结构无效", result["error"])
+    }
+
+    @Test
+    fun `invalid epub is reported without failing the client upload request`(@TempDir tempDir: Path) {
+        val fixture = fixture(tempDir)
+        fixture.jdbc.sql(
+            """
+            insert into library_sources (
+                id, name, root_path, enabled, source_type, scan_interval_minutes, created_at, updated_at
+            ) values (6, '含损坏文件的目录', 'Books', false, 'CLIENT_FOLDER', 60, current_timestamp, current_timestamp)
+            """.trimIndent(),
+        ).update()
+        whenever(
+            fixture.bookService.importDiscoveredFile(
+                filePath = org.mockito.kotlin.any(),
+                sourceType = org.mockito.kotlin.any(),
+                sourceId = org.mockito.kotlin.any(),
+                actorId = org.mockito.kotlin.any(),
+                sourcePathOverride = org.mockito.kotlin.any(),
+            ),
+        ).thenThrow(IllegalStateException("EPUB 解析失败", ZipException("zip END header not found")))
+
+        val result = fixture.service.uploadClientFileChunk(
+            sourceId = 6,
+            relativePath = "坏书.epub",
+            sizeBytes = 4,
+            lastModifiedMillis = 1234,
+            offsetBytes = 0,
+            file = MockMultipartFile("file", "坏书.epub", "application/epub+zip", byteArrayOf(1, 2, 3, 4)),
+            actorId = 7,
+        )
+
+        assertTrue(result["complete"] as Boolean)
+        assertFalse(result["imported"] as Boolean)
+        assertEquals("EPUB 文件结构损坏或不完整", result["error"])
+        assertEquals(0, Files.walk(tempDir).use { paths -> paths.filter { Files.isRegularFile(it) }.count() })
+    }
+
     @Test
     fun `client file chunks are appended without buffering the full book`(@TempDir tempDir: Path) {
         val fixture = fixture(tempDir)

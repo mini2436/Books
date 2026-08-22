@@ -1,7 +1,7 @@
 name: private_reader_mobile
 description: "Private Reader Flutter app for Android-first mobile and tablet reading."
 publish_to: 'none'
-version: 0.0.2-beta1+1
+version: 0.0.3-beta2+7
 
 environment:
   sdk: ^3.11.4

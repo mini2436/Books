@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/models/admin_models.dart';
 import '../../data/models/user_role.dart';
+import '../../shared/theme/glass_theme.dart';
 import '../../shared/theme/reader_theme_extension.dart';
 import '../../shared/utils/image_decode_size.dart';
 import '../../shared/utils/responsive.dart';
@@ -363,6 +364,19 @@ class _UserManagementSection extends ConsumerWidget {
       ),
     );
 
+    Future<void> promptDeleteAdministrator(AdminUserView user) async {
+      final targetPassword = await showCenteredScaleDialog<String>(
+        context,
+        builder: (context) => DeleteAdministratorDialog(user: user),
+      );
+      if (targetPassword == null || !context.mounted) {
+        return;
+      }
+      await ref
+          .read(adminCenterControllerProvider)
+          .deleteAdministrator(user, targetPassword);
+    }
+
     if (!controller.canManageUsers) {
       return _EmptyPanel(
         title: '仅超级管理员可管理用户',
@@ -477,6 +491,33 @@ class _UserManagementSection extends ConsumerWidget {
                                 size: 18,
                               ),
                               label: const Text('修改密码'),
+                            ),
+                        ] else if (!controller.isCurrentUser(user)) ...[
+                          const SizedBox(width: 8),
+                          if (compactActions)
+                            IconButton(
+                              tooltip: '删除管理员',
+                              onPressed: controller.isWorking
+                                  ? null
+                                  : () => promptDeleteAdministrator(user),
+                              color: Theme.of(context).colorScheme.error,
+                              icon: const Icon(Icons.delete_forever_outlined),
+                            )
+                          else
+                            OutlinedButton.icon(
+                              onPressed: controller.isWorking
+                                  ? null
+                                  : () => promptDeleteAdministrator(user),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Theme.of(
+                                  context,
+                                ).colorScheme.error,
+                              ),
+                              icon: const Icon(
+                                Icons.delete_forever_outlined,
+                                size: 18,
+                              ),
+                              label: const Text('删除管理员'),
                             ),
                         ],
                       ],
@@ -686,7 +727,6 @@ class _BookManagementSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = AppReaderPalette.of(context);
     final filteredBooks = controller.filteredBooks;
-    final isTablet = Responsive.isTablet(context);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -715,7 +755,7 @@ class _BookManagementSection extends StatelessWidget {
                       ),
                       _SummaryChip(
                         label: '当前分组',
-                        value: '${controller.availableBookGroups.length - 1}',
+                        value: '${controller.bookGroupCount}',
                       ),
                       _SummaryChip(
                         label: '已勾选',
@@ -769,38 +809,10 @@ class _BookManagementSection extends StatelessWidget {
                 borderRadius: BorderRadius.circular(999),
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
-                  child: GlassSegmentedControl<String>(
-                    style: isTablet
-                        ? null
-                        : const ButtonStyle(
-                            minimumSize: WidgetStatePropertyAll(Size(0, 52)),
-                            padding: WidgetStatePropertyAll(
-                              EdgeInsets.symmetric(
-                                horizontal: 18,
-                                vertical: 14,
-                              ),
-                            ),
-                            visualDensity: VisualDensity.standard,
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          ),
-                    showSelectedIcon: false,
-                    segments: controller.availableBookGroups
-                        .map(
-                          (group) => ButtonSegment<String>(
-                            value: group,
-                            icon: Icon(
-                              group == AdminCenterController.allBookGroupsLabel
-                                  ? Icons.apps_rounded
-                                  : Icons.folder_outlined,
-                              size: 17,
-                            ),
-                            label: Text(group),
-                          ),
-                        )
-                        .toList(),
-                    selected: {controller.selectedBookGroup},
-                    onSelectionChanged: (selection) =>
-                        controller.setBookGroupFilter(selection.first),
+                  child: _AdminBookGroupFilterBar(
+                    groups: controller.availableBookGroups,
+                    selectedGroup: controller.selectedBookGroup,
+                    onSelected: controller.setBookGroupFilter,
                   ),
                 ),
               ),
@@ -857,8 +869,11 @@ class _BookManagementSection extends StatelessWidget {
                                           .where(
                                             (group) =>
                                                 group !=
-                                                AdminCenterController
-                                                    .allBookGroupsLabel,
+                                                    AdminCenterController
+                                                        .allBookGroupsLabel &&
+                                                group !=
+                                                    AdminCenterController
+                                                        .ungroupedBooksFilter,
                                           )
                                           .toList(),
                                       bookCount: controller.selectedBookCount,
@@ -922,6 +937,101 @@ class _BookManagementSection extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _AdminBookGroupFilterBar extends StatelessWidget {
+  const _AdminBookGroupFilterBar({
+    required this.groups,
+    required this.selectedGroup,
+    required this.onSelected,
+  });
+
+  final List<String> groups;
+  final String selectedGroup;
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = AppReaderPalette.of(context);
+    return GlassSurface(
+      level: GlassSurfaceLevel.subtle,
+      borderRadius: BorderRadius.circular(999),
+      padding: const EdgeInsets.all(4),
+      blur: false,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var index = 0; index < groups.length; index++) ...[
+            if (index > 0) const SizedBox(width: 2),
+            _AdminBookGroupFilterButton(
+              group: groups[index],
+              selected: groups[index] == selectedGroup,
+              palette: palette,
+              onTap: () => onSelected(groups[index]),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _AdminBookGroupFilterButton extends StatelessWidget {
+  const _AdminBookGroupFilterButton({
+    required this.group,
+    required this.selected,
+    required this.palette,
+    required this.onTap,
+  });
+
+  final String group;
+  final bool selected;
+  final AppReaderPalette palette;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final foreground = selected ? palette.accent : palette.inkSecondary;
+    final label = group == AdminCenterController.ungroupedBooksFilter
+        ? '未分组'
+        : group;
+    final icon = switch (group) {
+      AdminCenterController.allBookGroupsLabel => Icons.apps_rounded,
+      AdminCenterController.ungroupedBooksFilter => Icons.folder_off_outlined,
+      _ => Icons.folder_outlined,
+    };
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: Material(
+        color: selected
+            ? palette.accent.withValues(alpha: 0.18)
+            : Colors.transparent,
+        shape: const StadiumBorder(),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 17, color: foreground),
+                const SizedBox(width: 7),
+                Text(
+                  label,
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    color: foreground,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -2075,6 +2185,98 @@ class _BulkGroupBooksDialogState extends State<_BulkGroupBooksDialog> {
         ),
       ],
     );
+  }
+}
+
+class DeleteAdministratorDialog extends StatefulWidget {
+  const DeleteAdministratorDialog({super.key, required this.user});
+
+  final AdminUserView user;
+
+  @override
+  State<DeleteAdministratorDialog> createState() =>
+      _DeleteAdministratorDialogState();
+}
+
+class _DeleteAdministratorDialogState extends State<DeleteAdministratorDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _passwordController = TextEditingController();
+  bool _obscurePassword = true;
+
+  @override
+  void dispose() {
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final errorColor = Theme.of(context).colorScheme.error;
+    return GlassAlertDialog(
+      scrollable: true,
+      title: const Text('删除管理员'),
+      content: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '即将删除管理员“${widget.user.username}”。该账号的登录状态和个人阅读数据将一并删除，此操作无法撤销。',
+            ),
+            const SizedBox(height: 14),
+            Text(
+              '请输入 ${widget.user.username} 本人的当前密码进行验证。',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: errorColor,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _passwordController,
+              autofocus: true,
+              obscureText: _obscurePassword,
+              decoration: InputDecoration(
+                labelText: '${widget.user.username} 的当前密码',
+                suffixIcon: IconButton(
+                  tooltip: _obscurePassword ? '显示密码' : '隐藏密码',
+                  onPressed: () =>
+                      setState(() => _obscurePassword = !_obscurePassword),
+                  icon: Icon(
+                    _obscurePassword
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined,
+                  ),
+                ),
+              ),
+              validator: (value) =>
+                  value == null || value.isEmpty ? '请输入目标管理员的密码' : null,
+              onFieldSubmitted: (_) => _submit(),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        FilledButton.icon(
+          onPressed: _submit,
+          style: FilledButton.styleFrom(backgroundColor: errorColor),
+          icon: const Icon(Icons.delete_forever_outlined),
+          label: const Text('确认删除'),
+        ),
+      ],
+    );
+  }
+
+  void _submit() {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+    Navigator.of(context).pop(_passwordController.text);
   }
 }
 

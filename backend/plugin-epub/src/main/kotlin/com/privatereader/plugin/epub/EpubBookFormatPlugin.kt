@@ -51,7 +51,7 @@ class EpubBookFormatPlugin : BookFormatPlugin {
         val manifestItems = extractManifestItems(packageDocument, packageDir)
         val coverItem = findCoverItem(packageDocument, manifestItems, packagePath)
         val resolvedCover = coverItem?.let { resolveCoverImage(zip, it, manifestItems) }
-        val entry = resolvedCover?.let { zip.getEntry(it.path) }
+        val entry = resolvedCover?.let { zip.findEntry(it.path) }
             ?: findConventionalCoverEntry(zip)
             ?: return null
         val bytes = zip.getInputStream(entry).use { it.readBytes() }
@@ -105,7 +105,7 @@ class EpubBookFormatPlugin : BookFormatPlugin {
             if (nestedItem != null) {
                 resolveCoverImage(zip, nestedItem, manifestItems, visitedPaths + item.fullPath)?.let { return it }
             }
-            val entry = zip.getEntry(resolvedPath) ?: continue
+            val entry = zip.findEntry(resolvedPath) ?: continue
             if (!entry.isDirectory && inferMimeTypeFromPath(entry.name).startsWith("image/")) {
                 return CoverArchiveItem(entry.name, inferMimeTypeFromPath(entry.name))
             }
@@ -159,7 +159,7 @@ class EpubBookFormatPlugin : BookFormatPlugin {
             item.fullPath == requestedPath &&
                 item.mediaType in SUPPORTED_IMAGE_MEDIA_TYPES
         } ?: return null
-        val entry = zip.getEntry(resourceItem.fullPath) ?: return null
+        val entry = zip.findEntry(resourceItem.fullPath) ?: return null
         val bytes = zip.getInputStream(entry).use { it.readBytes() }
         if (bytes.isEmpty()) {
             return null
@@ -540,7 +540,7 @@ class EpubBookFormatPlugin : BookFormatPlugin {
         documentCache: MutableMap<String, Document?>,
     ): Boolean {
         val entryPath = href.substringBefore('#')
-        val entry = zip.getEntry(entryPath) ?: return false
+        val entry = zip.findEntry(entryPath) ?: return false
         if (entry.isDirectory) {
             return false
         }
@@ -593,7 +593,7 @@ class EpubBookFormatPlugin : BookFormatPlugin {
                 if (entryPath.isBlank()) {
                     continue
                 }
-                val entry = zip.getEntry(entryPath) ?: continue
+                val entry = zip.findEntry(entryPath) ?: continue
                 append(extractTextFromEntry(zip, entry))
                 append('\n')
                 if (length >= 40_000) {
@@ -959,11 +959,22 @@ class EpubBookFormatPlugin : BookFormatPlugin {
             ?.takeIf { it > 0 }
 
     private fun readXml(zip: ZipFile, entryPath: String): Document {
-        val entry = zip.getEntry(entryPath)
+        val entry = zip.findEntry(entryPath)
             ?: throw IllegalArgumentException("EPUB archive is missing $entryPath")
         val bytes = zip.getInputStream(entry).use { it.readBytes() }
         return parseXml(bytes)
     }
+
+    /**
+     * ZIP entry names are case-sensitive, but a sizeable number of EPUB files
+     * declare lower-case paths while storing the corresponding entries in an
+     * upper-case directory. Prefer the exact EPUB path and fall back to an
+     * ordinal, case-insensitive match for compatibility with those books.
+     */
+    private fun ZipFile.findEntry(entryPath: String): ZipEntry? =
+        getEntry(entryPath) ?: entries().asSequence().firstOrNull { entry ->
+            entry.name.equals(entryPath, ignoreCase = true)
+        }
 
     private fun parseXml(bytes: ByteArray): Document {
         val factory = DocumentBuilderFactory.newInstance()

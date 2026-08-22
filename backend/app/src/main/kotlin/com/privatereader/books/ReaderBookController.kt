@@ -50,6 +50,14 @@ class ReaderBookController(
         @Valid @RequestBody request: RenameBookGroupRequest,
     ): RenameBookGroupResponse = bookService.renameAccessibleBookGroup(principal.id, request)
 
+    @PatchMapping("/groups/bulk")
+    fun bulkUpdateBookGroup(
+        @AuthenticationPrincipal principal: UserPrincipal,
+        @Valid @RequestBody request: BulkUpdateBookGroupRequest,
+    ): BulkUpdateBookGroupResponse = BulkUpdateBookGroupResponse(
+        updatedBooks = bookService.updateAccessibleBookGroups(principal.id, request),
+    )
+
     // 阅读清单接口：返回插件生成的 manifest，用于旧阅读器和导航入口。
     @GetMapping("/{bookId}/content-manifest")
     fun getContentManifest(

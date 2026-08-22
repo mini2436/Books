@@ -72,6 +72,35 @@ class UserAdminService(
         )
     }
 
+    @Transactional
+    fun deleteAdministrator(actorId: Long, userId: Long, request: DeleteAdministratorRequest) {
+        require(actorId != userId) { "Administrators cannot delete their own account" }
+        val actor = authRepository.findUserByIdForUpdate(actorId)
+            ?: throw IllegalArgumentException("Current administrator not found")
+        require(actor.role == UserRole.SUPER_ADMIN.value) { "Only super administrators can delete administrators" }
+        val target = authRepository.findUserByIdForUpdate(userId)
+            ?: throw IllegalArgumentException("Administrator not found")
+        require(target.role == UserRole.SUPER_ADMIN.value) { "Only administrator accounts can be deleted here" }
+        require(passwordEncoder.matches(request.targetPassword, target.passwordHash)) {
+            "Target administrator password is incorrect"
+        }
+
+        // 保留目标管理员过去发放的书籍授权，将授权人改记为当前管理员后再删除账号。
+        jdbcClient.sql(
+            """
+            update user_book_access
+            set granted_by = :actorId
+            where granted_by = :userId
+            """.trimIndent(),
+        )
+            .param("actorId", actorId)
+            .param("userId", userId)
+            .update()
+        jdbcClient.sql("delete from users where id = :userId")
+            .param("userId", userId)
+            .update()
+    }
+
     fun listUsers(): List<UserView> =
         // 查询全部用户的基础管理信息，并按创建顺序展示在后台用户列表。
         jdbcClient.sql("select id, username, role, enabled from users order by id asc")

@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 
 const _backupDownloadChannel = MethodChannel(
-  'com.privatereader.private_reader_mobile/backup_downloads',
+  'com.qingyue/backup_downloads',
 );
 
 Future<void> startSystemBackupDownload(String url, String fileName) async {

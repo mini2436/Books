@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:private_reader_mobile/data/models/book_models.dart';
-import 'package:private_reader_mobile/data/models/sync_models.dart';
-import 'package:private_reader_mobile/features/annotations/annotation_center_controller.dart';
-import 'package:private_reader_mobile/features/annotations/annotation_markdown_exporter.dart';
+import 'package:qingyue/data/models/book_models.dart';
+import 'package:qingyue/data/models/sync_models.dart';
+import 'package:qingyue/features/annotations/annotation_center_controller.dart';
+import 'package:qingyue/features/annotations/annotation_markdown_exporter.dart';
 
 void main() {
   test('builds readable Markdown for the selected books and current user', () {

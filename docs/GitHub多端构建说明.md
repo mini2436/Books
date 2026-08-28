@@ -29,17 +29,17 @@ git push origin v1.0.0
 | 产物 | 内容 |
 | --- | --- |
 | `qingyue-backend.jar` | JDK 21 后端程序 |
-| `private-reader-web.tar.gz` | Flutter Web 静态资源 |
-| `private-reader-android-universal.apk` | Android 通用 APK |
-| `private-reader-android-arm64-v8a.apk` | Android ARM64 APK |
-| `private-reader-android-armeabi-v7a.apk` | Android ARMv7 APK |
-| `private-reader-android-x86_64.apk` | Android x86_64 APK，主要用于模拟器 |
-| `private-reader-android.aab` | Android App Bundle |
-| `private-reader-windows-x64.zip` | Windows x64 客户端 |
-| `private-reader-linux-x64.tar.gz` | Linux x64 客户端 |
-| `private-reader-macos.zip` | macOS Universal App，兼容 Apple Silicon 与 Intel |
-| `private-reader-macos-arm64.zip` | macOS Apple Silicon App |
-| `private-reader-macos-x86_64.zip` | macOS Intel App |
+| `qingyue-web.tar.gz` | Flutter Web 静态资源 |
+| `qingyue-android-universal.apk` | Android 通用 APK |
+| `qingyue-android-arm64-v8a.apk` | Android ARM64 APK |
+| `qingyue-android-armeabi-v7a.apk` | Android ARMv7 APK |
+| `qingyue-android-x86_64.apk` | Android x86_64 APK，主要用于模拟器 |
+| `qingyue-android.aab` | Android App Bundle |
+| `qingyue-windows-x64.zip` | Windows x64 客户端 |
+| `qingyue-linux-x64.tar.gz` | Linux x64 客户端 |
+| `qingyue-macos.zip` | macOS Universal App，兼容 Apple Silicon 与 Intel |
+| `qingyue-macos-arm64.zip` | macOS Apple Silicon App |
+| `qingyue-macos-x86_64.zip` | macOS Intel App |
 
 ## Docker Hub 镜像
 
@@ -52,11 +52,11 @@ chen584991126/qingyue-web:<Git 标签>
 chen584991126/qingyue-web:latest
 ```
 
-例如推送 `v0.0.2-beta1` 后，可直接拉取：
+例如推送 `v0.0.3-beta3` 后，可直接拉取：
 
 ```powershell
-docker pull chen584991126/qingyue-backend:v0.0.2-beta1
-docker pull chen584991126/qingyue-web:v0.0.2-beta1
+docker pull chen584991126/qingyue-backend:v0.0.3-beta3
+docker pull chen584991126/qingyue-web:v0.0.3-beta3
 ```
 
 部署机只需要 Docker；Docker 会自动选择与当前 CPU 匹配的镜像。前端镜像包含 Nginx，并会将 `/api/` 请求代理到 Compose 网络中的 `backend:8080`，因此浏览器只需访问前端端口。为了让工作流能够推送镜像，需要在 GitHub 仓库的 `Settings → Secrets and variables → Actions` 新增以下 Secrets：

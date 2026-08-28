@@ -3,6 +3,7 @@ package com.privatereader.auth
 import com.privatereader.config.AppProperties
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.time.Instant
@@ -26,6 +27,7 @@ class TokenService(
         return issueTokens(user)
     }
 
+    @Transactional
     fun refresh(refreshToken: String): AuthResponse {
         val refreshHash = digest(refreshToken)
         val tokenRecord = authRepository.findActiveTokenByRefreshHash(refreshHash)
@@ -34,6 +36,7 @@ class TokenService(
         authRepository.revokeToken(tokenRecord.id)
         val user = authRepository.findUserById(tokenRecord.userId)
             ?: throw IllegalArgumentException("User no longer exists")
+        require(user.enabled) { "User is disabled" }
         return issueTokens(user)
     }
 
@@ -41,7 +44,9 @@ class TokenService(
         val accessHash = digest(accessToken)
         val tokenRecord = authRepository.findActiveTokenByAccessHash(accessHash) ?: return null
         if (tokenRecord.expiresAt.isBefore(Instant.now())) {
-            authRepository.revokeToken(tokenRecord.id)
+            // Access and refresh credentials share one database record. An
+            // expired access token must not revoke that record, otherwise the
+            // still-valid refresh token can no longer renew the session.
             return null
         }
         val user = authRepository.findUserById(tokenRecord.userId) ?: return null

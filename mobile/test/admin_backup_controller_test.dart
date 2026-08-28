@@ -3,14 +3,14 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:private_reader_mobile/data/models/admin_models.dart';
-import 'package:private_reader_mobile/data/models/auth_models.dart';
-import 'package:private_reader_mobile/data/services/api_client.dart';
-import 'package:private_reader_mobile/data/services/backup_upload_file.dart';
-import 'package:private_reader_mobile/data/services/offline_book_cache_service.dart';
-import 'package:private_reader_mobile/data/services/session_storage.dart';
-import 'package:private_reader_mobile/features/admin/admin_center_controller.dart';
-import 'package:private_reader_mobile/features/auth/auth_controller.dart';
+import 'package:qingyue/data/models/admin_models.dart';
+import 'package:qingyue/data/models/auth_models.dart';
+import 'package:qingyue/data/services/api_client.dart';
+import 'package:qingyue/data/services/backup_upload_file.dart';
+import 'package:qingyue/data/services/offline_book_cache_service.dart';
+import 'package:qingyue/data/services/session_storage.dart';
+import 'package:qingyue/features/admin/admin_center_controller.dart';
+import 'package:qingyue/features/auth/auth_controller.dart';
 
 void main() {
   test('backup entry follows resources and full restore signs out', () async {

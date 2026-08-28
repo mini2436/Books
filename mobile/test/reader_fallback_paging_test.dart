@@ -3,13 +3,13 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:private_reader_mobile/data/models/book_models.dart';
-import 'package:private_reader_mobile/data/models/sync_models.dart';
-import 'package:private_reader_mobile/features/reader/models/annotation_anchor.dart';
-import 'package:private_reader_mobile/features/reader/widgets/reader_blocks.dart';
-import 'package:private_reader_mobile/features/reader/widgets/reader_html_view.dart';
-import 'package:private_reader_mobile/features/settings/reader_preferences_controller.dart';
-import 'package:private_reader_mobile/shared/theme/reader_theme_extension.dart';
+import 'package:qingyue/data/models/book_models.dart';
+import 'package:qingyue/data/models/sync_models.dart';
+import 'package:qingyue/features/reader/models/annotation_anchor.dart';
+import 'package:qingyue/features/reader/widgets/reader_blocks.dart';
+import 'package:qingyue/features/reader/widgets/reader_html_view.dart';
+import 'package:qingyue/features/settings/reader_preferences_controller.dart';
+import 'package:qingyue/shared/theme/reader_theme_extension.dart';
 
 void main() {
   test('web page-turn zones grow on phone and wide viewports', () {

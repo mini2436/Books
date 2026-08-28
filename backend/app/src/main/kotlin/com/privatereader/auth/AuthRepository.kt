@@ -139,6 +139,7 @@ class AuthRepository(
             from auth_tokens
             where refresh_token_hash = :refreshTokenHash
             and revoked = false
+            for update
             """.trimIndent(),
         )
             .param("refreshTokenHash", refreshTokenHash)

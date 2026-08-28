@@ -4,9 +4,9 @@
 
 [中文](README.md) · [Runbook](docs/运行文档.md) · [API documentation](docs/接口文档.md)
 
-Private Reader turns ebooks scattered across computers, NAS storage, and family devices into one private library. An administrator imports and organizes books, while each family member reads with an individual account. Book access, progress, bookmarks, and annotations stay synchronized without handing the household's reading data to a public service.
+Qingyue turns ebooks scattered across computers, NAS storage, and family devices into one private library. An administrator imports and organizes books, while each family member reads with an individual account. Book access, progress, bookmarks, and annotations stay synchronized without handing the household's reading data to a public service.
 
-![Private Reader family bookshelf](docs/screenshots/bookshelf-web.png)
+![Qingyue family bookshelf](docs/screenshots/bookshelf-web.png)
 
 ## Highlights
 
@@ -32,20 +32,20 @@ All screenshots below were freshly captured from the translucent glass interface
     <th align="center">Android tablet</th>
   </tr>
   <tr>
-    <td align="center"><img src="docs/screenshots/app-phone.png" alt="Private Reader on an Android phone" width="280"></td>
-    <td align="center"><img src="docs/screenshots/app-tablet.png" alt="Private Reader on an Android tablet" width="560"></td>
+    <td align="center"><img src="docs/screenshots/app-phone.png" alt="Qingyue on an Android phone" width="280"></td>
+    <td align="center"><img src="docs/screenshots/app-tablet.png" alt="Qingyue on an Android tablet" width="560"></td>
   </tr>
 </table>
 
 ### Windows desktop
 
 <p align="center">
-  <img src="docs/screenshots/app-windows.png" alt="Private Reader on Windows" width="760">
+  <img src="docs/screenshots/app-windows.png" alt="Qingyue on Windows" width="760">
 </p>
 
 ### Web bookshelf
 
-![Private Reader web bookshelf](docs/screenshots/bookshelf-web.png)
+![Qingyue web bookshelf](docs/screenshots/bookshelf-web.png)
 
 ## Architecture
 
@@ -101,6 +101,6 @@ For a physical Android device, point `API_BASE_URL` at the host's LAN address.
 
 ## Project status
 
-Private Reader is under active development. It is already suitable for small household deployments, but is best kept on a private network with regular backups of both PostgreSQL and the book storage directory.
+Qingyue is under active development. It is already suitable for small household deployments, but is best kept on a private network with regular backups of both PostgreSQL and the book storage directory.
 
 Bundled font licenses are stored under [`mobile/assets/fonts/`](mobile/assets/fonts/).

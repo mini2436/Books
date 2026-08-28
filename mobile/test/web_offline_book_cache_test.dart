@@ -4,9 +4,9 @@ library;
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:private_reader_mobile/data/models/book_models.dart';
-import 'package:private_reader_mobile/data/models/sync_models.dart';
-import 'package:private_reader_mobile/data/services/offline_book_cache_service.dart';
+import 'package:qingyue/data/models/book_models.dart';
+import 'package:qingyue/data/models/sync_models.dart';
+import 'package:qingyue/data/services/offline_book_cache_service.dart';
 
 void main() {
   test('IndexedDB persists a complete offline book and reader state', () async {

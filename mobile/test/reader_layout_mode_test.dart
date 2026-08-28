@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:private_reader_mobile/features/reader/reader_screen.dart';
-import 'package:private_reader_mobile/features/settings/reader_preferences_controller.dart';
+import 'package:qingyue/features/reader/reader_screen.dart';
+import 'package:qingyue/features/settings/reader_preferences_controller.dart';
 
 void main() {
   test('manual reading uses horizontal pagination on phones', () {

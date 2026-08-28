@@ -1,8 +1,8 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:private_reader_mobile/data/models/sync_models.dart';
-import 'package:private_reader_mobile/data/services/offline_queue_service.dart';
+import 'package:qingyue/data/models/sync_models.dart';
+import 'package:qingyue/data/services/offline_queue_service.dart';
 
 void main() {
   group('OfflineQueueService web codec', () {

@@ -191,7 +191,7 @@ class BackupHistoryService(
     ): StoredBackup {
         val id = UUID.randomUUID().toString()
         val createdAt = Instant.now()
-        val filename = "private-reader-${request.scope.name.lowercase()}-${FILENAME_TIME.format(createdAt)}.zip"
+        val filename = "qingyue-${request.scope.name.lowercase()}-${FILENAME_TIME.format(createdAt)}.zip"
         val archiveRoot = archiveRoot()
         Files.createDirectories(archiveRoot)
         val target = archiveRoot.resolve("$id.zip")

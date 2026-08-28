@@ -2,10 +2,11 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart' hide Text;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:private_reader_mobile/shared/localization/app_localizations.dart';
-import 'package:private_reader_mobile/shared/localization/localized_text.dart';
+import 'package:qingyue/shared/localization/app_localizations.dart';
+import 'package:qingyue/shared/localization/localized_text.dart';
 
 import '../../data/services/offline_book_cache_service.dart';
+import '../../data/services/session_storage.dart';
 import '../../shared/theme/reader_theme_extension.dart';
 import '../../shared/theme/glass_theme.dart';
 import '../../shared/utils/responsive.dart';
@@ -29,6 +30,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   late final AnimationController _backgroundController;
   final _usernameController = TextEditingController(text: 'admin');
   final _passwordController = TextEditingController(text: 'admin12345');
+  bool _rememberPassword = true;
   bool? _reduceMotion;
 
   @override
@@ -43,6 +45,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       duration: const Duration(seconds: 18),
       value: 0.18,
     );
+    _loadRememberedCredentials();
   }
 
   @override
@@ -129,6 +132,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                   : const Icon(Icons.settings_ethernet),
             ),
             keyboardType: TextInputType.url,
+            textInputAction: TextInputAction.next,
+            onFieldSubmitted: (_) => FocusScope.of(context).nextFocus(),
             validator: (value) => (value == null || value.trim().isEmpty)
                 ? context.tr('请输入服务地址')
                 : null,
@@ -137,6 +142,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
           TextFormField(
             controller: _usernameController,
             decoration: InputDecoration(labelText: context.tr('用户名')),
+            textInputAction: TextInputAction.next,
+            autofillHints: const [AutofillHints.username],
+            onFieldSubmitted: (_) => FocusScope.of(context).nextFocus(),
             validator: (value) => (value == null || value.trim().isEmpty)
                 ? context.tr('请输入用户名')
                 : null,
@@ -146,8 +154,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
             controller: _passwordController,
             decoration: InputDecoration(labelText: context.tr('密码')),
             obscureText: true,
+            textInputAction: TextInputAction.done,
+            autofillHints: const [AutofillHints.password],
+            onFieldSubmitted: (_) {
+              if (!auth.isWorking) _submit();
+            },
             validator: (value) =>
                 (value == null || value.isEmpty) ? context.tr('请输入密码') : null,
+          ),
+          CheckboxListTile(
+            contentPadding: EdgeInsets.zero,
+            value: _rememberPassword,
+            controlAffinity: ListTileControlAffinity.leading,
+            title: Text(context.tr('记住账号和密码')),
+            onChanged: auth.isWorking
+                ? null
+                : (value) => setState(() => _rememberPassword = value ?? false),
           ),
           const SizedBox(height: 20),
           if (serverConfig.errorMessage != null)
@@ -253,17 +275,40 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     }
 
     try {
+      final authController = ref.read(authControllerProvider);
+      final credentialStorage = ref.read(sessionStorageProvider);
+      final rememberPassword = _rememberPassword;
       await ref
           .read(serverConfigControllerProvider)
           .updateAddress(_serverAddressController.text);
-      await ref
-          .read(authControllerProvider)
-          .signIn(
-            username: _usernameController.text.trim(),
-            password: _passwordController.text,
-          );
+      final username = _usernameController.text.trim();
+      final password = _passwordController.text;
+      await authController.signIn(username: username, password: password);
+      if (rememberPassword) {
+        await credentialStorage.saveLoginCredentials(
+          LoginCredentials(username: username, password: password),
+        );
+      } else {
+        await credentialStorage.clearLoginCredentials();
+      }
     } catch (_) {
       // AuthController already stores the backend error for inline display.
+    }
+  }
+
+  Future<void> _loadRememberedCredentials() async {
+    try {
+      final credentials = await ref
+          .read(sessionStorageProvider)
+          .readLoginCredentials();
+      if (!mounted || credentials == null) return;
+      setState(() {
+        _usernameController.text = credentials.username;
+        _passwordController.text = credentials.password;
+        _rememberPassword = true;
+      });
+    } catch (_) {
+      // Login remains available when the platform credential store is locked.
     }
   }
 

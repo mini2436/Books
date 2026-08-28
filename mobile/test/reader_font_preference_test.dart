@@ -1,9 +1,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:private_reader_mobile/data/services/settings_storage.dart';
-import 'package:private_reader_mobile/features/settings/reader_preferences_controller.dart';
-import 'package:private_reader_mobile/shared/theme/glass_theme.dart';
-import 'package:private_reader_mobile/shared/theme/reader_theme_extension.dart';
+import 'package:qingyue/data/services/settings_storage.dart';
+import 'package:qingyue/features/settings/reader_preferences_controller.dart';
+import 'package:qingyue/shared/theme/glass_theme.dart';
+import 'package:qingyue/shared/theme/reader_theme_extension.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {

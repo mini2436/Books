@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:private_reader_mobile/features/reader/reader_controller.dart';
+import 'package:qingyue/features/reader/reader_controller.dart';
 
 void main() {
   test(

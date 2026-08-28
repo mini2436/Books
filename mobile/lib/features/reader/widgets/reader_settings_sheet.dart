@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' hide Text;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:private_reader_mobile/shared/localization/localized_text.dart';
+import 'package:qingyue/shared/localization/localized_text.dart';
 
 import '../../settings/reader_preferences_controller.dart';
 import '../../../shared/theme/reader_theme_extension.dart';

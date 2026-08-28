@@ -1,4 +1,4 @@
-package com.example.private_reader_mobile
+package com.qingyue
 
 import android.Manifest
 import android.app.DownloadManager
@@ -171,7 +171,7 @@ class MainActivity : FlutterActivity() {
 
     private companion object {
         const val BACKUP_DOWNLOAD_CHANNEL =
-            "com.privatereader.private_reader_mobile/backup_downloads"
+            "com.qingyue/backup_downloads"
         const val STORAGE_PERMISSION_REQUEST = 2407
         const val TARGET_REFRESH_RATE = 120f
         const val SURFACE_RETRY_DELAY_MS = 500L

@@ -19,7 +19,7 @@ class ApiException implements Exception {
   final int? statusCode;
 
   bool get isUnauthorized => statusCode == 401;
-  bool get isAuthenticationFailure => statusCode == 401 || statusCode == 403;
+  bool get isAuthenticationFailure => statusCode == 401;
   bool get isNetworkFailure => statusCode == null || statusCode! >= 500;
 
   /// Converts unexpected local errors into a safe message for the UI.

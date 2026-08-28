@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:private_reader_mobile/data/models/book_models.dart';
-import 'package:private_reader_mobile/features/reader/widgets/reader_html_view.dart';
-import 'package:private_reader_mobile/shared/theme/reader_theme_extension.dart';
+import 'package:qingyue/data/models/book_models.dart';
+import 'package:qingyue/features/reader/widgets/reader_html_view.dart';
+import 'package:qingyue/shared/theme/reader_theme_extension.dart';
 
 void main() {
   test('Windows reader image file names are short and file safe', () {

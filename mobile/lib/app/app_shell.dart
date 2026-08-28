@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart' hide Text;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:private_reader_mobile/shared/localization/localized_text.dart';
-import 'package:private_reader_mobile/shared/localization/app_localizations.dart';
+import 'package:qingyue/shared/localization/localized_text.dart';
+import 'package:qingyue/shared/localization/app_localizations.dart';
 
 import '../features/auth/auth_controller.dart';
 import '../shared/theme/glass_theme.dart';

@@ -1,4 +1,4 @@
-# Private Reader Mobile
+# Qingyue
 
 Flutter 重建后的移动端工程，首期目标：
 

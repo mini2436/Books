@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:private_reader_mobile/shared/config/app_config.dart';
+import 'package:qingyue/shared/config/app_config.dart';
 
 void main() {
   test('the default server uses the local loopback address', () {

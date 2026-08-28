@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:private_reader_mobile/features/reader/widgets/reader_windows_image_server_io.dart';
+import 'package:qingyue/features/reader/widgets/reader_windows_image_server_io.dart';
 
 void main() {
   test(

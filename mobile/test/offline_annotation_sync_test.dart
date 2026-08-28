@@ -2,17 +2,17 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
-import 'package:private_reader_mobile/data/models/auth_models.dart';
-import 'package:private_reader_mobile/data/models/book_models.dart';
-import 'package:private_reader_mobile/data/models/sync_models.dart';
-import 'package:private_reader_mobile/data/services/api_client.dart';
-import 'package:private_reader_mobile/data/services/offline_book_cache_service.dart';
-import 'package:private_reader_mobile/data/services/offline_queue_service.dart';
-import 'package:private_reader_mobile/data/services/session_storage.dart';
-import 'package:private_reader_mobile/features/annotations/annotation_change_notifier.dart';
-import 'package:private_reader_mobile/features/auth/auth_controller.dart';
-import 'package:private_reader_mobile/features/reader/models/annotation_anchor.dart';
-import 'package:private_reader_mobile/features/reader/reader_controller.dart';
+import 'package:qingyue/data/models/auth_models.dart';
+import 'package:qingyue/data/models/book_models.dart';
+import 'package:qingyue/data/models/sync_models.dart';
+import 'package:qingyue/data/services/api_client.dart';
+import 'package:qingyue/data/services/offline_book_cache_service.dart';
+import 'package:qingyue/data/services/offline_queue_service.dart';
+import 'package:qingyue/data/services/session_storage.dart';
+import 'package:qingyue/features/annotations/annotation_change_notifier.dart';
+import 'package:qingyue/features/auth/auth_controller.dart';
+import 'package:qingyue/features/reader/models/annotation_anchor.dart';
+import 'package:qingyue/features/reader/reader_controller.dart';
 
 void main() {
   test(

@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart' hide Text;
-import 'package:private_reader_mobile/shared/localization/localized_text.dart';
+import 'package:qingyue/shared/localization/localized_text.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 
 import '../../../shared/theme/reader_theme_extension.dart';
@@ -12,6 +12,8 @@ class PdfReaderView extends StatefulWidget {
     super.key,
     required this.bytes,
     required this.initialPage,
+    required this.pageNavigationCommand,
+    required this.pageNavigationVersion,
     required this.palette,
     required this.onPageChanged,
     required this.onDocumentLoaded,
@@ -19,6 +21,8 @@ class PdfReaderView extends StatefulWidget {
 
   final Uint8List bytes;
   final int initialPage;
+  final String? pageNavigationCommand;
+  final int pageNavigationVersion;
   final AppReaderPalette palette;
   final ValueChanged<int> onPageChanged;
   final ValueChanged<int> onDocumentLoaded;
@@ -50,6 +54,14 @@ class _PdfReaderViewState extends State<PdfReaderView> {
       _loadError = null;
       _preparePlatformFile();
       return;
+    }
+    if (oldWidget.pageNavigationVersion != widget.pageNavigationVersion) {
+      switch (widget.pageNavigationCommand) {
+        case 'left':
+          _controller.previousPage();
+        case 'right':
+          _controller.nextPage();
+      }
     }
     if (oldWidget.initialPage != widget.initialPage &&
         _controller.pageNumber != widget.initialPage) {

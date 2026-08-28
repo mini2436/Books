@@ -3,11 +3,11 @@ import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:private_reader_mobile/data/models/sync_models.dart';
-import 'package:private_reader_mobile/data/services/api_client.dart';
-import 'package:private_reader_mobile/data/services/offline_book_cache_service.dart';
-import 'package:private_reader_mobile/data/services/offline_queue_service.dart';
-import 'package:private_reader_mobile/data/services/sync_coordinator.dart';
+import 'package:qingyue/data/models/sync_models.dart';
+import 'package:qingyue/data/services/api_client.dart';
+import 'package:qingyue/data/services/offline_book_cache_service.dart';
+import 'package:qingyue/data/services/offline_queue_service.dart';
+import 'package:qingyue/data/services/sync_coordinator.dart';
 
 void main() {
   test(

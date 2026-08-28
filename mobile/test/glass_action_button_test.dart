@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:private_reader_mobile/shared/theme/reader_theme_extension.dart';
-import 'package:private_reader_mobile/shared/widgets/glass_action_button.dart';
+import 'package:qingyue/shared/theme/reader_theme_extension.dart';
+import 'package:qingyue/shared/widgets/glass_action_button.dart';
 
 void main() {
   testWidgets('GlassActionButton invokes its action', (tester) async {

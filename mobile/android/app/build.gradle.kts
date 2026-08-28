@@ -17,7 +17,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.private_reader_mobile"
+    namespace = "com.qingyue"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -31,7 +31,8 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
+        // Keep the historical application ID so existing installations can
+        // upgrade in place even though the product is now branded Qingyue.
         applicationId = "com.example.private_reader_mobile"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.

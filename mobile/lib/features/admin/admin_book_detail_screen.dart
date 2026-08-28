@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart' hide Text;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:private_reader_mobile/shared/localization/localized_text.dart';
-import 'package:private_reader_mobile/shared/localization/app_localizations.dart';
+import 'package:qingyue/shared/localization/localized_text.dart';
+import 'package:qingyue/shared/localization/app_localizations.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/models/admin_models.dart';

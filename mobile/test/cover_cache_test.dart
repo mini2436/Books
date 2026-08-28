@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:private_reader_mobile/data/models/book_models.dart';
-import 'package:private_reader_mobile/data/services/api_client.dart';
+import 'package:qingyue/data/models/book_models.dart';
+import 'package:qingyue/data/services/api_client.dart';
 
 void main() {
   test('cover URL includes the server supplied cover version', () {

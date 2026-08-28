@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:private_reader_mobile/shared/localization/app_locale.dart';
-import 'package:private_reader_mobile/shared/localization/app_localizations.dart';
-import 'package:private_reader_mobile/shared/localization/localized_text.dart'
+import 'package:qingyue/shared/localization/app_locale.dart';
+import 'package:qingyue/shared/localization/app_localizations.dart';
+import 'package:qingyue/shared/localization/localized_text.dart'
     as localized;
 import 'package:shared_preferences/shared_preferences.dart';
 

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:private_reader_mobile/data/services/api_client.dart';
+import 'package:qingyue/data/services/api_client.dart';
 
 void main() {
   group('ApiException.userFacingMessage', () {
@@ -17,6 +17,22 @@ void main() {
           fallback: '操作失败，请稍后重试。',
         ),
         '操作失败，请稍后重试。',
+      );
+    });
+  });
+
+  group('ApiException authentication classification', () {
+    test('refreshes only for unauthorized responses', () {
+      expect(
+        const ApiException('expired', statusCode: 401).isAuthenticationFailure,
+        isTrue,
+      );
+      expect(
+        const ApiException(
+          'forbidden',
+          statusCode: 403,
+        ).isAuthenticationFailure,
+        isFalse,
       );
     });
   });

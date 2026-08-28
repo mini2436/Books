@@ -1,7 +1,7 @@
 'use strict';
 
 const CACHE_PREFIX = 'qingyue-app-shell-';
-const CACHE_NAME = `${CACHE_PREFIX}v4`;
+const CACHE_NAME = `${CACHE_PREFIX}v5`;
 const NAVIGATION_TIMEOUT_MS = 10000;
 const APP_SHELL_ASSET_TIMEOUT_MS = 60000;
 const APP_ROOT_URL = new URL('./', self.registration.scope).toString();

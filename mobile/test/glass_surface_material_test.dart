@@ -1,10 +1,10 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:private_reader_mobile/shared/theme/glass_theme.dart';
-import 'package:private_reader_mobile/shared/theme/reader_theme_extension.dart';
-import 'package:private_reader_mobile/shared/utils/responsive.dart';
-import 'package:private_reader_mobile/shared/widgets/glass_surface.dart';
+import 'package:qingyue/shared/theme/glass_theme.dart';
+import 'package:qingyue/shared/theme/reader_theme_extension.dart';
+import 'package:qingyue/shared/utils/responsive.dart';
+import 'package:qingyue/shared/widgets/glass_surface.dart';
 
 void main() {
   testWidgets('Windows floating glass remains translucent', (tester) async {

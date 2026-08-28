@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:private_reader_mobile/shared/theme/reader_theme_extension.dart';
+import 'package:qingyue/shared/theme/reader_theme_extension.dart';
 
 void main() {
   test('night palette keeps the warm accent for reading', () {

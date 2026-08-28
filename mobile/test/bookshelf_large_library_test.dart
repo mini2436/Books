@@ -3,15 +3,15 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
-import 'package:private_reader_mobile/data/models/auth_models.dart';
-import 'package:private_reader_mobile/data/models/book_models.dart';
-import 'package:private_reader_mobile/data/models/sync_models.dart';
-import 'package:private_reader_mobile/data/services/api_client.dart';
-import 'package:private_reader_mobile/data/services/offline_book_cache_service.dart';
-import 'package:private_reader_mobile/data/services/offline_queue_service.dart';
-import 'package:private_reader_mobile/data/services/session_storage.dart';
-import 'package:private_reader_mobile/features/auth/auth_controller.dart';
-import 'package:private_reader_mobile/features/bookshelf/bookshelf_controller.dart';
+import 'package:qingyue/data/models/auth_models.dart';
+import 'package:qingyue/data/models/book_models.dart';
+import 'package:qingyue/data/models/sync_models.dart';
+import 'package:qingyue/data/services/api_client.dart';
+import 'package:qingyue/data/services/offline_book_cache_service.dart';
+import 'package:qingyue/data/services/offline_queue_service.dart';
+import 'package:qingyue/data/services/session_storage.dart';
+import 'package:qingyue/features/auth/auth_controller.dart';
+import 'package:qingyue/features/bookshelf/bookshelf_controller.dart';
 
 void main() {
   test('千本离线书架复用派生缓存并按需读取封面', () async {

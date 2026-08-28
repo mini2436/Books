@@ -353,7 +353,7 @@ class AppLocalizations {
   }
 
   static const _english = <String, String>{
-    '轻阅': 'Private Reader',
+    '轻阅': 'Qingyue',
     '回到你的私人书架': 'Return to your private library',
     '服务地址': 'Server address',
     '请输入服务地址': 'Enter the server address',
@@ -361,6 +361,7 @@ class AppLocalizations {
     '请输入用户名': 'Enter your username',
     '密码': 'Password',
     '请输入密码': 'Enter your password',
+    '记住账号和密码': 'Remember username and password',
     '登录': 'Sign in',
     '离线使用': 'Use offline',
     '离线使用仅显示本机已缓存书籍；阅读进度保存在本机，重新登录原服务器和账户后同步。':
@@ -568,7 +569,7 @@ class AppLocalizations {
     '用户数据备份': 'User-data backup',
     '用户数据': 'User data',
     '生成可完整迁移到另一套轻阅服务的 ZIP 文件。':
-        'Create a ZIP that fully migrates to another Private Reader server.',
+        'Create a ZIP that fully migrates to another Qingyue server.',
     '仅导出书籍、封面、正文缓存与原文件。':
         'Export only books, covers, content cache, and original files.',
     '按用户和数据类型导出阅读数据，恢复时再映射目标用户。':
@@ -586,7 +587,7 @@ class AppLocalizations {
     '导出书籍备份': 'Export book backup',
     '导出用户数据': 'Export user data',
     '生成可迁移到另一套轻阅服务的 ZIP 文件。':
-        'Create a ZIP that can be migrated to another Private Reader server.',
+        'Create a ZIP that can be migrated to another Qingyue server.',
     '账号、权限与系统配置': 'Accounts, permissions, and system settings',
     '书籍、封面与结构化正文': 'Books, covers, and structured content',
     '批注、书签与阅读进度': 'Annotations, bookmarks, and reading progress',
@@ -602,8 +603,8 @@ class AppLocalizations {
     '移除文件': 'Remove file',
     '正在处理': 'Working',
     '开始全量恢复': 'Start full restore',
-    '选择轻阅完整备份文件': 'Choose a full Private Reader backup',
-    '选择轻阅备份文件': 'Choose a Private Reader backup',
+    '选择轻阅完整备份文件': 'Choose a full Qingyue backup',
+    '选择轻阅备份文件': 'Choose a Qingyue backup',
     '仅支持由系统导出的 .zip 文件': 'Only system-exported .zip files are supported',
     '选择文件': 'Choose file',
     '备份校验通过': 'Backup validated',

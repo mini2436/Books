@@ -1,11 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:private_reader_mobile/data/models/admin_models.dart';
-import 'package:private_reader_mobile/data/models/auth_models.dart';
-import 'package:private_reader_mobile/data/services/api_client.dart';
-import 'package:private_reader_mobile/data/services/offline_book_cache_service.dart';
-import 'package:private_reader_mobile/data/services/session_storage.dart';
-import 'package:private_reader_mobile/features/admin/admin_center_controller.dart';
-import 'package:private_reader_mobile/features/auth/auth_controller.dart';
+import 'package:qingyue/data/models/admin_models.dart';
+import 'package:qingyue/data/models/auth_models.dart';
+import 'package:qingyue/data/services/api_client.dart';
+import 'package:qingyue/data/services/offline_book_cache_service.dart';
+import 'package:qingyue/data/services/session_storage.dart';
+import 'package:qingyue/features/admin/admin_center_controller.dart';
+import 'package:qingyue/features/auth/auth_controller.dart';
 
 void main() {
   test('千本管理书籍复用派生缓存并延迟执行搜索', () async {

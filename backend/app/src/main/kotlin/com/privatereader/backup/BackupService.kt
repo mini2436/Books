@@ -58,7 +58,7 @@ class BackupService(
     fun exportToFile(request: BackupExportRequest): Path {
         val temporaryRoot = Path.of(appProperties.storageRoot, "backup-temp")
         Files.createDirectories(temporaryRoot)
-        val target = Files.createTempFile(temporaryRoot, "private-reader-", ".zip")
+        val target = Files.createTempFile(temporaryRoot, "qingyue-", ".zip")
         return try {
             Files.newOutputStream(target).buffered(EXPORT_BUFFER_SIZE).use { writeExport(request, it) }
             target

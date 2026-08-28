@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart' hide Text;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:private_reader_mobile/shared/localization/localized_text.dart';
-import 'package:private_reader_mobile/shared/localization/app_localizations.dart';
+import 'package:qingyue/shared/localization/localized_text.dart';
+import 'package:qingyue/shared/localization/app_localizations.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
@@ -235,6 +235,8 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
               : PdfReaderView(
                   bytes: controller.pdfBytes!,
                   initialPage: controller.pdfPageNumber,
+                  pageNavigationCommand: _viewportTapZone,
+                  pageNavigationVersion: _viewportTapZoneVersion,
                   palette: palette,
                   onPageChanged: (pageNumber) =>
                       controller.updatePdfPage(pageNumber: pageNumber),
@@ -454,74 +456,86 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
 
     return _flushProgressOnPop(
       controller,
-      Scaffold(
-        key: _scaffoldKey,
-        drawer: Drawer(
-          child: SafeArea(child: _ReaderLeftPanel(controller: controller)),
-        ),
-        body: SafeArea(
-          child: Stack(
-            children: [
-              Positioned.fill(
-                child: Padding(
-                  padding: detail.isPdf
-                      ? const EdgeInsets.fromLTRB(16, 24, 16, 40)
-                      : EdgeInsets.zero,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (controller.isCurrentChapterLoading)
-                        const Padding(
-                          padding: EdgeInsets.only(bottom: 16),
-                          child: LinearProgressIndicator(),
-                        ),
-                      Expanded(child: body),
-                    ],
-                  ),
-                ),
-              ),
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: _TabletChromeVisibility(
-                  visible: controller.uiVisible,
-                  offset: const Offset(0, -0.08),
-                  child: _MobileReaderTopBar(
-                    title: detail.title,
-                    onOpenMenu: () => _scaffoldKey.currentState?.openDrawer(),
-                    onOpenBookmarks: () => _openBookmarksSheet(controller),
-                    onOpenNotes: () => _openNotesSheet(controller),
-                    autoScrollEnabled: _autoScrollEnabled,
-                    onAutoScroll: () => _toggleAutoScroll(controller),
-                    onOpenSettings: () => showModalBottomSheet<void>(
-                      context: context,
-                      isScrollControlled: true,
-                      builder: (context) => const ReaderSettingsSheet(),
+      CallbackShortcuts(
+        bindings: <ShortcutActivator, VoidCallback>{
+          const SingleActivator(LogicalKeyboardKey.arrowLeft): () =>
+              _dispatchViewportTapZone('left'),
+          const SingleActivator(LogicalKeyboardKey.arrowRight): () =>
+              _dispatchViewportTapZone('right'),
+        },
+        child: Focus(
+          autofocus: true,
+          child: Scaffold(
+            key: _scaffoldKey,
+            drawer: Drawer(
+              child: SafeArea(child: _ReaderLeftPanel(controller: controller)),
+            ),
+            body: SafeArea(
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: Padding(
+                      padding: detail.isPdf
+                          ? const EdgeInsets.fromLTRB(16, 24, 16, 40)
+                          : EdgeInsets.zero,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (controller.isCurrentChapterLoading)
+                            const Padding(
+                              padding: EdgeInsets.only(bottom: 16),
+                              child: LinearProgressIndicator(),
+                            ),
+                          Expanded(child: body),
+                        ],
+                      ),
                     ),
                   ),
-                ),
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    child: _TabletChromeVisibility(
+                      visible: controller.uiVisible,
+                      offset: const Offset(0, -0.08),
+                      child: _MobileReaderTopBar(
+                        title: detail.title,
+                        onOpenMenu: () =>
+                            _scaffoldKey.currentState?.openDrawer(),
+                        onOpenBookmarks: () => _openBookmarksSheet(controller),
+                        onOpenNotes: () => _openNotesSheet(controller),
+                        autoScrollEnabled: _autoScrollEnabled,
+                        onAutoScroll: () => _toggleAutoScroll(controller),
+                        onOpenSettings: () => showModalBottomSheet<void>(
+                          context: context,
+                          isScrollControlled: true,
+                          builder: (context) => const ReaderSettingsSheet(),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: _TabletChromeVisibility(
+                      visible: controller.uiVisible,
+                      offset: const Offset(0, 0.12),
+                      child: _MobileReaderBottomBar(controller: controller),
+                    ),
+                  ),
+                  Positioned(
+                    right: 16,
+                    bottom: controller.uiVisible ? 132 : 16,
+                    child: _AutoScrollStatus(
+                      visible: _autoScrollEnabled,
+                      speedLabel: _autoScrollSpeedLabel,
+                      onStop: _stopAutoScroll,
+                    ),
+                  ),
+                ],
               ),
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: _TabletChromeVisibility(
-                  visible: controller.uiVisible,
-                  offset: const Offset(0, 0.12),
-                  child: _MobileReaderBottomBar(controller: controller),
-                ),
-              ),
-              Positioned(
-                right: 16,
-                bottom: controller.uiVisible ? 132 : 16,
-                child: _AutoScrollStatus(
-                  visible: _autoScrollEnabled,
-                  speedLabel: _autoScrollSpeedLabel,
-                  onStop: _stopAutoScroll,
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),

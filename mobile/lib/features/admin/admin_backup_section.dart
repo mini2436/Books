@@ -264,7 +264,7 @@ class _AdminBackupSectionState extends ConsumerState<AdminBackupSection> {
           '${now.hour.toString().padLeft(2, '0')}'
           '${now.minute.toString().padLeft(2, '0')}';
       final scopeName = _exportScope.toLowerCase().replaceAll('_', '-');
-      final fileName = 'private-reader-$scopeName-$stamp.zip';
+      final fileName = 'qingyue-$scopeName-$stamp.zip';
       final controller = ref.read(adminCenterControllerProvider);
       if (kIsWeb || defaultTargetPlatform == TargetPlatform.android) {
         final downloadUrl = await controller.createBackupDownloadUrl(

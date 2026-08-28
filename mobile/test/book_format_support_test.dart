@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:private_reader_mobile/data/models/book_models.dart';
+import 'package:qingyue/data/models/book_models.dart';
 
 void main() {
   test('structured reader accepts all unified content formats', () {

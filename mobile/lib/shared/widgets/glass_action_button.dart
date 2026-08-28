@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart' hide Text;
-import 'package:private_reader_mobile/shared/localization/localized_text.dart';
+import 'package:qingyue/shared/localization/localized_text.dart';
 
 import '../theme/glass_theme.dart';
 import '../theme/reader_theme_extension.dart';

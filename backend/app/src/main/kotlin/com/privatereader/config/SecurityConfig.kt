@@ -4,6 +4,7 @@ import com.privatereader.auth.BearerTokenFilter
 import com.privatereader.auth.UserRole
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.http.HttpStatus
 import org.springframework.security.config.Customizer
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
@@ -22,6 +23,11 @@ class SecurityConfig(
             .csrf { it.disable() }
             .cors(Customizer.withDefaults())
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
+            .exceptionHandling {
+                it.authenticationEntryPoint { _, response, _ ->
+                    response.sendError(HttpStatus.UNAUTHORIZED.value(), "Unauthorized")
+                }
+            }
             .authorizeHttpRequests {
                 it.requestMatchers("/actuator/health", "/api/auth/login", "/api/auth/refresh", "/error").permitAll()
                     .requestMatchers("/api/admin/backups/download/**").permitAll()

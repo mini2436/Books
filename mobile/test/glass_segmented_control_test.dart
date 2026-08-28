@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:private_reader_mobile/shared/theme/reader_theme_extension.dart';
-import 'package:private_reader_mobile/shared/widgets/glass_segmented_control.dart';
-import 'package:private_reader_mobile/shared/widgets/glass_surface.dart';
+import 'package:qingyue/shared/theme/reader_theme_extension.dart';
+import 'package:qingyue/shared/widgets/glass_segmented_control.dart';
+import 'package:qingyue/shared/widgets/glass_surface.dart';
 
 void main() {
   testWidgets('允许在滚动区域关闭实时背景模糊', (tester) async {
